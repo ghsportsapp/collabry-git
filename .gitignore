@@ -20,8 +20,8 @@ node_modules
 **/.env.*.local
 !**/.env.example
 
-# Legacy local-disk uploads from the pre-MinIO storage layer. Files stay
-# on disk if you want to inspect, but never get tracked.
+# Orphaned legacy local-disk uploads — superseded by Linode Object Storage.
+# Files stay on disk if you want to inspect, but never get tracked.
 tmp_uploads/
 **/tmp_uploads/
 

@@ -6,21 +6,25 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const region = process.env["S3_REGION"] ?? "us-east-1";
-const endpoint = process.env["S3_ENDPOINT"] ?? "http://localhost:9000";
-const accessKeyId = process.env["S3_ACCESS_KEY"] ?? "minioadmin";
-const secretAccessKey = process.env["S3_SECRET_KEY"] ?? "minioadmin";
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required env var: ${name}`);
+  }
+  return value;
+}
 
-export const PUBLIC_BUCKET =
-  process.env["S3_PUBLIC_BUCKET"] ?? "collabry-public";
-export const PRIVATE_BUCKET =
-  process.env["S3_PRIVATE_BUCKET"] ?? "collabry-private";
+const region = required("S3_REGION");
+const endpoint = required("S3_ENDPOINT");
+const accessKeyId = required("S3_ACCESS_KEY");
+const secretAccessKey = required("S3_SECRET_KEY");
 
-// Base URL public objects are served from. In dev: `${endpoint}/${PUBLIC_BUCKET}`.
-// In prod, set S3_PUBLIC_BASE_URL to e.g. `https://media.collabry.co`.
-export const PUBLIC_BASE_URL =
-  process.env["S3_PUBLIC_BASE_URL"]?.replace(/\/$/, "") ??
-  `${endpoint.replace(/\/$/, "")}/${PUBLIC_BUCKET}`;
+export const PUBLIC_BUCKET = required("S3_PUBLIC_BUCKET");
+export const PRIVATE_BUCKET = required("S3_PRIVATE_BUCKET");
+
+// Base URL public objects are served from. For Linode, this is
+// https://<bucket>.<region>.linodeobjects.com.
+export const PUBLIC_BASE_URL = required("S3_PUBLIC_BASE_URL").replace(/\/$/, "");
 
 const PRIVATE_URL_PREFIX = "/api/storage/private/";
 
@@ -72,7 +76,7 @@ export async function uploadPrivate(input: UploadInput): Promise<string> {
 }
 
 /** Pre-signed GET for a private object — used to redirect from the API
- *  route to MinIO/S3 directly. */
+ *  route to the underlying storage directly. */
 export async function getSignedDownloadUrl(
   key: string,
   expiresSeconds = 60 * 60

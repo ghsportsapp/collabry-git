@@ -41,7 +41,7 @@ function extFor(mimetype: string): string {
 }
 
 /**
- * Private file upload — images or PDFs to the private MinIO bucket.
+ * Private file upload — images or PDFs to the private bucket.
  * Returns `{ objectPath }` where objectPath is `/api/storage/private/<key>`,
  * a URL that the storage route resolves to a short-lived signed URL on each
  * request. Caller stores objectPath in the DB and uses it as a plain URL.
