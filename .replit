@@ -1,0 +1,101 @@
+modules = ["nodejs-24", "python-3.11", "postgresql-16"]
+
+[[artifacts]]
+id = "artifacts/api-server"
+
+[[artifacts]]
+id = "artifacts/mockup-sandbox"
+
+[deployment]
+router = "application"
+deploymentTarget = "autoscale"
+
+[deployment.postBuild]
+args = ["pnpm", "store", "prune"]
+env = { "CI" = "true" }
+
+[workflows]
+runButton = "Project"
+
+[agent]
+stack = "PNPM_WORKSPACE"
+expertMode = true
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
+
+[nix]
+channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+META_APP_ID = "2523975474701175"
+META_REDIRECT_URI = "https://fdaf2023-10a2-442e-a44f-c9c4a89570d9-00-fdq5cgsg6urz.sisko.replit.dev/api/auth/meta/callback"
+FRONTEND_URL = "https://fdaf2023-10a2-442e-a44f-c9c4a89570d9-00-fdq5cgsg6urz.sisko.replit.dev"
+INSTAGRAM_REDIRECT_URI = "https://fdaf2023-10a2-442e-a44f-c9c4a89570d9-00-fdq5cgsg6urz.sisko.replit.dev/api/auth/instagram/callback"
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 80
+
+[[ports]]
+localPort = 8082
+externalPort = 9000
+
+[[ports]]
+localPort = 8083
+externalPort = 3000
+
+[[ports]]
+localPort = 8084
+externalPort = 3001
+
+[[ports]]
+localPort = 8086
+externalPort = 3002
+
+[[ports]]
+localPort = 8088
+externalPort = 8081
+
+[[ports]]
+localPort = 8089
+externalPort = 8099
+
+[[ports]]
+localPort = 20716
+externalPort = 5173
+
+[[ports]]
+localPort = 20717
+externalPort = 6000
+
+[[ports]]
+localPort = 20718
+externalPort = 6800
+
+[[ports]]
+localPort = 20719
+externalPort = 8000
+
+[[ports]]
+localPort = 20720
+externalPort = 3003
+
+[[ports]]
+localPort = 20721
+externalPort = 4200
+
+[[ports]]
+localPort = 20722
+externalPort = 8008
+
+[[ports]]
+localPort = 20724
+externalPort = 5000

@@ -1,0 +1,727 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Creator {
+  id                      String    @id @default(uuid())
+  instagramHandle         String    @unique
+  instagramId             String    @unique
+  fullName                String
+  dateOfBirth             DateTime
+  phone                   String    @unique
+  profilePhotoUrl         String?
+  bio                     String?
+  state                   String?
+  gender                  String?
+  email                   String?   @unique
+  contentType             String?
+  youtubeHandle           String?
+  otherSocialHandle       String?
+  pendingReason           String?
+  pendingFollowerCount    Int?
+  pendingPricing          String?
+  pendingImages           String[]
+  images                  String[]
+  selectedSlabId          String?
+  rejectionReason         String?
+  rejectionNote           String?
+  followerCount           Int
+  audienceGenderFemale    Int
+  audienceGenderMale      Int
+  audienceAge             String
+  audienceLocation        String
+  audienceType            String
+  campaignGoal            String
+  purchaseBehaviour       String
+  reelPriceMin            Decimal
+  reelPriceMax            Decimal
+  storyPriceMin           Decimal
+  storyPriceMax           Decimal
+  postPriceMin            Decimal
+  postPriceMax            Decimal
+  reelPricingLockedUntil  DateTime?
+  storyPricingLockedUntil DateTime?
+  postPricingLockedUntil  DateTime?
+  status                  String    @default("PENDING")
+  kycStatus               String    @default("NOT_SUBMITTED")
+  averageRating           Decimal   @default(0)
+  ratingCount             Int       @default(0)
+  passwordHash            String
+  fcmToken                String?
+  hiddenFromSearch        Boolean   @default(false)
+  hiddenFromMatchmaking   Boolean   @default(false)
+  excludedFromMatchmaking Boolean   @default(false)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  categories              CreatorCategory[]
+  portfolio               CreatorPortfolio[]
+  funAnswers              CreatorFunAnswer[]
+  ratings                 CreatorRating[]
+}
+
+model CreatorCategory {
+  id            String  @id @default(uuid())
+  creatorId     String
+  categoryId    String
+  subcategoryId String?
+  displayOrder  Int
+  creator       Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  @@unique([creatorId, categoryId])
+}
+
+model CreatorPortfolio {
+  id           String   @id @default(uuid())
+  creatorId    String
+  videoUrl     String
+  selfDeclared Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  creator      Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+}
+
+model CreatorFunAnswer {
+  id              String   @id @default(uuid())
+  creatorId       String
+  questionId      String
+  selectedOptions String[]
+  creator         Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  @@unique([creatorId, questionId])
+}
+
+model CreatorRating {
+  id        String   @id @default(uuid())
+  dealId    String   @unique
+  creatorId String
+  brandId   String
+  rating    Int
+  createdAt DateTime @default(now())
+  creator   Creator  @relation(fields: [creatorId], references: [id])
+}
+
+model Brand {
+  id                String    @id @default(uuid())
+  brandName         String
+  contactName       String
+  phone             String    @unique
+  businessType      String
+  logoUrl           String?
+  about             String?
+  passwordHash      String
+  creditBalance     Int       @default(0)
+  freeCreditsExpiry DateTime?
+  status            String    @default("ACTIVE")
+  fcmToken          String?
+  barterRestricted  Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model Admin {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+model AdminOtp {
+  id        String   @id @default(uuid())
+  adminId   String
+  otpHash   String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AdminActionLog {
+  id         String   @id @default(uuid())
+  adminId    String
+  action     String
+  entityType String
+  entityId   String
+  details    Json?
+  reason     String?
+  createdAt  DateTime @default(now())
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String
+  userType   String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revoked    Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+}
+
+model OauthSession {
+  id              String   @id @default(uuid())
+  instagramId     String
+  instagramHandle String
+  followerCount   Int
+  expiresAt       DateTime
+  used            Boolean  @default(false)
+  createdAt       DateTime @default(now())
+}
+
+// ─── CATEGORIES ───────────────────────────────────────────────
+
+model Category {
+  id            String        @id @default(uuid())
+  name          String        @unique
+  displayOrder  Int
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  subcategories Subcategory[]
+}
+
+model Subcategory {
+  id           String   @id @default(uuid())
+  categoryId   String
+  name         String
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  category     Category @relation(fields: [categoryId], references: [id])
+  @@unique([categoryId, name])
+}
+
+// ─── FOLLOWER SLABS ───────────────────────────────────────────
+
+model FollowerSlab {
+  id           String   @id @default(uuid())
+  label        String   @unique
+  minFollowers Int
+  maxFollowers Int?
+  recReelMin   Decimal
+  recReelMax   Decimal
+  recStoryMin  Decimal
+  recStoryMax  Decimal
+  recPostMin   Decimal
+  recPostMax   Decimal
+  displayOrder Int
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ─── MATCHMAKING SCORING ──────────────────────────────────────
+
+model ScoringWeight {
+  id              String   @id @default(uuid())
+  parameter       String   @unique
+  fullMatchPts    Int
+  partialMatchPts Int
+  noMatchPts      Int
+  relatedPts      Int?
+  updatedBy       String?
+  updatedAt       DateTime @updatedAt
+}
+
+model CategoryAdjacency {
+  id        String   @id @default(uuid())
+  categoryA String
+  categoryB String
+  pts       Int      @default(11)
+  createdBy String?
+  createdAt DateTime @default(now())
+  @@unique([categoryA, categoryB])
+}
+
+model GoalAdjacency {
+  id        String   @id @default(uuid())
+  goalA     String
+  goalB     String
+  pts       Int      @default(9)
+  createdBy String?
+  createdAt DateTime @default(now())
+  @@unique([goalA, goalB])
+}
+
+model LocationAdjacency {
+  id        String   @id @default(uuid())
+  locationA String
+  locationB String
+  pts       Int      @default(3)
+  createdBy String?
+  createdAt DateTime @default(now())
+  @@unique([locationA, locationB])
+}
+
+model CustomerTypeAdjacency {
+  id        String   @id @default(uuid())
+  typeA     String
+  typeB     String
+  pts       Int      @default(6)
+  createdBy String?
+  createdAt DateTime @default(now())
+  @@unique([typeA, typeB])
+}
+
+// ─── CREDITS ──────────────────────────────────────────────────
+
+model CreditTransaction {
+  id                 String    @id @default(uuid())
+  brandId            String
+  transactionType    String
+  amount             Int
+  balanceAfter       Int
+  paymentReferenceId String?   @unique
+  adminId            String?
+  adminReason        String?
+  expiresAt          DateTime?
+  createdAt          DateTime  @default(now())
+}
+
+model BrandUnlockRecord {
+  id                    String   @id @default(uuid())
+  brandId               String
+  creatorId             String
+  reelSlabMin           Decimal
+  reelSlabMax           Decimal
+  storySlabMin          Decimal
+  storySlabMax          Decimal
+  postSlabMin           Decimal
+  postSlabMax           Decimal
+  followerCountAtUnlock Int
+  unlockedAt            DateTime @default(now())
+  @@unique([brandId, creatorId])
+}
+
+// ─── DEAL REQUESTS AND DEALS ──────────────────────────────────
+
+model DealRequest {
+  id                   String   @id @default(uuid())
+  brandId              String
+  creatorId            String
+  source               String
+  status               String   @default("PENDING")
+  reelCount            Int      @default(0)
+  storyCount           Int      @default(0)
+  postCount            Int      @default(0)
+  offeredPricePerReel  Decimal?
+  offeredPricePerStory Decimal?
+  offeredPricePerPost  Decimal?
+  timelineDays         Int
+  productRequired      Boolean  @default(false)
+  deliveryWindowDays   Int?
+  productDescription   String?
+  brief                String?
+  reelSlabMin          Decimal?
+  reelSlabMax          Decimal?
+  storySlabMin         Decimal?
+  storySlabMax         Decimal?
+  postSlabMin          Decimal?
+  postSlabMax          Decimal?
+  roundNumber          Int      @default(1)
+  totalDealValue       Decimal?
+  expiresAt            DateTime
+  createdAt            DateTime @default(now())
+}
+
+model Deal {
+  id                      String    @id @default(uuid())
+  requestId               String?
+  campaignId              String?
+  barterId                String?
+  brandId                 String
+  creatorId               String
+  source                  String
+  status                  String    @default("IN_ESCROW")
+  reelCount               Int       @default(0)
+  storyCount              Int       @default(0)
+  postCount               Int       @default(0)
+  agreedPricePerReel      Decimal?
+  agreedPricePerStory     Decimal?
+  agreedPricePerPost      Decimal?
+  totalAgreedValue        Decimal
+  commissionRate          Decimal
+  timelineDays            Int
+  timelineStartAt         DateTime?
+  deadlineAt              DateTime?
+  overdueAt               DateTime?
+  productRequired         Boolean   @default(false)
+  deliveryWindowDays      Int?
+  productShippedAt        DateTime?
+  awbNumber               String?
+  courierName             String?
+  productReceivedAt       DateTime?
+  receivedMarkedBy        String?
+  productIssueStatus      String?
+  creatorResponseDeadline DateTime?
+  escrowStatus            String    @default("HELD")
+  paymentReferenceId      String?   @unique
+  disputeWindowEnd        DateTime?
+  paymentDeadlineAt       DateTime?
+  createdAt               DateTime  @default(now())
+  deliverables            DealDeliverable[]
+  disputes                DealDispute[]
+  productIssues           ProductIssueReport[]
+}
+
+model DealDeliverable {
+  id                   String  @id @default(uuid())
+  dealId               String
+  type                 String
+  slotLabel            String
+  conceptUrl           String?
+  conceptStatus        String    @default("PENDING")
+  conceptRevisionCount Int       @default(0)
+  conceptSubmittedAt   DateTime?
+  finalUrl             String?
+  finalStatus          String    @default("PENDING")
+  finalRevisionCount   Int       @default(0)
+  finalSubmittedAt     DateTime?
+  livePostUrl          String?
+  deal                 Deal      @relation(fields: [dealId], references: [id])
+}
+
+model DealRevision {
+  id             String   @id @default(uuid())
+  dealId         String
+  deliverableId  String
+  stage          String
+  revisionNumber Int
+  reason         String
+  description    String
+  requestedBy    String
+  createdAt      DateTime @default(now())
+}
+
+model DealDispute {
+  id            String    @id @default(uuid())
+  dealId        String    @unique
+  raisedBy      String
+  reason        String
+  description   String
+  evidenceUrl   String?
+  adminDecision String?
+  adminNotes    String?
+  resolvedBy    String?
+  raisedAt      DateTime  @default(now())
+  resolvedAt    DateTime?
+  deal          Deal      @relation(fields: [dealId], references: [id])
+}
+
+model ProductIssueReport {
+  id            String    @id @default(uuid())
+  dealId        String
+  issueType     String
+  description   String
+  evidenceUrl   String
+  adminDecision String?
+  adminNotes    String?
+  reviewedBy    String?
+  raisedAt      DateTime  @default(now())
+  reviewedAt    DateTime?
+  deal          Deal      @relation(fields: [dealId], references: [id])
+}
+
+model ReportedVideo {
+  id          String    @id @default(uuid())
+  creatorId   String
+  videoUrl    String
+  flaggedBy   String
+  reason      String?
+  status      String    @default("PENDING")
+  adminAction String?
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model Payment {
+  id                 String    @id @default(uuid())
+  dealId             String?
+  campaignId         String?
+  brandId            String
+  gatewayOrderId     String
+  paymentReferenceId String    @unique
+  amount             Decimal
+  currency           String    @default("INR")
+  status             String    @default("PENDING")
+  confirmedAt        DateTime?
+  createdAt          DateTime  @default(now())
+}
+
+model Payout {
+  id               String    @id @default(uuid())
+  dealId           String
+  creatorId        String
+  grossAmount      Decimal
+  commissionRate   Decimal
+  commissionAmount Decimal
+  netAmount        Decimal
+  status           String    @default("PENDING")
+  initiatedAt      DateTime?
+  completedAt      DateTime?
+}
+
+// ─── CAMPAIGNS ────────────────────────────────────────────────
+
+model Campaign {
+  id                       String    @id @default(uuid())
+  brandId                  String
+  name                     String
+  type                     String
+  description              String?
+  brief                    String
+  dosAndDonts              String?
+  pricePerCreator          Decimal
+  slotCount                Int
+  slotsFilled              Int       @default(0)
+  timelineDays             Int
+  productRequired          Boolean   @default(false)
+  productDescription       String?
+  productPhotos            String[]  @default([])
+  status                   String    @default("DRAFT")
+  totalEscrow              Decimal
+  commissionRateAtCreation Decimal
+  followerSlabs            Json
+  targetGender             String
+  targetAge                String
+  targetLocation           String
+  liveAt                   DateTime?
+  expiresAt                DateTime?
+  createdAt                DateTime  @default(now())
+  applications             CampaignApplication[]
+  slots                    CampaignSlot[]
+  categories               CampaignCategory[]
+}
+
+model CampaignCategory {
+  id            String   @id @default(uuid())
+  campaignId    String
+  categoryId    String
+  subcategoryId String?
+  campaign      Campaign @relation(fields: [campaignId], references: [id])
+}
+
+model CampaignApplication {
+  id            String    @id @default(uuid())
+  campaignId    String
+  creatorId     String
+  status        String    @default("PENDING")
+  appliedAt     DateTime  @default(now())
+  shortlistedAt DateTime?
+  selectedAt    DateTime?
+  withdrawnAt   DateTime?
+  dealId        String?
+  campaign      Campaign  @relation(fields: [campaignId], references: [id])
+  @@unique([campaignId, creatorId])
+}
+
+model CampaignSlot {
+  id           String    @id @default(uuid())
+  campaignId   String
+  slotNumber   Int
+  escrowStatus String    @default("HELD")
+  creatorId    String?
+  dealId       String?
+  filledAt     DateTime?
+  refundedAt   DateTime?
+  campaign     Campaign  @relation(fields: [campaignId], references: [id])
+}
+
+model BarterCampaign {
+  id                  String    @id @default(uuid())
+  brandId             String
+  name                String
+  contentType         String
+  productName         String
+  productDescription  String
+  productValueInr     Decimal
+  productPhotos       String[]
+  contentRequirements String
+  dosAndDonts         String?
+  slotCount           Int
+  slotsFilled         Int       @default(0)
+  timelineDays        Int
+  status              String    @default("DRAFT")
+  creditsCharged      Int
+  adminReviewedBy     String?
+  adminNotes          String?
+  followerSlabs       Json
+  targetGender        String
+  targetAge           String
+  targetLocation      String
+  liveAt              DateTime?
+  expiresAt           DateTime?
+  createdAt           DateTime  @default(now())
+  applications        BarterApplication[]
+  categories          BarterCategory[]
+}
+
+model BarterCategory {
+  id            String         @id @default(uuid())
+  barterId      String
+  categoryId    String
+  subcategoryId String?
+  barter        BarterCampaign @relation(fields: [barterId], references: [id])
+}
+
+model BarterApplication {
+  id            String         @id @default(uuid())
+  barterId      String
+  creatorId     String
+  status        String         @default("PENDING")
+  appliedAt     DateTime       @default(now())
+  shortlistedAt DateTime?
+  selectedAt    DateTime?
+  withdrawnAt   DateTime?
+  dealId        String?
+  barter        BarterCampaign @relation(fields: [barterId], references: [id])
+  @@unique([barterId, creatorId])
+}
+
+// ─── NOTIFICATIONS ────────────────────────────────────────────
+
+model Notification {
+  id                String   @id @default(uuid())
+  userId            String
+  userType          String
+  type              String
+  title             String
+  body              String
+  relatedEntityType String?
+  relatedEntityId   String?
+  isRead            Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  expiresAt         DateTime
+}
+
+// ─── MATCHMAKING ──────────────────────────────────────────────
+
+model MatchmakingBrief {
+  id                 String    @id @default(uuid())
+  brandId            String
+  productCategory    String?
+  productSubcategory String?
+  campaignGoal       String
+  priceTier          String
+  purchaseType       String
+  customerType       String
+  targetGender       String
+  targetAge          String
+  targetLocation     String
+  isSaved            Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  lastRunAt          DateTime?
+}
+
+// ─── CONTENT MANAGEMENT ───────────────────────────────────────
+
+model FunQuestion {
+  id           String              @id @default(uuid())
+  questionText String
+  isActive     Boolean             @default(true)
+  displayOrder Int
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  options      FunQuestionOption[]
+}
+
+model FunQuestionOption {
+  id           String      @id @default(uuid())
+  questionId   String
+  optionText   String
+  displayOrder Int
+  question     FunQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+model InformationMessage {
+  id          String   @id @default(uuid())
+  formStep    String   @unique
+  messageText String
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── PLATFORM CONFIG ──────────────────────────────────────────
+
+model PlatformConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── KYC DATA ─────────────────────────────────────────────────
+
+model KYCData {
+  id         String   @id @default(uuid())
+  creatorId  String
+  fieldId    String
+  fieldLabel String
+  value      String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@unique([creatorId, fieldId])
+}
+
+// ─── KYC ──────────────────────────────────────────────────────
+
+model CreatorKyc {
+  id                  String    @id @default(uuid())
+  creatorId           String    @unique
+  fullLegalName       String
+  panNumber           String
+  aadhaarNumber       String
+  dateOfBirth         DateTime
+  bankAccountNumber   String
+  ifscCode            String
+  accountHolderName   String
+  panCardUrl          String
+  aadhaarFrontUrl     String
+  aadhaarBackUrl      String
+  guardianName        String?
+  guardianRelation    String?
+  guardianPan         String?
+  guardianIdProofUrl  String?
+  status              String    @default("PENDING")
+  rejectionReason     String?
+  reviewedBy          String?
+  submittedAt         DateTime  @default(now())
+  reviewedAt          DateTime?
+}
+
+// ─── LANDING PAGE CONTENT ────────────────────────────────────────────────────
+
+model LandingPageContent {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  type      String
+  section   String
+  updatedAt DateTime @updatedAt
+  updatedBy String   @default("")
+}
+
+// ─── LANDING PAGE VIDEOS ──────────────────────────────────────────────────────
+
+model LandingPageVideo {
+  id            String   @id @default(uuid())
+  page          String   @unique
+  videoPath     String?
+  thumbnailPath String?
+  uploadedAt    DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  updatedBy     String   @default("")
+}
+
+// ─── CREATOR REPORTS ─────────────────────────────────────────────────────────
+
+model CreatorReport {
+  id        String   @id @default(uuid())
+  creatorId String
+  brandId   String
+  reason    String
+  createdAt DateTime @default(now())
+}
