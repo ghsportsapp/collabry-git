@@ -1,0 +1,56 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Stop a running deploy if a newer push lands (don't queue multiple deploys).
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Typecheck (gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Prisma client is needed for typecheck; generation pulls schema only,
+      # never touches the database, so no DATABASE_URL secret is needed here.
+      - name: Generate Prisma client
+        run: pnpm --filter @workspace/collabry exec prisma generate
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+  deploy:
+    name: Deploy to VPS
+    needs: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: SSH + run deploy script
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          # 10 min cap so a stuck pnpm install doesn't hold CI forever.
+          command_timeout: 10m
+          script: |
+            /var/www/collabry/scripts-deploy.sh
