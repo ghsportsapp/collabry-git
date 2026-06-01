@@ -25,6 +25,10 @@ node_modules
 tmp_uploads/
 **/tmp_uploads/
 
+# Database dumps — keep locally for safety, never commit.
+*.dump
+*.sql.gz
+
 # IDEs and editors
 /.idea
 .project
@@ -61,3 +65,7 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# SQL dumps (pg_dump plain-text output)
+*.sql
+!**/migrations/**/*.sql
