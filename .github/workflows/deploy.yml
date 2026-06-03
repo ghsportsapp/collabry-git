@@ -38,19 +38,14 @@ jobs:
         run: pnpm run typecheck
 
   deploy:
-    name: Deploy to VPS
+    name: Deploy on VPS
     needs: typecheck
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Runs on the self-hosted runner installed on the VPS itself.
+    # Hostinger's upstream firewall blocks inbound SSH from GitHub-hosted
+    # runners (Azure IP ranges), so we use a runner the VPS owns instead.
+    # The runner connects OUTBOUND to GitHub — no inbound port needed.
+    runs-on: [self-hosted, linux, collabry-vps]
+    timeout-minutes: 10
     steps:
-      - name: SSH + run deploy script
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          # 10 min cap so a stuck pnpm install doesn't hold CI forever.
-          command_timeout: 10m
-          script: |
-            /var/www/collabry/scripts-deploy.sh
+      - name: Run deploy script
+        run: /var/www/collabry/scripts-deploy.sh
