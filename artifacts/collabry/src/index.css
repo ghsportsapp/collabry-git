@@ -235,3 +235,20 @@
     transform: translateY(0);
   }
 }
+
+/* ── PWA safe-area handling ─────────────────────────────────────────
+   When launched as an installed PWA (iOS/Android home-screen icon),
+   the system status bar overlays page content. These rules push the
+   sticky top-bars below it. Only kicks in for `display-mode: standalone`
+   so regular browser tabs are unaffected.
+   ─────────────────────────────────────────────────────────────────── */
+@media all and (display-mode: standalone) {
+  /* Landing + brand + creator headers all use `sticky top-0`. */
+  header.sticky {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  }
+  /* Also respect the iOS home-indicator at the bottom. */
+  body {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
