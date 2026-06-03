@@ -1843,24 +1843,32 @@ function KYCRequestsSection({ adminFetch }: { adminFetch: (path: string, opts?: 
                 {(detail.kycData as Array<{ fieldLabel: string; value: string; fileUrl: string | null }>).map((d, i) => (
                   <div key={i} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
                     <p className="text-white/70 text-[11px] mb-1.5 uppercase tracking-wider">{d.fieldLabel}</p>
-                    {d.fileUrl ? (
-                      d.fileUrl.startsWith("data:image/") ? (
-                        <button onClick={() => setLightbox(d.fileUrl)} className="w-full text-left group relative">
-                          <img src={d.fileUrl} alt={d.fieldLabel} className="max-h-48 rounded-xl object-contain w-full transition-opacity group-hover:opacity-80" style={{ background: "rgba(0,0,0,0.30)" }} />
-                          <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-xl text-white text-xs font-semibold" style={{ background: "rgba(0,0,0,0.45)" }}>
-                            🔍 Click to enlarge
-                          </span>
-                        </button>
-                      ) : d.fileUrl.startsWith("data:application/pdf") ? (
-                        <a href={d.fileUrl} download={`${d.fieldLabel}.pdf`} className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg font-semibold" style={{ background: "rgba(240,24,122,0.15)", color: "#E14F69" }}>
-                          📄 Download PDF
-                        </a>
-                      ) : (
-                        <p className="text-white text-sm">{d.value}</p>
-                      )
-                    ) : (
-                      <p className="text-white text-sm font-medium">{d.value || "—"}</p>
-                    )}
+                    {(() => {
+                      if (!d.fileUrl) {
+                        return <p className="text-white text-sm font-medium">{d.value || "—"}</p>;
+                      }
+                      // Handle both legacy data: URLs and new /api/storage/private/<key>.<ext> paths.
+                      const isImage = d.fileUrl.startsWith("data:image/") || /\.(jpe?g|png|webp)(\?|$)/i.test(d.fileUrl);
+                      const isPdf = d.fileUrl.startsWith("data:application/pdf") || /\.pdf(\?|$)/i.test(d.fileUrl);
+                      if (isImage) {
+                        return (
+                          <button onClick={() => setLightbox(d.fileUrl)} className="w-full text-left group relative">
+                            <img src={d.fileUrl} alt={d.fieldLabel} className="max-h-48 rounded-xl object-contain w-full transition-opacity group-hover:opacity-80" style={{ background: "rgba(0,0,0,0.30)" }} />
+                            <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-xl text-white text-xs font-semibold" style={{ background: "rgba(0,0,0,0.45)" }}>
+                              🔍 Click to enlarge
+                            </span>
+                          </button>
+                        );
+                      }
+                      if (isPdf) {
+                        return (
+                          <a href={d.fileUrl} download={`${d.fieldLabel}.pdf`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg font-semibold" style={{ background: "rgba(240,24,122,0.15)", color: "#E14F69" }}>
+                            📄 Download PDF
+                          </a>
+                        );
+                      }
+                      return <p className="text-white text-sm">{d.value}</p>;
+                    })()}
                   </div>
                 ))}
               </div>
