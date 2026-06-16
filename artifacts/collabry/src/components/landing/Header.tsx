@@ -32,14 +32,15 @@ export default function Header({ content }: Props) {
   return (
     <header className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-md border-b border-white/5">
       <div className="max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between">
-        <button
+        <Link
+          href="/"
           onClick={scrollToTop}
-          aria-label="Scroll to top"
-          className="text-2xl text-[#E14F69] cursor-pointer bg-transparent border-0 p-0"
+          aria-label="Go to home"
+          className="text-2xl text-[#E14F69] cursor-pointer bg-transparent border-0 p-0 no-underline"
           style={{ fontFamily: "'Macondo Swash Caps', cursive" }}
         >
           {logoText}
-        </button>
+        </Link>
 
         <div className="hidden lg:flex items-center gap-3">
           <InstallAppButton variant="header" />
