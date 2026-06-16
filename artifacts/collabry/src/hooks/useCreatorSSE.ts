@@ -20,9 +20,20 @@ export type PopupSSEPayload = {
   secondCtaPath?: string | null;
 };
 
+export type NotificationSSEPayload = {
+  id: string;
+  type?: string | null;
+  title: string;
+  body: string;
+  relatedEntityType?: string | null;
+  relatedEntityId?: string | null;
+  createdAt?: string;
+};
+
 export function useCreatorSSE(
   onCampaignLive: (payload: CampaignLivePayload) => void,
   onPopup?: (payload: PopupSSEPayload) => void,
+  onNotification?: (payload: NotificationSSEPayload) => void,
 ): void {
   const { accessToken } = useCreatorAuth();
   const esRef = useRef<EventSource | null>(null);
@@ -31,6 +42,8 @@ export function useCreatorSSE(
   handlerRef.current = onCampaignLive;
   const popupHandlerRef = useRef(onPopup);
   popupHandlerRef.current = onPopup;
+  const notifHandlerRef = useRef(onNotification);
+  notifHandlerRef.current = onNotification;
 
   useEffect(() => {
     if (!accessToken) return;
@@ -52,6 +65,13 @@ export function useCreatorSSE(
         try {
           const data = JSON.parse(e.data) as PopupSSEPayload;
           popupHandlerRef.current?.(data);
+        } catch { /* ignore */ }
+      });
+
+      es.addEventListener("notification", (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data) as NotificationSSEPayload;
+          notifHandlerRef.current?.(data);
         } catch { /* ignore */ }
       });
 

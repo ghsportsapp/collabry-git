@@ -160,6 +160,14 @@ function BrandHeader({ credits, onLocked, badges, clearBadge }: { credits: numbe
     apiFetch("/api/brand/notifications/unread-count").then(r => r.json()).then(d => setUnreadCount(d.count ?? 0)).catch(() => {});
   }, [brandId]);
 
+  // Live bell-badge bump when a notification arrives over SSE (dispatched by
+  // BrandLayout). Keeps the SSE wiring in the layout while the count lives here.
+  useEffect(() => {
+    const onNotif = () => setUnreadCount(n => n + 1);
+    window.addEventListener("collabry:brand-notification", onNotif);
+    return () => window.removeEventListener("collabry:brand-notification", onNotif);
+  }, []);
+
   useEffect(() => {
     if (!popupOpen) return;
     function handleOutside(e: MouseEvent) {
@@ -373,7 +381,16 @@ export function BrandLayout({ credits: creditsProp, children, activeTab: _active
   const getToken = useCallback(() => accessToken ?? null, [accessToken]);
   const { current: activePopup, dismiss, enqueue } = usePopupQueue("brand", getToken);
 
-  useBrandSSE(getToken, (_type, data) => {
+  useBrandSSE(getToken, (type, data) => {
+    if (type === "notification") {
+      // Live in-app notification: lightweight toast + bell-badge bump (handled
+      // by BrandHeader via the window event). NOT a full-screen popup.
+      const n = data as { title?: string };
+      if (n?.title) setToast(n.title);
+      window.dispatchEvent(new CustomEvent("collabry:brand-notification"));
+      return;
+    }
+    // `popup` / `message` events are intentional full-screen interrupts.
     const p = data as { id: string; type?: string; title: string; body: string; ctaText?: string; ctaPath?: string; isCelebration: boolean; secondCtaText?: string; secondCtaPath?: string };
     if (p?.id && p?.title) enqueue(p);
   });

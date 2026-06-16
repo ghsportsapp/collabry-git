@@ -27,6 +27,21 @@ if (!basePath) {
   );
 }
 
+// Local dev only: the frontend calls `/api/...` same-origin, but in
+// development the API server runs as a separate process (default :4000).
+// Set API_PROXY_TARGET (e.g. http://localhost:4000) to proxy `/api` there so
+// the app works end-to-end locally without a reverse proxy. Unset in
+// production, where nginx routes `/api` to the API server.
+const apiProxyTarget = process.env.API_PROXY_TARGET;
+const apiProxy = apiProxyTarget
+  ? {
+      "/api": {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
+    }
+  : undefined;
+
 export default defineConfig({
   base: basePath,
   plugins: [
@@ -107,10 +122,12 @@ export default defineConfig({
       strict: true,
       deny: ["**/.*"],
     },
+    ...(apiProxy ? { proxy: apiProxy } : {}),
   },
   preview: {
     port,
     host: "0.0.0.0",
     allowedHosts: true,
+    ...(apiProxy ? { proxy: apiProxy } : {}),
   },
 });

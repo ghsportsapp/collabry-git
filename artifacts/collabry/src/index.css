@@ -243,9 +243,24 @@
    so regular browser tabs are unaffected.
    ─────────────────────────────────────────────────────────────────── */
 @media all and (display-mode: standalone) {
-  /* Landing + brand + creator headers all use `sticky top-0`. */
+  /* Sticky top bars (landing, legal pages, brand + creator app layouts). */
   header.sticky {
     padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  }
+  /* Static (non-sticky) top bars on the standalone pages — login, signup,
+     forgot/reset password. These sit at the very top of the viewport, so
+     without the inset their logo + back button render under the status bar.
+     This was the "most pages cut off" report; only the landing-style pages
+     (which use sticky headers) were covered before. */
+  header:not(.sticky) {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 1rem);
+  }
+  /* The brand + creator mobile layouts have a second-row sub-nav stuck at
+     top-[57px] (the height of the main header). Once the main header grows
+     by the safe-area inset, this row must drop by the same amount or it
+     overlaps the header on notched devices. */
+  .sticky.top-\[57px\] {
+    top: calc(57px + env(safe-area-inset-top, 0px));
   }
   /* Also respect the iOS home-indicator at the bottom. */
   body {

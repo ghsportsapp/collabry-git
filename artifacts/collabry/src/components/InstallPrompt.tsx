@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useInstallPrompt } from "@/hooks/useInstallPrompt";
+import { IosInstallInstructions } from "@/components/IosInstallInstructions";
 
 const STORAGE_KEY = "collabry.installPromptDismissedAt";
 const SUPPRESS_FOR_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -109,73 +110,10 @@ export function InstallPrompt() {
         </button>
       </div>
 
-      {showIosInstructions && (
-        <div
-          onClick={() => setShowIosInstructions(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.7)",
-            zIndex: 70,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: 360,
-              background: "#15151c",
-              color: "#fff",
-              padding: 20,
-              borderRadius: 14,
-              fontFamily: "Poppins, sans-serif",
-            }}
-          >
-            <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>
-              Install on iPhone / iPad
-            </div>
-            <ol
-              style={{
-                fontSize: 14,
-                color: "#cfcfd6",
-                paddingLeft: 18,
-                lineHeight: 1.5,
-              }}
-            >
-              <li>
-                Tap the <strong>Share</strong> button in Safari's toolbar.
-              </li>
-              <li>
-                Scroll down and choose{" "}
-                <strong>"Add to Home Screen"</strong>.
-              </li>
-              <li>
-                Tap <strong>Add</strong> in the top right.
-              </li>
-            </ol>
-            <button
-              onClick={() => setShowIosInstructions(false)}
-              style={{
-                marginTop: 14,
-                width: "100%",
-                background: "#F0187A",
-                color: "#fff",
-                border: 0,
-                padding: "10px 14px",
-                borderRadius: 8,
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: "pointer",
-              }}
-            >
-              Got it
-            </button>
-          </div>
-        </div>
-      )}
+      <IosInstallInstructions
+        open={showIosInstructions}
+        onClose={() => setShowIosInstructions(false)}
+      />
     </>
   );
 }

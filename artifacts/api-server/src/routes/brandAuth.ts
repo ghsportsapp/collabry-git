@@ -12,7 +12,12 @@ import {
 import { saveRefreshToken, revokeToken } from "../lib/session";
 import { createNotification } from "../lib/notifications";
 import { createPopup } from "../lib/popups";
+import { sendEmail } from "../lib/email";
+import { renderPasswordResetEmail } from "../lib/notificationEmail";
+import { logger } from "../lib/logger";
 import crypto from "crypto";
+
+const RESET_TOKEN_TTL_MINUTES = 15;
 
 const router: IRouter = Router();
 
@@ -292,15 +297,25 @@ router.post("/auth/brand/forgot-password", async (req: Request, res: Response): 
   const brand = result.rows[0];
   const token = crypto.randomBytes(32).toString("hex");
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-  const expiry = new Date(Date.now() + 15 * 60 * 1000);
+  const expiry = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000);
 
   await pool.query(
     `UPDATE "Brand" SET "passwordResetToken"=$1,"passwordResetTokenExpiry"=$2 WHERE id=$3`,
     [tokenHash, expiry, brand.id]
   );
 
-  const baseUrl = process.env["APP_BASE_URL"] ?? "https://collabry.com";
-  console.log(`[Password Reset] Brand: ${brand.brandName}, Token: ${token}, URL: ${baseUrl}/reset-password?token=${token}&type=brand, Expires: ${expiry}`);
+  const baseUrl = (process.env["APP_BASE_URL"] ?? "https://collabry.co").replace(/\/$/, "");
+  const resetUrl = `${baseUrl}/reset-password?token=${token}&type=brand`;
+  try {
+    await sendEmail({
+      to: email.trim(),
+      ...renderPasswordResetEmail({ resetUrl, expiresMinutes: RESET_TOKEN_TTL_MINUTES }),
+    });
+  } catch (err) {
+    logger.error({ err, brandId: brand.id }, "Failed to send brand password reset email");
+    res.status(502).json({ error: "We couldn't send the reset email right now. Please try again in a moment." });
+    return;
+  }
 
   res.json({ ok: true, message: "A password reset link has been sent to your email address." });
 });

@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
 import type { LandingContentHook } from "@/hooks/useLandingContent";
+import { InstallAppButton } from "@/components/InstallAppButton";
 
 function scrollToTop() {
   if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
@@ -41,6 +42,7 @@ export default function Header({ content }: Props) {
         </button>
 
         <div className="hidden lg:flex items-center gap-3">
+          <InstallAppButton variant="header" />
           <Link href="/signup-brand">
             <button
               className="bg-[#E14F69] text-white text-sm font-medium px-6 py-2.5 hover:bg-[#d4156b] transition-colors cursor-pointer"
@@ -108,6 +110,7 @@ export default function Header({ content }: Props) {
                   Login as a Creator
                 </button>
               </Link>
+              <InstallAppButton variant="inline" onClick={() => setDropdownOpen(false)} />
             </div>
           )}
         </div>

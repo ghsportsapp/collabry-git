@@ -6,8 +6,77 @@ import { createPopup } from "../lib/popups";
 import { addBrandSSE, removeBrandSSE } from "../lib/sseManager";
 import { verifyToken, getAccessSecret } from "../lib/auth";
 import { activateCreditHoldCampaigns } from "../lib/creditHoldActivation";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+interface FulfillResult {
+  status: "credited" | "duplicate" | "brand_not_found";
+  newBalance?: number;
+  orderRef?: string;
+}
+
+/**
+ * Idempotently grant purchased credits for a completed Razorpay payment.
+ * Shared by the synchronous verify-payment endpoint and the async webhook so
+ * whichever lands first credits the brand and the other is a no-op. Idempotency
+ * key is the Razorpay payment id, stored as `paymentReferenceId`.
+ */
+async function fulfillCreditPurchase(opts: {
+  brandId: string;
+  quantity: number;
+  paymentId: string;
+  amountInr: number;
+  gstAmountInr: number;
+}): Promise<FulfillResult> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const dup = await client.query(
+      `SELECT id FROM "CreditTransaction" WHERE "paymentReferenceId"=$1`,
+      [opts.paymentId],
+    );
+    if (dup.rows.length > 0) {
+      await client.query("COMMIT");
+      return { status: "duplicate" };
+    }
+    const countRow = await client.query(
+      `SELECT COUNT(*) FROM "CreditTransaction" WHERE "transactionType"='PURCHASED'`,
+    );
+    const seq = parseInt(countRow.rows[0].count as string) + 1;
+    const orderRef = `CLBcredit${String(seq).padStart(6, "0")}`;
+    const upd = await client.query(
+      `UPDATE "Brand" SET "creditBalance" = "creditBalance" + $1, "updatedAt"=NOW() WHERE id=$2 RETURNING "creditBalance"`,
+      [opts.quantity, opts.brandId],
+    );
+    if (upd.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return { status: "brand_not_found" };
+    }
+    const newBalance = upd.rows[0].creditBalance as number;
+    await client.query(
+      `INSERT INTO "CreditTransaction"
+         (id,"brandId","transactionType",amount,"balanceAfter","paymentReferenceId","orderId","credits","amountInr","gstAmountInr","createdAt")
+       VALUES (gen_random_uuid(),$1,'PURCHASED',$2,$3,$4,$5,$6,$7,$8,NOW())`,
+      [opts.brandId, opts.quantity, newBalance, opts.paymentId, orderRef, opts.quantity, opts.amountInr, opts.gstAmountInr],
+    );
+    await client.query("COMMIT");
+    // In-app + email notification on a completed purchase (fire-and-forget).
+    void createNotification({
+      userId: opts.brandId,
+      userType: "BRAND",
+      type: "PAYMENT_SUCCESS",
+      title: "Payment successful",
+      body: `${opts.quantity} credit${opts.quantity > 1 ? "s" : ""} added to your account.`,
+    }).catch(() => {});
+    return { status: "credited", newBalance, orderRef };
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
 
 // ── Helper: read PlatformConfig list/value ──
 async function readConfigJson(key: string): Promise<Array<{ label: string; isActive?: boolean }>> {
@@ -795,7 +864,16 @@ router.post("/brand/requests", requireBrand, async (req: Request, res: Response)
 });
 
 // ── POST /api/brand/credits/direct-purchase (no gateway — credits added immediately) ──
+// SECURITY: this grants credits without taking payment. It exists only as a
+// fallback for when the payment gateway isn't configured yet. Once Razorpay
+// keys are set it is hard-disabled, so it can never be used to mint free
+// credits in a live, charging environment. Real purchases go through
+// create-order → verify-payment.
 router.post("/brand/credits/direct-purchase", requireBrand, async (req: Request, res: Response): Promise<void> => {
+  if (process.env["RAZORPAY_KEY_ID"] && process.env["RAZORPAY_KEY_SECRET"]) {
+    res.status(403).json({ error: "GATEWAY_REQUIRED", message: "Please complete payment through the gateway." });
+    return;
+  }
   const brandId = (req as any).brandId as string;
   const { quantity } = req.body;
   const qty = parseInt(quantity);
@@ -867,16 +945,26 @@ router.get("/brand/credit-purchases", requireBrand, async (req: Request, res: Re
 
 // ── POST /api/brand/credits/create-order (Razorpay) ──
 router.post("/brand/credits/create-order", requireBrand, async (req: Request, res: Response): Promise<void> => {
+  const brandId = (req as any).brandId as string;
   const { quantity } = req.body;
   const qty = parseInt(quantity);
   if (!qty || qty < 1) { res.status(400).json({ error: "Quantity must be at least 1" }); return; }
-  const priceRow = await pool.query(`SELECT value FROM "PlatformConfig" WHERE key='credit_price_inr'`);
+  const [priceRow, gstRow] = await Promise.all([
+    pool.query(`SELECT value FROM "PlatformConfig" WHERE key='credit_price_inr'`),
+    pool.query(`SELECT value FROM "PlatformConfig" WHERE key='gst_rate'`),
+  ]);
   const pricePerCredit = priceRow.rows[0]?.value ? parseFloat(priceRow.rows[0].value) : 99;
+  const gstRate = gstRow.rows[0]?.value ? parseFloat(gstRow.rows[0].value) : 18;
   if (!Number.isFinite(pricePerCredit) || pricePerCredit <= 0) {
     res.status(500).json({ error: "Invalid credit price configured" });
     return;
   }
-  const amountPaise = Math.round(qty * pricePerCredit * 100);
+  // Price incl. GST — mirrors the direct-purchase calculation so the amount
+  // charged and the recorded transaction match the no-gateway path.
+  const subtotalInr = Math.round(qty * pricePerCredit);
+  const gstAmountInr = Math.round(subtotalInr * gstRate / 100);
+  const amountInr = subtotalInr + gstAmountInr;
+  const amountPaise = amountInr * 100;
 
   const keyId = process.env["RAZORPAY_KEY_ID"];
   const keySecret = process.env["RAZORPAY_KEY_SECRET"];
@@ -889,11 +977,71 @@ router.post("/brand/credits/create-order", requireBrand, async (req: Request, re
     const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
     const order = await rzp.orders.create({
       amount: amountPaise, currency: "INR",
-      notes: { brandId: (req as any).brandId, quantity: String(qty), purpose: "credits" },
+      // Notes are authoritative server-side data read back at verify/webhook
+      // time — never trust the client for quantity or amounts.
+      notes: {
+        brandId,
+        quantity: String(qty),
+        amountInr: String(amountInr),
+        gstAmountInr: String(gstAmountInr),
+        purpose: "credits",
+      },
     });
-    res.json({ orderId: order.id, amount: amountPaise, currency: "INR", key: keyId, quantity: qty });
+    res.json({ orderId: order.id, amount: amountPaise, currency: "INR", key: keyId, quantity: qty, amountInr, gstAmountInr });
   } catch (e: any) {
+    logger.error({ err: e, brandId }, "Razorpay create-order failed");
     res.status(500).json({ error: e.message ?? "Failed to create order" });
+  }
+});
+
+// ── POST /api/brand/credits/verify-payment (Razorpay) ──
+// Synchronous fulfilment: verify the checkout signature, then credit the brand.
+// Works without a public webhook URL, so it's usable in test mode / locally.
+// The webhook below remains a backstop; both are idempotent on the payment id.
+router.post("/brand/credits/verify-payment", requireBrand, async (req: Request, res: Response): Promise<void> => {
+  const brandId = (req as any).brandId as string;
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body ?? {};
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    res.status(400).json({ error: "Missing payment fields" });
+    return;
+  }
+  const keyId = process.env["RAZORPAY_KEY_ID"];
+  const keySecret = process.env["RAZORPAY_KEY_SECRET"];
+  if (!keyId || !keySecret) {
+    res.status(503).json({ error: "RAZORPAY_NOT_CONFIGURED", message: "Payment gateway is not configured." });
+    return;
+  }
+  try {
+    const crypto = await import("crypto");
+    const expected = crypto
+      .createHmac("sha256", keySecret)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+    let valid = false;
+    try {
+      valid = expected.length === razorpay_signature.length &&
+        crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(razorpay_signature));
+    } catch { valid = false; }
+    if (!valid) { res.status(400).json({ error: "Signature verification failed" }); return; }
+
+    // Re-read the order from Razorpay for authoritative brand/quantity/amounts.
+    const Razorpay = (await import("razorpay")).default as any;
+    const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    const order = await rzp.orders.fetch(razorpay_order_id);
+    const notes = order?.notes ?? {};
+    if (notes.brandId !== brandId) { res.status(403).json({ error: "Order does not belong to this account" }); return; }
+    const quantity = parseInt(notes.quantity);
+    const amountInr = parseInt(notes.amountInr ?? "0");
+    const gstAmountInr = parseInt(notes.gstAmountInr ?? "0");
+    if (!quantity || quantity < 1) { res.status(400).json({ error: "Invalid order" }); return; }
+
+    const result = await fulfillCreditPurchase({ brandId, quantity, paymentId: razorpay_payment_id, amountInr, gstAmountInr });
+    if (result.status === "brand_not_found") { res.status(404).json({ error: "Brand not found" }); return; }
+    if (result.status === "credited") activateCreditHoldCampaigns(brandId).catch(() => {});
+    res.json({ ok: true, orderId: result.orderRef ?? null, quantity, amountInr, balance: result.newBalance, duplicate: result.status === "duplicate" });
+  } catch (e: any) {
+    logger.error({ err: e, brandId }, "Razorpay verify-payment failed");
+    res.status(500).json({ error: e.message ?? "Payment verification failed" });
   }
 });
 
@@ -921,34 +1069,17 @@ router.post("/webhooks/razorpay/credits", async (req: Request, res: Response): P
     const brandId = notes.brandId as string | undefined;
     const quantity = parseInt(notes.quantity as string);
     if (!brandId || !quantity || !paymentId) { res.status(400).json({ error: "Missing data in payment" }); return; }
+    const amountInr = parseInt((notes.amountInr as string) ?? "0");
+    const gstAmountInr = parseInt((notes.gstAmountInr as string) ?? "0");
 
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      // Idempotency: check if this paymentId already processed
-      const dup = await client.query(`SELECT id FROM "CreditTransaction" WHERE "paymentReferenceId"=$1`, [paymentId]);
-      if (dup.rows.length > 0) { await client.query("COMMIT"); res.json({ ok: true, duplicate: true }); return; }
-      // Atomic increment to avoid lost updates with concurrent webhooks
-      const upd = await client.query(
-        `UPDATE "Brand" SET "creditBalance" = "creditBalance" + $1, "updatedAt"=NOW() WHERE id=$2 RETURNING "creditBalance"`,
-        [quantity, brandId]
-      );
-      if (upd.rows.length === 0) { await client.query("ROLLBACK"); res.status(404).json({ error: "Brand not found" }); return; }
-      const newBal = upd.rows[0].creditBalance as number;
-      await client.query(
-        `INSERT INTO "CreditTransaction" (id,"brandId","transactionType",amount,"balanceAfter","paymentReferenceId","createdAt") VALUES (gen_random_uuid(),$1,'PURCHASED',$2,$3,$4,NOW())`,
-        [brandId, quantity, newBal, paymentId]
-      );
-      await client.query("COMMIT");
-      res.json({ ok: true });
-      activateCreditHoldCampaigns(brandId).catch(() => {});
-    } catch (e: any) {
-      await client.query("ROLLBACK");
-      res.status(500).json({ error: e.message });
-    } finally {
-      client.release();
-    }
+    // Shared idempotent fulfilment — a no-op if verify-payment already credited
+    // this payment id (and vice-versa).
+    const result = await fulfillCreditPurchase({ brandId, quantity, paymentId, amountInr, gstAmountInr });
+    if (result.status === "brand_not_found") { res.status(404).json({ error: "Brand not found" }); return; }
+    res.json({ ok: true, duplicate: result.status === "duplicate" });
+    if (result.status === "credited") activateCreditHoldCampaigns(brandId).catch(() => {});
   } catch (e: any) {
+    logger.error({ err: e }, "Razorpay webhook processing failed");
     res.status(500).json({ error: e.message });
   }
 });

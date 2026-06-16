@@ -222,6 +222,13 @@ export function CreatorHeader({ badges, clearBadge, status = "", onLocked, onPop
       pushCreatorToast({ title: payload.title, body: payload.body, url });
     }, []),
     useCallback((p: import("@/hooks/useCreatorSSE").PopupSSEPayload) => { onPopup?.(p); }, [onPopup]),
+    useCallback((p: import("@/hooks/useCreatorSSE").NotificationSSEPayload) => {
+      // Live notification while on the app: bump the bell, surface it at the
+      // top of the dropdown list, and show a tap-through toast.
+      setUnread(n => n + 1);
+      setPopupItems(items => [{ ...p, isRead: false }, ...items].slice(0, 5));
+      pushCreatorToast({ title: p.title, body: p.body, url: "/home-creator/notifications" });
+    }, []),
   );
 
   const isLocked = (tab: typeof NAV_TABS[number]) => tab.badgeKey !== null && status !== "ACTIVE";

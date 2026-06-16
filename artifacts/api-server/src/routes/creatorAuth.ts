@@ -6,10 +6,14 @@ import {
   generateRefreshToken, getAccessSecret, UserType, verifyToken,
 } from "../lib/auth";
 import { saveRefreshToken, revokeToken, rotateRefreshToken } from "../lib/session";
+import { sendEmail } from "../lib/email";
+import { renderPasswordResetEmail } from "../lib/notificationEmail";
+import { logger } from "../lib/logger";
 import crypto from "crypto";
 
 const router: IRouter = Router();
 const REFRESH_COOKIE = "collabry_creator_refresh";
+const RESET_TOKEN_TTL_MINUTES = 60;
 const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env["NODE_ENV"] === "production",
@@ -292,15 +296,25 @@ router.post("/auth/creator/forgot-password", async (req: Request, res: Response)
   const creator = result.rows[0];
   const token = crypto.randomBytes(32).toString("hex");
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-  const expiry = new Date(Date.now() + 60 * 60 * 1000);
+  const expiry = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000);
 
   await pool.query(
     `UPDATE "Creator" SET "passwordResetToken"=$1, "passwordResetTokenExpiry"=$2 WHERE id=$3`,
     [tokenHash, expiry, creator.id]
   );
 
-  const baseUrl = process.env["APP_BASE_URL"] ?? "https://collabry.com";
-  console.log(`[Password Reset] Creator: @${creator.instagramHandle}, Token: ${token}, URL: ${baseUrl}/reset-password?token=${token}&type=creator, Expires: ${expiry}`);
+  const baseUrl = (process.env["APP_BASE_URL"] ?? "https://collabry.co").replace(/\/$/, "");
+  const resetUrl = `${baseUrl}/reset-password?token=${token}&type=creator`;
+  try {
+    await sendEmail({
+      to: email.trim(),
+      ...renderPasswordResetEmail({ resetUrl, expiresMinutes: RESET_TOKEN_TTL_MINUTES }),
+    });
+  } catch (err) {
+    logger.error({ err, creatorId: creator.id }, "Failed to send creator password reset email");
+    res.status(502).json({ error: "We couldn't send the reset email right now. Please try again in a moment." });
+    return;
+  }
 
   res.json({ ok: true, message: "A password reset link has been sent to your email address." });
 });

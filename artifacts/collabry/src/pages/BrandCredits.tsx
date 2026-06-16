@@ -4,6 +4,7 @@ import { Coins, Clock, Gift } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
+import { openRazorpayCheckout } from "@/lib/razorpay";
 
 interface Tx { id: string; type: string; amount: number; balanceAfter: number; createdAt: string; adminReason: string | null; expiresAt: string | null; }
 
@@ -18,7 +19,7 @@ const TYPE_LABEL: Record<string, { label: string; color: string }> = {
 };
 
 export default function BrandCredits() {
-  const { brandId, apiFetch, loading: authLoading } = useBrandAuth();
+  const { brandId, brandName, apiFetch, loading: authLoading } = useBrandAuth();
   const [, navigate] = useLocation();
   const { credits, refetch: refetchCredits } = useBrandCredits();
   const [pricePerCredit, setPricePerCredit] = useState<number | null>(DEFAULT_PRICE_PER_CREDIT);
@@ -67,22 +68,60 @@ export default function BrandCredits() {
     setBuying(true);
     setMsg(null);
     try {
-      const r = await apiFetch("/api/brand/credits/direct-purchase", { method: "POST", body: JSON.stringify({ quantity: qty }) });
+      // 1) Create the Razorpay order server-side (amount + GST computed there).
+      const r = await apiFetch("/api/brand/credits/create-order", { method: "POST", body: JSON.stringify({ quantity: qty }) });
       const d = await r.json();
       if (!r.ok) {
-        setMsg(d.message ?? d.error ?? "Failed to process payment");
+        setMsg(d.message ?? d.error ?? "Failed to start payment");
+        setBuying(false);
         return;
       }
-      const params = new URLSearchParams({
-        status: "CHARGED",
-        context: "credits",
+      // 2) Open the hosted checkout modal.
+      const opened = await openRazorpayCheckout({
+        key: d.key,
         orderId: d.orderId,
-        amount: String(d.amountInr),
+        amount: d.amount,
+        currency: d.currency,
+        description: `${qty} credit${qty > 1 ? "s" : ""}`,
+        prefill: brandName ? { name: brandName } : undefined,
+        onSuccess: async (resp) => {
+          // 3) Verify the signature server-side, which credits the account.
+          try {
+            const vr = await apiFetch("/api/brand/credits/verify-payment", {
+              method: "POST",
+              body: JSON.stringify({
+                razorpay_order_id: resp.razorpay_order_id,
+                razorpay_payment_id: resp.razorpay_payment_id,
+                razorpay_signature: resp.razorpay_signature,
+              }),
+            });
+            const vd = await vr.json();
+            if (vr.ok && vd.ok) {
+              const params = new URLSearchParams({
+                status: "CHARGED",
+                context: "credits",
+                orderId: vd.orderId ?? d.orderId,
+                amount: String(vd.amountInr ?? d.amountInr ?? ""),
+              });
+              navigate(`/payment-return?${params.toString()}`);
+            } else {
+              setMsg(vd.error ?? "Payment verification failed. If money was deducted it will reflect shortly.");
+              setBuying(false);
+            }
+          } catch (err: any) {
+            setMsg(err?.message ?? "Could not verify payment. If money was deducted it will reflect shortly.");
+            setBuying(false);
+          }
+        },
+        onDismiss: () => setBuying(false),
+        onFailure: (message) => { setMsg(message); setBuying(false); },
       });
-      navigate(`/payment-return?${params.toString()}`);
+      if (!opened) {
+        setMsg("Could not load the payment gateway. Check your connection and try again.");
+        setBuying(false);
+      }
     } catch (e: any) {
       setMsg(e.message ?? "Payment failed");
-    } finally {
       setBuying(false);
     }
   };
