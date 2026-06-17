@@ -6,6 +6,8 @@ import { requireCreator } from "../middleware/requireCreator";
 import { createNotification } from "../lib/notifications";
 import { createPopup } from "../lib/popups";
 import { createSystemMessage } from "../lib/dealChat";
+import { logger } from "../lib/logger";
+import crypto from "crypto";
 
 const router: IRouter = Router();
 
@@ -951,7 +953,91 @@ router.get("/brand/deals", requireBrand, async (req: Request, res: Response): Pr
   res.json({ deals: deals.rows.map(serializeDeal), cancelledRequests });
 });
 
+// ── Direct-deal payment helpers (shared by the no-gateway stub + Razorpay verify) ──
+async function computeDirectDealAmounts(deal: any): Promise<{ subtotal: number; commissionRate: number; gstRate: number; gstAmount: number; totalPayable: number; creatorPayout: number }> {
+  const subtotal = num(deal.totalAgreedValue);
+  const commissionRate = num(deal.commissionRateLocked) || (await readCommissionRate());
+  const gstRate = num(deal.gstRateLocked) > 0 ? num(deal.gstRateLocked) : (await readGstRate());
+  const gstAmount = +(subtotal * gstRate / 100).toFixed(2);
+  const totalPayable = +(subtotal + gstAmount).toFixed(2);
+  const creatorPayout = +(subtotal * (1 - commissionRate / 100)).toFixed(2);
+  return { subtotal, commissionRate, gstRate, gstAmount, totalPayable, creatorPayout };
+}
+
+// Moves a PENDING_PAYMENT direct deal into escrow + records the Payment row.
+// Caller must hold a FOR UPDATE lock and have checked status === 'PENDING_PAYMENT'.
+async function activateDirectDeal(client: PoolClient, deal: any, brandId: string, paymentReferenceId: string) {
+  const a = await computeDirectDealAmounts(deal);
+  const orderSeqRow = await client.query(`SELECT COUNT(*) FROM "Deal" WHERE "orderId" IS NOT NULL`);
+  const dealOrderId = `CLBdeal${String(parseInt(orderSeqRow.rows[0].count as string) + 1).padStart(6, "0")}`;
+  const cfg = await client.query(`SELECT value FROM "PlatformConfig" WHERE key='require_courier_awb'`);
+  const requireCourierAwbLocked = cfg.rows.length > 0 ? String(cfg.rows[0].value).toLowerCase() === "true" : false;
+  await client.query(
+    `UPDATE "Deal" SET status='IN_ESCROW',
+       "timelineStartAt"=CASE WHEN "productRequired"=false THEN NOW() ELSE NULL END,
+       "deadlineAt"=CASE WHEN "productRequired"=false THEN NOW() + ("timelineDays" || ' days')::interval ELSE NULL END,
+       "gstAmount"=$2, "totalPayable"=$3, "creatorPayout"=$4,
+       "commissionRateLocked"=COALESCE("commissionRateLocked",$5),
+       "paymentReferenceId"=$6, "escrowStatus"='HELD',
+       "requireCourierAwb"=$7,
+       "orderId"=$8,
+       "creatorActionDueSince"=NOW(), "conceptInactivityStage"=0
+       WHERE id=$1`,
+    [deal.id, a.gstAmount, a.totalPayable, a.creatorPayout, a.commissionRate, paymentReferenceId, requireCourierAwbLocked, dealOrderId]
+  );
+  await client.query(
+    `INSERT INTO "Payment" (id,"dealId","brandId","paymentReferenceId",amount,currency,status,"confirmedAt","createdAt",
+       "gstAmount","creatorPayout","commissionRateLocked")
+     VALUES (gen_random_uuid(),$1,$2,$3,$4,'INR','SUCCESS',NOW(),NOW(),$5,$6,$7)`,
+    [deal.id, brandId, paymentReferenceId, a.totalPayable, a.gstAmount, a.creatorPayout, a.commissionRate]
+  );
+  return { dealOrderId, ...a };
+}
+
+// Post-commit: escrow chat messages + live notifications for a direct deal.
+async function directDealLiveNotify(id: string, deal: any, brandId: string, a: { totalPayable: number; gstAmount: number; creatorPayout: number }): Promise<void> {
+  const escrowMsg = `🔒 Escrow confirmed. Deal is now LIVE! Payment of ₹${a.totalPayable.toLocaleString("en-IN")} (incl. ₹${a.gstAmount.toLocaleString("en-IN")} GST) received and is held in escrow.`;
+  const addressMsg = deal.productRequired
+    ? `📍 This deal includes product shipping. Creator, please share your full delivery address (door/flat no., street, city, state, PIN) in this chat so the brand can ship to you.`
+    : null;
+  await Promise.all([
+    createSystemMessage(id, escrowMsg),
+    ...(addressMsg ? [createSystemMessage(id, addressMsg)] : []),
+    createNotification({
+      userId: deal.creatorId, userType: "CREATOR", type: "DEAL_LIVE",
+      title: "Deal is live!",
+      body: `Brand payment confirmed. Deal is now active. Your payout: ₹${a.creatorPayout.toLocaleString("en-IN")} on completion.${deal.productRequired ? " Please share your delivery address in deal chat." : ""}`,
+      relatedEntityType: "Deal", relatedEntityId: id,
+    }),
+    createNotification({
+      userId: brandId, userType: "BRAND", type: "PAYMENT_SUCCESS",
+      title: "Payment successful",
+      body: `Your deal is live. Total paid: ₹${a.totalPayable.toLocaleString("en-IN")} (incl. ₹${a.gstAmount.toLocaleString("en-IN")} GST).`,
+      relatedEntityType: "Deal", relatedEntityId: id,
+    }),
+    createPopup({
+      userId: deal.creatorId, userType: "CREATOR", type: "DEAL_LIVE",
+      title: "Congrats! Your Deal is Live 🚀",
+      body: "Your collaboration is now active and the deal workflow has started. Want to understand how the deal flow works?",
+      ctaText: "See Deal", ctaPath: "/home-creator/deals?tab=live",
+      secondCtaText: "Watch Video", secondCtaPath: "/home-creator/deals?tab=live&tutorial=1",
+      isCelebration: true, relatedEntityId: id,
+    }),
+    createPopup({
+      userId: brandId, userType: "BRAND", type: "DEAL_LIVE",
+      title: "Congrats! Your Deal is Live 🚀",
+      body: "Your collaboration is now active and the deal workflow has started. Want to understand how the deal flow works?",
+      ctaText: "See Deal", ctaPath: "/home-brand/deals?tab=live",
+      secondCtaText: "Watch Video", secondCtaPath: "/home-brand/deals?tab=live&tutorial=1",
+      isCelebration: true, relatedEntityId: id,
+    }),
+  ]);
+}
+
 // POST /api/brand/deals/:id/simulate-payment
+// Despite the name, this is the direct-deal payment entry point: with Razorpay
+// configured it creates an order (escrow activates on verify-payment); without
+// keys it activates directly (the original simulate behaviour).
 router.post("/brand/deals/:id/simulate-payment", requireBrand, async (req: Request, res: Response): Promise<void> => {
   const brandId = (req as any).brandId as string;
   const id = req.params["id"] as string;
@@ -963,90 +1049,80 @@ router.post("/brand/deals/:id/simulate-payment", requireBrand, async (req: Reque
     const deal = d.rows[0];
     if (deal.status !== "PENDING_PAYMENT") { await client.query("ROLLBACK"); res.status(400).json({ error: `Cannot pay in status ${deal.status}` }); return; }
 
-    const subtotal = num(deal.totalAgreedValue);
-    const commissionRate = num(deal.commissionRateLocked) || (await readCommissionRate());
-    const gstRate = num(deal.gstRateLocked) > 0 ? num(deal.gstRateLocked) : (await readGstRate());
-    const gstAmount = +(subtotal * gstRate / 100).toFixed(2);
-    const totalPayable = +(subtotal + gstAmount).toFixed(2);
-    const creatorPayout = +(subtotal * (1 - commissionRate / 100)).toFixed(2);
+    const keyId = process.env["RAZORPAY_KEY_ID"];
+    const keySecret = process.env["RAZORPAY_KEY_SECRET"];
+
+    if (keyId && keySecret) {
+      // Gateway configured → create a Razorpay order; escrow activates on verify-payment.
+      const a = await computeDirectDealAmounts(deal);
+      try {
+        const Razorpay = (await import("razorpay")).default as any;
+        const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+        const order = await rzp.orders.create({
+          amount: Math.round(a.totalPayable * 100), currency: "INR",
+          notes: { brandId, dealId: id, type: "direct_deal", gstAmount: a.gstAmount, totalPayable: a.totalPayable },
+        });
+        await client.query("COMMIT");
+        res.json({ orderId: order.id, amount: Math.round(a.totalPayable * 100), currency: "INR", keyId, dealId: id });
+      } catch { await client.query("ROLLBACK"); res.status(500).json({ error: "Payment gateway error" }); }
+      return;
+    }
+
+    // No gateway configured → simulate (activate directly).
     const platformPaymentRef = `SIM_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-    const orderSeqRow = await client.query(`SELECT COUNT(*) FROM "Deal" WHERE "orderId" IS NOT NULL`);
-    const orderSeq = parseInt(orderSeqRow.rows[0].count as string) + 1;
-    const dealOrderId = `CLBdeal${String(orderSeq).padStart(6, "0")}`;
-
-    // Lock current "require courier+AWB" platform setting onto this deal so future
-    // changes to the toggle don't affect already-live deals. Do NOT swallow errors
-    // here: a failed config read must abort the LIVE transition rather than
-    // silently fall back to "false" and override admin intent.
-    const cfg = await client.query(`SELECT value FROM "PlatformConfig" WHERE key='require_courier_awb'`);
-    const requireCourierAwbLocked = cfg.rows.length > 0
-      ? String(cfg.rows[0].value).toLowerCase() === "true"
-      : false; // truly absent row → default off (matches seeded default)
-
-    // Deal goes live — for product deals, timeline starts on product confirmation, not payment.
-    await client.query(
-      `UPDATE "Deal" SET status='IN_ESCROW',
-       "timelineStartAt"=CASE WHEN "productRequired"=false THEN NOW() ELSE NULL END,
-       "deadlineAt"=CASE WHEN "productRequired"=false THEN NOW() + ("timelineDays" || ' days')::interval ELSE NULL END,
-       "gstAmount"=$2, "totalPayable"=$3, "creatorPayout"=$4,
-       "commissionRateLocked"=COALESCE("commissionRateLocked",$5),
-       "paymentReferenceId"=$6, "escrowStatus"='HELD',
-       "requireCourierAwb"=$7,
-       "orderId"=$8,
-       "creatorActionDueSince"=NOW(), "conceptInactivityStage"=0
-       WHERE id=$1`,
-      [id, gstAmount, totalPayable, creatorPayout, commissionRate, platformPaymentRef, requireCourierAwbLocked, dealOrderId]
-    );
-    await client.query(
-      `INSERT INTO "Payment" (id,"dealId","brandId","paymentReferenceId",amount,currency,status,"confirmedAt","createdAt",
-         "gstAmount","creatorPayout","commissionRateLocked")
-       VALUES (gen_random_uuid(),$1,$2,$3,$4,'INR','SUCCESS',NOW(),NOW(),$5,$6,$7)`,
-      [id, brandId, platformPaymentRef, totalPayable, gstAmount, creatorPayout, commissionRate]
-    );
+    const a = await activateDirectDeal(client, deal, brandId, platformPaymentRef);
     await client.query("COMMIT");
-
-    const escrowMsg = `🔒 Escrow confirmed. Deal is now LIVE! Payment of ₹${totalPayable.toLocaleString("en-IN")} (incl. ₹${gstAmount.toLocaleString("en-IN")} GST) received and is held in escrow.`;
-    const addressMsg = deal.productRequired
-      ? `📍 This deal includes product shipping. Creator, please share your full delivery address (door/flat no., street, city, state, PIN) in this chat so the brand can ship to you.`
-      : null;
-
-    await Promise.all([
-      createSystemMessage(id, escrowMsg),
-      ...(addressMsg ? [createSystemMessage(id, addressMsg)] : []),
-      createNotification({
-        userId: deal.creatorId, userType: "CREATOR", type: "DEAL_LIVE",
-        title: "Deal is live!",
-        body: `Brand payment confirmed. Deal is now active. Your payout: ₹${creatorPayout.toLocaleString("en-IN")} on completion.${deal.productRequired ? " Please share your delivery address in deal chat." : ""}`,
-        relatedEntityType: "Deal", relatedEntityId: id,
-      }),
-      createNotification({
-        userId: brandId, userType: "BRAND", type: "PAYMENT_SUCCESS",
-        title: "Payment successful",
-        body: `Your deal is live. Total paid: ₹${totalPayable.toLocaleString("en-IN")} (incl. ₹${gstAmount.toLocaleString("en-IN")} GST).`,
-        relatedEntityType: "Deal", relatedEntityId: id,
-      }),
-      createPopup({
-        userId: deal.creatorId, userType: "CREATOR", type: "DEAL_LIVE",
-        title: "Congrats! Your Deal is Live 🚀",
-        body: "Your collaboration is now active and the deal workflow has started. Want to understand how the deal flow works?",
-        ctaText: "See Deal", ctaPath: "/home-creator/deals?tab=live",
-        secondCtaText: "Watch Video", secondCtaPath: "/home-creator/deals?tab=live&tutorial=1",
-        isCelebration: true, relatedEntityId: id,
-      }),
-      createPopup({
-        userId: brandId, userType: "BRAND", type: "DEAL_LIVE",
-        title: "Congrats! Your Deal is Live 🚀",
-        body: "Your collaboration is now active and the deal workflow has started. Want to understand how the deal flow works?",
-        ctaText: "See Deal", ctaPath: "/home-brand/deals?tab=live",
-        secondCtaText: "Watch Video", secondCtaPath: "/home-brand/deals?tab=live&tutorial=1",
-        isCelebration: true, relatedEntityId: id,
-      }),
-    ]);
-    res.json({ ok: true, dealId: id, orderId: dealOrderId, status: "LIVE", totalPayable, gstAmount, creatorPayout });
+    await directDealLiveNotify(id, deal, brandId, a);
+    res.json({ ok: true, dealId: id, orderId: a.dealOrderId, status: "LIVE", totalPayable: a.totalPayable, gstAmount: a.gstAmount, creatorPayout: a.creatorPayout });
   } catch (e: any) {
     await client.query("ROLLBACK");
     res.status(500).json({ error: e.message ?? "Payment failed" });
+  } finally { client.release(); }
+});
+
+// POST /api/brand/deals/:id/verify-payment — completes a Razorpay direct-deal
+// payment: verify the signature, confirm the order belongs to this deal/brand,
+// then activate escrow. Idempotent (already-IN_ESCROW returns success).
+router.post("/brand/deals/:id/verify-payment", requireBrand, async (req: Request, res: Response): Promise<void> => {
+  const brandId = (req as any).brandId as string;
+  const id = req.params["id"] as string;
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body ?? {};
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) { res.status(400).json({ error: "Missing payment fields" }); return; }
+  const keyId = process.env["RAZORPAY_KEY_ID"];
+  const keySecret = process.env["RAZORPAY_KEY_SECRET"];
+  if (!keyId || !keySecret) { res.status(503).json({ error: "RAZORPAY_NOT_CONFIGURED", message: "Payment gateway is not configured." }); return; }
+
+  const expected = crypto.createHmac("sha256", keySecret).update(`${razorpay_order_id}|${razorpay_payment_id}`).digest("hex");
+  let valid = false;
+  try { valid = expected.length === razorpay_signature.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(razorpay_signature)); } catch { valid = false; }
+  if (!valid) { res.status(400).json({ error: "Signature verification failed" }); return; }
+
+  let order: any;
+  try {
+    const Razorpay = (await import("razorpay")).default as any;
+    const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    order = await rzp.orders.fetch(razorpay_order_id);
+  } catch { res.status(502).json({ error: "Could not verify order with gateway" }); return; }
+  const notes = order?.notes ?? {};
+  if (notes.type !== "direct_deal" || notes.dealId !== id || notes.brandId !== brandId) { res.status(403).json({ error: "Order does not match this deal" }); return; }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const d = await client.query(`SELECT * FROM "Deal" WHERE id=$1 AND "brandId"=$2 FOR UPDATE`, [id, brandId]);
+    const deal = d.rows[0];
+    if (!deal) { await client.query("ROLLBACK"); res.status(404).json({ error: "Deal not found" }); return; }
+    if (deal.status === "IN_ESCROW") { await client.query("COMMIT"); res.json({ ok: true, status: "LIVE", dealId: id, duplicate: true }); return; }
+    if (deal.status !== "PENDING_PAYMENT") { await client.query("ROLLBACK"); res.status(409).json({ error: `Cannot pay in status ${deal.status}` }); return; }
+
+    const a = await activateDirectDeal(client, deal, brandId, razorpay_payment_id);
+    await client.query("COMMIT");
+    await directDealLiveNotify(id, deal, brandId, a);
+    res.json({ ok: true, status: "LIVE", dealId: id, orderId: a.dealOrderId, totalPayable: a.totalPayable, gstAmount: a.gstAmount, creatorPayout: a.creatorPayout });
+  } catch (e: any) {
+    await client.query("ROLLBACK");
+    logger.error({ err: e, dealId: id }, "Direct-deal payment verification failed");
+    res.status(500).json({ error: "Verification failed" });
   } finally { client.release(); }
 });
 

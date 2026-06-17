@@ -6,12 +6,71 @@ import { requireBrand } from "../middleware/requireBrand";
 import { requireCreator } from "../middleware/requireCreator";
 import { broadcastToAllCreators } from "../lib/sseManager";
 import { createPopup } from "../lib/popups";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
 // ─── HELPERS ───────────────────────────────────────────────────────────────────
 
 const CONTACT_REGEX = /(\+?\d[\d\s\-]{8,}\d|[\w.-]+@[\w.-]+\.[a-z]{2,}|https?:\/\/|www\.)/i;
+
+/**
+ * Move a PENDING_PAYMENT campaign deal into escrow (status IN_ESCROW), assign
+ * its order id + slot, and start the timeline. Shared by the no-gateway stub
+ * path and the Razorpay verify-payment path. `paymentReferenceId` is the
+ * Razorpay payment id (null for the stub). Caller must hold a FOR UPDATE lock
+ * on the deal row and have checked status === 'PENDING_PAYMENT'.
+ */
+async function activateDealEscrow(client: any, d: any, paymentReferenceId: string | null): Promise<{ dealOrderId: string; totalPayable: number; gstAmount: number; creatorPayout: number }> {
+  const price = parseFloat(d.totalAgreedValue);
+  const gstRate = parseFloat(d.gstRateLocked ?? "18") || 18;
+  const gstAmount = +(price * gstRate / 100).toFixed(2);
+  const totalPayable = +(price + gstAmount).toFixed(2);
+  const commRate = parseFloat(d.commissionRate ?? d.commissionRateLocked ?? "5");
+  const creatorPayout = +(price * (1 - commRate / 100)).toFixed(2);
+
+  const orderSeqRow = await client.query(`SELECT COUNT(*) FROM "Deal" WHERE "orderId" IS NOT NULL`);
+  const orderSeq = parseInt(orderSeqRow.rows[0].count as string) + 1;
+  const dealOrderId = `CLBdeal${String(orderSeq).padStart(6, "0")}`;
+
+  await client.query(
+    `UPDATE "Deal" SET status='IN_ESCROW',"escrowStatus"='HELD',
+        "gstAmount"=$2,"totalPayable"=$3,"creatorPayout"=$4,
+        "timelineStartAt"=CASE WHEN "productRequired"=false THEN NOW() ELSE NULL END,
+        "deadlineAt"=CASE WHEN "productRequired"=false THEN NOW() + ("timelineDays" || ' days')::interval ELSE NULL END,
+        "creatorActionDueSince"=NOW(),"conceptInactivityStage"=0,
+        "orderId"=$5,
+        "paymentReferenceId"=COALESCE($6,"paymentReferenceId")
+       WHERE id=$1`,
+    [d.id, gstAmount, totalPayable, creatorPayout, dealOrderId, paymentReferenceId]
+  );
+  await client.query(
+    `INSERT INTO "CampaignSlot" (id,"campaignId","creatorId","dealId","slotNumber","escrowStatus","filledAt") VALUES (gen_random_uuid()::text,$1,$2,$3,(SELECT COALESCE(MAX("slotNumber"),0)+1 FROM "CampaignSlot" WHERE "campaignId"=$1),'COMMITTED',NOW())`,
+    [d.campaignId, d.creatorId, d.id]
+  );
+  return { dealOrderId, totalPayable, gstAmount, creatorPayout };
+}
+
+/** "Deal is live" creator notification + both-party celebration popups. */
+async function dealLiveNotify(d: any, brandId: string, dealId: string): Promise<void> {
+  await notify(d.creatorId as string, "CREATOR", "Deal Started!", `Payment confirmed for "${d.campName}". Your deal is now active.`);
+  await createPopup({
+    userId: d.creatorId as string, userType: "CREATOR", type: "DEAL_LIVE",
+    title: "Congrats! Your Deal is Live 🚀",
+    body: "Your collaboration is now active and the deal workflow has started. Want to understand how the deal flow works?",
+    ctaText: "See Deal", ctaPath: "/home-creator/deals?tab=live",
+    secondCtaText: "Watch Video", secondCtaPath: "/home-creator/deals?tab=live&tutorial=1",
+    isCelebration: true, relatedEntityId: dealId,
+  });
+  await createPopup({
+    userId: brandId, userType: "BRAND", type: "DEAL_LIVE",
+    title: "Congrats! Your Deal is Live 🚀",
+    body: "Your collaboration is now active and the deal workflow has started. Want to understand how the deal flow works?",
+    ctaText: "See Deal", ctaPath: "/home-brand/deals?tab=live",
+    secondCtaText: "Watch Video", secondCtaPath: "/home-brand/deals?tab=live&tutorial=1",
+    isCelebration: true, relatedEntityId: dealId,
+  });
+}
 
 async function notify(userId: string, userType: string, title: string, body: string, type = "INFO") {
   await pool.query(
@@ -312,45 +371,77 @@ router.post("/brand/campaigns/deals/:dealId/pay", requireBrand, async (req: Requ
       return;
     }
 
-    // Deal goes live — for product deals, timeline starts on product confirmation, not payment.
-    const orderSeqRow = await client.query(`SELECT COUNT(*) FROM "Deal" WHERE "orderId" IS NOT NULL`);
-    const orderSeq = parseInt(orderSeqRow.rows[0].count as string) + 1;
-    const dealOrderId = `CLBdeal${String(orderSeq).padStart(6, "0")}`;
-    await client.query(
-      `UPDATE "Deal" SET status='IN_ESCROW',"escrowStatus"='HELD',
-        "gstAmount"=$2,"totalPayable"=$3,"creatorPayout"=$4,
-        "timelineStartAt"=CASE WHEN "productRequired"=false THEN NOW() ELSE NULL END,
-        "deadlineAt"=CASE WHEN "productRequired"=false THEN NOW() + ("timelineDays" || ' days')::interval ELSE NULL END,
-        "creatorActionDueSince"=NOW(),"conceptInactivityStage"=0,
-        "orderId"=$5
-       WHERE id=$1`,
-      [dealId, gstAmount, totalPayable, creatorPayout, dealOrderId]
-    );
-    await client.query(
-      `INSERT INTO "CampaignSlot" (id,"campaignId","creatorId","dealId","slotNumber","escrowStatus","filledAt") VALUES (gen_random_uuid()::text,$1,$2,$3,(SELECT COALESCE(MAX("slotNumber"),0)+1 FROM "CampaignSlot" WHERE "campaignId"=$1),'COMMITTED',NOW())`,
-      [d.campaignId, d.creatorId, dealId]
-    );
+    // No gateway configured — activate directly (stub). For product deals,
+    // timeline starts on product confirmation, not payment.
+    const { dealOrderId } = await activateDealEscrow(client, d, null);
     await client.query("COMMIT");
-    await notify(d.creatorId as string, "CREATOR", "Deal Started!", `Payment confirmed for "${d.campName}". Your deal is now active.`);
-    await createPopup({
-      userId: d.creatorId as string, userType: "CREATOR", type: "DEAL_LIVE",
-      title: "Congrats! Your Deal is Live 🚀",
-      body: "Your collaboration is now active and the deal workflow has started. Want to understand how the deal flow works?",
-      ctaText: "See Deal", ctaPath: "/home-creator/deals?tab=live",
-      secondCtaText: "Watch Video", secondCtaPath: "/home-creator/deals?tab=live&tutorial=1",
-      isCelebration: true, relatedEntityId: dealId,
-    });
-    await createPopup({
-      userId: brandId, userType: "BRAND", type: "DEAL_LIVE",
-      title: "Congrats! Your Deal is Live 🚀",
-      body: "Your collaboration is now active and the deal workflow has started. Want to understand how the deal flow works?",
-      ctaText: "See Deal", ctaPath: "/home-brand/deals?tab=live",
-      secondCtaText: "Watch Video", secondCtaPath: "/home-brand/deals?tab=live&tutorial=1",
-      isCelebration: true, relatedEntityId: dealId,
-    });
+    await dealLiveNotify(d, brandId, dealId);
     res.json({ ok: true, status: "IN_ESCROW", dealId, orderId: dealOrderId, amount: totalPayable });
   } catch { await client.query("ROLLBACK"); res.status(500).json({ error: "Internal error" }); }
   finally { client.release(); }
+});
+
+// POST /api/brand/campaigns/deals/:dealId/verify-payment — completes a Razorpay
+// deal payment: verify the checkout signature, confirm the order belongs to this
+// deal/brand, then move the deal into escrow. Idempotent: a second call (or the
+// deal already being IN_ESCROW) returns success without re-activating.
+router.post("/brand/campaigns/deals/:dealId/verify-payment", requireBrand, async (req: Request, res: Response): Promise<void> => {
+  const brandId = (req as any).brandId as string;
+  const { dealId } = req.params as Record<string, string>;
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body ?? {};
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) { res.status(400).json({ error: "Missing payment fields" }); return; }
+  const keyId = process.env["RAZORPAY_KEY_ID"];
+  const keySecret = process.env["RAZORPAY_KEY_SECRET"];
+  if (!keyId || !keySecret) { res.status(503).json({ error: "RAZORPAY_NOT_CONFIGURED", message: "Payment gateway is not configured." }); return; }
+
+  // 1) Verify the checkout signature.
+  const expected = crypto.createHmac("sha256", keySecret).update(`${razorpay_order_id}|${razorpay_payment_id}`).digest("hex");
+  let valid = false;
+  try {
+    valid = expected.length === razorpay_signature.length &&
+      crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(razorpay_signature));
+  } catch { valid = false; }
+  if (!valid) { res.status(400).json({ error: "Signature verification failed" }); return; }
+
+  // 2) Confirm the order actually belongs to this deal + brand (authoritative).
+  let order: any;
+  try {
+    const Razorpay = (await import("razorpay")).default as any;
+    const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    order = await rzp.orders.fetch(razorpay_order_id);
+  } catch { res.status(502).json({ error: "Could not verify order with gateway" }); return; }
+  const notes = order?.notes ?? {};
+  if (notes.type !== "campaign_deal" || notes.dealId !== dealId || notes.brandId !== brandId) {
+    res.status(403).json({ error: "Order does not match this deal" });
+    return;
+  }
+
+  // 3) Activate escrow (idempotent).
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const deal = await client.query(
+      `SELECT d.*, c.name as "campName", c.id as "campaignId"
+         FROM "Deal" d JOIN "Campaign" c ON c.id=d."campaignId"
+        WHERE d.id=$1 AND d."brandId"=$2 FOR UPDATE`,
+      [dealId, brandId]
+    );
+    const d = deal.rows[0];
+    if (!d) { await client.query("ROLLBACK"); res.status(404).json({ error: "Deal not found" }); return; }
+    if (d.status === "IN_ESCROW") { await client.query("COMMIT"); res.json({ ok: true, status: "IN_ESCROW", dealId, duplicate: true }); return; }
+    if (d.status !== "PENDING_PAYMENT") { await client.query("ROLLBACK"); res.status(409).json({ error: `Deal is in status ${d.status}` }); return; }
+
+    const { dealOrderId, totalPayable } = await activateDealEscrow(client, d, razorpay_payment_id);
+    await client.query("COMMIT");
+    await dealLiveNotify(d, brandId, dealId);
+    res.json({ ok: true, status: "IN_ESCROW", dealId, orderId: dealOrderId, totalPayable });
+  } catch (e: any) {
+    await client.query("ROLLBACK");
+    logger.error({ err: e, dealId }, "Deal payment verification failed");
+    res.status(500).json({ error: "Verification failed" });
+  } finally {
+    client.release();
+  }
 });
 
 router.get("/brand/campaigns/:id", requireBrand, async (req: Request, res: Response): Promise<void> => {

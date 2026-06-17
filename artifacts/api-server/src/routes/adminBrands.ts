@@ -202,6 +202,7 @@ router.post("/admin/brands/:id/suspend", requireAdmin, async (req: Request, res:
     userId: id, userType: "BRAND", type: "ACCOUNT_SUSPENDED",
     title: "Account Suspended",
     body: reason?.trim() ? `Your account has been suspended. Reason: ${reason.trim()}` : "Your account has been suspended. Please contact support.",
+    ...(reason?.trim() ? { emailParams: { admin_message: reason.trim() } } : {}),
   }).catch(() => {});
 
   res.json({ ok: true });
@@ -224,6 +225,7 @@ router.post("/admin/brands/:id/unsuspend", requireAdmin, async (req: Request, re
     userId: id, userType: "BRAND", type: "ACCOUNT_UNSUSPENDED",
     title: "Account Reinstated ✓",
     body: "Your account has been reinstated. You can now log in and use Collabry again.",
+    emailParams: { admin_message: "Your account is back in good standing — welcome back to Collabry!" },
   }).catch(() => {});
   await createPopup({
     userId: id, userType: "BRAND", type: "ACCOUNT_UNSUSPENDED",

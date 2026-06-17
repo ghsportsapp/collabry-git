@@ -8,6 +8,7 @@ import {
   CreditCard, Eye, IndianRupee, BadgeCheck, Hourglass, MapPin,
 } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
+import { openRazorpayCheckout } from "@/lib/razorpay";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
 import UnlockCelebration from "@/components/UnlockCelebration";
@@ -620,7 +621,7 @@ function DeleteConfirmModal({ campaignName, onClose, onConfirm }: { campaignName
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function BrandCampaignDetail() {
-  const { brandId, apiFetch, loading: authLoading } = useBrandAuth();
+  const { brandId, brandName, apiFetch, loading: authLoading } = useBrandAuth();
   const [, navigate] = useLocation();
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
@@ -724,23 +725,46 @@ export default function BrandCampaignDetail() {
 
   const handlePay = async () => {
     if (!payingDeal?.dealId) return;
-    const r = await apiFetch(`/api/brand/campaigns/deals/${payingDeal.dealId}/pay`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-    if (r.ok) {
-      const d = await r.json().catch(() => ({}));
+    const dealId = payingDeal.dealId;
+    const goReturn = (amount: any, orderId: any) => {
       setPayingDeal(null);
-      const params = new URLSearchParams({
-        status: "CHARGED",
-        context: "deal",
-        dealId: d.dealId ?? payingDeal.dealId,
-        amount: String(d.amount ?? ""),
-        orderId: d.orderId ?? "",
-      });
+      const params = new URLSearchParams({ status: "CHARGED", context: "deal", dealId, amount: String(amount ?? ""), orderId: orderId ?? "" });
       navigate(`/payment-return?${params.toString()}`);
-    } else {
-      const d = await r.json().catch(() => ({}));
-      flash(d.error ?? "Payment failed", "error");
-      setPayingDeal(null);
+    };
+    const r = await apiFetch(`/api/brand/campaigns/deals/${dealId}/pay`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const d = await r.json().catch(() => ({} as any));
+    if (!r.ok) { flash(d.error ?? "Payment failed", "error"); setPayingDeal(null); return; }
+
+    // Gateway configured → open Razorpay, then verify to activate escrow.
+    if (d.orderId && d.keyId) {
+      const opened = await openRazorpayCheckout({
+        key: d.keyId, orderId: d.orderId, amount: d.amount, currency: d.currency ?? "INR",
+        description: "Campaign deal payment (held in escrow)",
+        prefill: brandName ? { name: brandName } : undefined,
+        onSuccess: async (resp) => {
+          try {
+            const vr = await apiFetch(`/api/brand/campaigns/deals/${dealId}/verify-payment`, {
+              method: "POST",
+              body: JSON.stringify({
+                razorpay_order_id: resp.razorpay_order_id,
+                razorpay_payment_id: resp.razorpay_payment_id,
+                razorpay_signature: resp.razorpay_signature,
+              }),
+            });
+            const vd = await vr.json().catch(() => ({} as any));
+            if (vr.ok && vd.ok) { goReturn(vd.totalPayable, vd.orderId); }
+            else { flash(vd.error ?? "Payment verification failed. If money was deducted it will reflect shortly.", "error"); setPayingDeal(null); }
+          } catch (e: any) { flash(e?.message ?? "Could not verify payment.", "error"); setPayingDeal(null); }
+        },
+        onDismiss: () => setPayingDeal(null),
+        onFailure: (m) => { flash(m, "error"); setPayingDeal(null); },
+      });
+      if (!opened) { flash("Could not load the payment gateway. Check your connection and try again.", "error"); setPayingDeal(null); }
+      return;
     }
+
+    // No gateway (stub) — already activated server-side.
+    goReturn(d.amount, d.orderId);
   };
 
   if (authLoading || !brandId) return null;

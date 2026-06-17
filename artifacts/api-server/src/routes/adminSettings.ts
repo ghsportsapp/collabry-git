@@ -386,11 +386,12 @@ router.post("/admin/kyc-requests/:id/approve", requireAdmin, async (req: Request
     `UPDATE "Creator" SET "kycStatus"='VERIFIED', "kycRejectionReason"=NULL, "updatedAt"=NOW() WHERE id=$1`,
     [id]
   );
-  await pool.query(
-    `INSERT INTO "Notification" (id,"userId","userType",type,title,body,"isRead","createdAt","expiresAt")
-     VALUES (gen_random_uuid(),$1,'CREATOR','KYC_APPROVED','KYC Verified ✓','Your KYC documents have been verified. You can now receive payments for your completed campaigns!',false,NOW(),NOW() + INTERVAL '90 days')`,
-    [id]
-  ).catch(() => {});
+  await createNotification({
+    userId: id, userType: "CREATOR", type: "KYC_APPROVED",
+    title: "KYC Verified ✓",
+    body: "Your KYC documents have been verified. You can now receive payments for your completed campaigns!",
+    expiresInDays: 90,
+  }).catch(() => {});
   await createPopup({
     userId: id, userType: "CREATOR", type: "KYC_APPROVED",
     title: "KYC Approved!",
@@ -410,11 +411,13 @@ router.post("/admin/kyc-requests/:id/reject", requireAdmin, async (req: Request,
     `UPDATE "Creator" SET "kycStatus"='REJECTED', "kycRejectionReason"=$1, "updatedAt"=NOW() WHERE id=$2`,
     [reason.trim(), id]
   );
-  await pool.query(
-    `INSERT INTO "Notification" (id,"userId","userType",type,title,body,"isRead","createdAt","expiresAt")
-     VALUES (gen_random_uuid(),$1,'CREATOR','KYC_REJECTED','KYC Documents Rejected',$2,false,NOW(),NOW() + INTERVAL '90 days')`,
-    [id, `Your KYC was not approved. Reason: ${reason.trim()}. Please update your documents and resubmit.`]
-  ).catch(() => {});
+  await createNotification({
+    userId: id, userType: "CREATOR", type: "KYC_REJECTED",
+    title: "KYC Documents Rejected",
+    body: `Your KYC was not approved. Reason: ${reason.trim()}. Please update your documents and resubmit.`,
+    emailParams: { reason: reason.trim() },
+    expiresInDays: 90,
+  }).catch(() => {});
   await createPopup({
     userId: id, userType: "CREATOR", type: "KYC_REJECTED",
     title: "KYC Rejected",
