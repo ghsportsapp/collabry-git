@@ -213,8 +213,11 @@ function BrandHeader({ credits, onLocked, badges, clearBadge }: { credits: numbe
       <header className="sticky top-0 z-40 px-4 py-3"
         style={{ background: BG, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
-          <button className="text-2xl flex-shrink-0" style={{ fontFamily: "'Macondo Swash Caps', cursive", color: PINK }}
-            onClick={() => navigate("/home-brand")} aria-label="Home">Collabry</button>
+          <button className="text-2xl flex-shrink-0 flex items-center gap-2" style={{ fontFamily: "'Macondo Swash Caps', cursive", color: PINK }}
+            onClick={() => navigate("/home-brand")} aria-label="Home">
+            <img src={`${import.meta.env.BASE_URL}logo-mark.svg`} alt="" className="h-7 w-auto" />
+            Collabry
+          </button>
 
           {/* Desktop nav (hidden on mobile) */}
           <nav className="hidden md:flex items-center gap-1 flex-1 justify-center">

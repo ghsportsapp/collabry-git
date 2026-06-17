@@ -36,9 +36,10 @@ export default function Header({ content }: Props) {
           href="/"
           onClick={scrollToTop}
           aria-label="Go to home"
-          className="text-2xl text-[#E14F69] cursor-pointer bg-transparent border-0 p-0 no-underline"
+          className="flex items-center gap-2 text-2xl text-[#E14F69] cursor-pointer bg-transparent border-0 p-0 no-underline"
           style={{ fontFamily: "'Macondo Swash Caps', cursive" }}
         >
+          <img src={`${import.meta.env.BASE_URL}logo-mark.svg`} alt="" className="h-7 w-auto" />
           {logoText}
         </Link>
 

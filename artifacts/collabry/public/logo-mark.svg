@@ -1,0 +1,13 @@
+<svg viewBox="100 55 305 390" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Collabry">
+  <path d="M 250 212
+           C 232 178, 250 142, 286 132
+           C 318 122, 302 80, 255 80
+           C 208 80, 193 122, 210 152
+           C 150 180, 122 245, 142 305
+           C 160 362, 190 404, 242 415
+           C 294 427, 327 398, 327 342
+           C 327 320, 323 306, 319 299"
+        fill="none" stroke="#F0187A" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="250" cy="212" r="48" fill="#FF7FB0"/>
+  <circle cx="330" cy="302" r="66" fill="#A52A68"/>
+</svg>
