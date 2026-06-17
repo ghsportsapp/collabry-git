@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useServerTime, fmtCountdown } from "@/hooks/useServerTime";
 import { Clock, Handshake, Check, X as XIcon, Eye, ChevronRight, MessageCircle, ChevronDown, ChevronUp, Package, PackageCheck, Truck, FileText, CalendarClock } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
+import { openRazorpayCheckout } from "@/lib/razorpay";
 import { useSupportEmail } from "@/hooks/useSupportEmail";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
@@ -78,7 +79,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export default function BrandDeals() {
-  const { brandId, apiFetch, loading: authLoading } = useBrandAuth();
+  const { brandId, brandName, apiFetch, loading: authLoading } = useBrandAuth();
   const [, navigate] = useLocation();
   const { total: credits } = useBrandCredits();
   const [tab, setTab] = useState<Tab>(() => {
@@ -167,18 +168,50 @@ export default function BrandDeals() {
     return () => window.removeEventListener("collabry:refresh", handler);
   }, []);
 
+  const goToPaymentReturn = (dealId: string, totalPayable: any, orderId: any, fallback: number) => {
+    const params = new URLSearchParams({ status: "CHARGED", context: "deal", dealId, amount: String(totalPayable ?? fallback), orderId: orderId ?? "" });
+    navigate(`/payment-return?${params.toString()}`);
+  };
+
   const handleSimulatePayment = async (dealId: string, _amount: number) => {
     setPaying(dealId);
     setError(null);
     try {
       const r = await apiFetch(`/api/brand/deals/${dealId}/simulate-payment`, { method: "POST" });
-      if (r.ok) {
-        const d = await r.json();
-        const params = new URLSearchParams({ status: "CHARGED", context: "deal", dealId, amount: String(d.totalPayable ?? _amount), orderId: d.orderId ?? "" });
-        navigate(`/payment-return?${params.toString()}`);
-      } else { const d = await r.json(); setError(d.error ?? "Payment failed"); }
-    } catch (e: any) { setError(e.message ?? "Payment failed"); }
-    finally { setPaying(null); }
+      const d = await r.json();
+      if (!r.ok) { setError(d.error ?? "Payment failed"); setPaying(null); return; }
+
+      // Gateway configured → open Razorpay, then verify to activate escrow.
+      if (d.orderId && d.keyId) {
+        const opened = await openRazorpayCheckout({
+          key: d.keyId, orderId: d.orderId, amount: d.amount, currency: d.currency ?? "INR",
+          description: "Deal payment (held in escrow)",
+          prefill: brandName ? { name: brandName } : undefined,
+          onSuccess: async (resp) => {
+            try {
+              const vr = await apiFetch(`/api/brand/deals/${dealId}/verify-payment`, {
+                method: "POST",
+                body: JSON.stringify({
+                  razorpay_order_id: resp.razorpay_order_id,
+                  razorpay_payment_id: resp.razorpay_payment_id,
+                  razorpay_signature: resp.razorpay_signature,
+                }),
+              });
+              const vd = await vr.json();
+              if (vr.ok && vd.ok) { goToPaymentReturn(dealId, vd.totalPayable, vd.orderId, _amount); }
+              else { setError(vd.error ?? "Payment verification failed. If money was deducted it will reflect shortly."); setPaying(null); }
+            } catch (e: any) { setError(e?.message ?? "Could not verify payment."); setPaying(null); }
+          },
+          onDismiss: () => setPaying(null),
+          onFailure: (m) => { setError(m); setPaying(null); },
+        });
+        if (!opened) { setError("Could not load the payment gateway. Check your connection and try again."); setPaying(null); }
+        return;
+      }
+
+      // No gateway (stub) — already activated server-side.
+      goToPaymentReturn(dealId, d.totalPayable, d.orderId, _amount);
+    } catch (e: any) { setError(e.message ?? "Payment failed"); setPaying(null); }
   };
 
   const openReview = async (req: RequestRow) => {

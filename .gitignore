@@ -69,3 +69,4 @@ Thumbs.db
 # SQL dumps (pg_dump plain-text output)
 *.sql
 !**/migrations/**/*.sql
+resources provided
