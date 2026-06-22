@@ -25,7 +25,7 @@ export default function AdminLegalPages() {
     setLoading(p => ({ ...p, [type]: true }));
     try {
       const r = await fetch(`${BASE_URL}/api/legal/${type}`);
-      if (r.ok) { const data = await r.json(); setSections(p => ({ ...p, [type]: data })); }
+      if (r.ok) { const data = await r.json(); setSections(p => ({ ...p, [type]: data.sections ?? data })); }
     } catch {}
     setLoading(p => ({ ...p, [type]: false }));
   };

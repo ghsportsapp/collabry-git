@@ -7,14 +7,21 @@ const POPPINS = "'Poppins', sans-serif";
 
 interface Section { heading: string; body: string }
 
+function formatMonthYear(iso: string | null): string {
+  if (!iso) return "April 2025";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
 export default function PrivacyPolicy() {
   const [sections, setSections] = useState<Section[]>([]);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch(`${BASE_URL}/api/legal/privacy`)
       .then(r => r.json())
-      .then(d => { setSections(d); setLoading(false); })
+      .then(d => { setSections(d.sections); setUpdatedAt(d.updatedAt); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
@@ -32,7 +39,7 @@ export default function PrivacyPolicy() {
       <div className="max-w-3xl mx-auto px-6 py-12">
         <div className="mb-10">
           <h1 className="text-white text-3xl font-bold mb-3">Privacy Policy</h1>
-          <p className="text-white/70 text-sm">Last updated: April 2025 · Collabry India</p>
+          <p className="text-white/70 text-sm">Last updated: {formatMonthYear(updatedAt)} · Collabry India</p>
         </div>
 
         {loading ? (

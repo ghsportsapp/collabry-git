@@ -356,6 +356,7 @@ export type { UnifiedEntry };
 
 // ── Legal content ─────────────────────────────────────────────────────────────
 type LegalSection = { heading: string; body: string };
+type LegalResponse = { sections: LegalSection[]; updatedAt: string | null };
 const LEGAL_KEYS = { terms: "legal_terms_content", privacy: "legal_privacy_content" } as const;
 const LEGAL_DEFAULTS: Record<keyof typeof LEGAL_KEYS, LegalSection[]> = {
   terms: [
@@ -376,13 +377,18 @@ const LEGAL_DEFAULTS: Record<keyof typeof LEGAL_KEYS, LegalSection[]> = {
   ],
 };
 
-async function getLegalContent(type: keyof typeof LEGAL_KEYS): Promise<LegalSection[]> {
+async function getLegalContent(type: keyof typeof LEGAL_KEYS): Promise<LegalResponse> {
   const key = LEGAL_KEYS[type];
-  const result = await pool.query(`SELECT value FROM "PlatformConfig" WHERE key=$1`, [key]);
+  const result = await pool.query(`SELECT value, "updatedAt" FROM "PlatformConfig" WHERE key=$1`, [key]);
   if (result.rows.length > 0) {
-    try { return JSON.parse(result.rows[0].value) as LegalSection[]; } catch { return LEGAL_DEFAULTS[type]; }
+    try {
+      return {
+        sections: JSON.parse(result.rows[0].value) as LegalSection[],
+        updatedAt: result.rows[0].updatedAt ? (result.rows[0].updatedAt as Date).toISOString() : null,
+      };
+    } catch { return { sections: LEGAL_DEFAULTS[type], updatedAt: null }; }
   }
-  return LEGAL_DEFAULTS[type];
+  return { sections: LEGAL_DEFAULTS[type], updatedAt: null };
 }
 
 router.get("/legal/terms", async (_req: Request, res: Response): Promise<void> => {
