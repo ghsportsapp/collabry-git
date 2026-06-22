@@ -10,6 +10,7 @@ import { queryClient } from "@/lib/queryClient";
 import TopProgressBar from "@/components/TopProgressBar";
 import PageLoader from "@/components/PageLoader";
 import ScrollToTop from "@/components/ScrollToTop";
+import PixelPageViews from "@/components/PixelPageViews";
 import AdminProtectedRoute from "@/components/AdminProtectedRoute";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { BrandFcmAutoRegister, CreatorFcmAutoRegister } from "@/components/FcmAutoRegister";
@@ -177,6 +178,7 @@ function App() {
               <CreatorFcmAutoRegister />
               <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
                 <ScrollToTop />
+                <PixelPageViews />
                 <TopProgressBar />
                 <Suspense fallback={<PageLoader />}>
                   <Router />

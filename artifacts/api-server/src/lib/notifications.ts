@@ -5,6 +5,8 @@ import { sendPushToUser } from "./push";
 import { sendToCreator, sendToBrand } from "./sseManager";
 import { sendBrevoTemplateEmail } from "./brevoEmail";
 import { resolveEmailTemplate, type ResolvedTemplate } from "./brevoTemplates";
+import { sendEmail } from "./email";
+import { shouldEmailNotification, renderNotificationEmail } from "./notificationEmail";
 
 export type NotifUserType = "BRAND" | "CREATOR";
 
@@ -73,16 +75,16 @@ export async function createNotification(n: CreateNotifInput): Promise<void> {
   const tpl: ResolvedTemplate | null = n.emailTemplateId
     ? { templateId: n.emailTemplateId, subject: n.emailSubject ?? "", requiredParams: [] }
     : resolveEmailTemplate(n.type, n.userType);
-  if (tpl) {
-    // Fully async: param enrichment + the required-params gate live inside the
-    // send path so a mail failure never blocks the notification.
-    void sendNotificationEmail(n, tpl).catch((err) => {
-      logger.error(
-        { err, userId: n.userId, userType: n.userType, type: n.type, templateId: tpl.templateId },
-        "Notification email failed"
-      );
-    });
-  }
+  // Fully async: param enrichment, the required-params gate, and the legacy
+  // fallback all live inside dispatchEmail so a mail failure never blocks the
+  // notification. Always called (even with no template) so previously-emailing
+  // types still send via the legacy path.
+  void dispatchEmail(n, tpl).catch((err) => {
+    logger.error(
+      { err, userId: n.userId, userType: n.userType, type: n.type },
+      "Notification email failed"
+    );
+  });
 
   if (shouldPushNotification(n.type)) {
     void sendPushToUser(n.userId, n.userType, {
@@ -138,7 +140,7 @@ async function getDealEmailParams(dealId: string): Promise<Record<string, string
   }
 }
 
-async function sendNotificationEmail(n: CreateNotifInput, tpl: ResolvedTemplate): Promise<void> {
+async function dispatchEmail(n: CreateNotifInput, tpl: ResolvedTemplate | null): Promise<void> {
   const table = n.userType === "BRAND" ? "Brand" : "Creator";
   const nameCol = n.userType === "BRAND" ? '"brandName"' : '"fullName"';
   const result = await pool.query(
@@ -156,34 +158,35 @@ async function sendNotificationEmail(n: CreateNotifInput, tpl: ResolvedTemplate)
   const name = (result.rows[0]?.name as string | null | undefined) ?? undefined;
   const firstName = name ? name.trim().split(/\s+/)[0] : undefined;
 
-  // Effective params: deal-derived auto-fill underneath, explicit emailParams on
-  // top (explicit always wins).
-  let params: Record<string, string | number | null | undefined> = { ...n.emailParams };
-  if (n.relatedEntityType?.toUpperCase() === "DEAL" && n.relatedEntityId) {
-    const auto = await getDealEmailParams(n.relatedEntityId);
-    params = { ...auto, ...params };
+  // 1) Preferred path: a mapped Brevo template with all required params present.
+  if (tpl) {
+    // Effective params: deal-derived auto-fill underneath, explicit on top.
+    let params: Record<string, string | number | null | undefined> = { ...n.emailParams };
+    if (n.relatedEntityType?.toUpperCase() === "DEAL" && n.relatedEntityId) {
+      const auto = await getDealEmailParams(n.relatedEntityId);
+      params = { ...auto, ...params };
+    }
+    const missing = tpl.requiredParams.filter((p) => params[p] == null);
+    if (missing.length === 0) {
+      await sendBrevoTemplateEmail({
+        templateId: tpl.templateId,
+        to: email,
+        firstName,
+        subject: n.emailSubject ?? tpl.subject,
+        params,
+      });
+      logger.info({ userId: n.userId, type: n.type, templateId: tpl.templateId }, "Notification email sent (template)");
+      return;
+    }
+    logger.debug({ userId: n.userId, type: n.type, templateId: tpl.templateId, missing }, "Template params missing — using legacy fallback if eligible");
   }
 
-  // Gate: only send once every required param is present, so we never ship a
-  // half-filled email. Missing -> stays in-app only.
-  const missing = tpl.requiredParams.filter((p) => params[p] == null);
-  if (missing.length > 0) {
-    logger.debug(
-      { userId: n.userId, type: n.type, templateId: tpl.templateId, missing },
-      "Email skipped — required params missing (in-app only)"
-    );
-    return;
+  // 2) Legacy fallback: any type that emailed before the Brevo migration still
+  //    emails (generic branded email over SMTP) to the real recipient, so no
+  //    customer loses a notification email while template wiring is completed.
+  if (shouldEmailNotification(n.type)) {
+    const rendered = renderNotificationEmail({ title: n.title, body: n.body });
+    await sendEmail({ to: email, ...rendered });
+    logger.info({ userId: n.userId, type: n.type }, "Notification email sent (legacy fallback)");
   }
-
-  await sendBrevoTemplateEmail({
-    templateId: tpl.templateId,
-    to: email,
-    firstName,
-    subject: n.emailSubject ?? tpl.subject,
-    params,
-  });
-  logger.info(
-    { userId: n.userId, userType: n.userType, type: n.type, templateId: tpl.templateId },
-    "Notification email sent"
-  );
 }

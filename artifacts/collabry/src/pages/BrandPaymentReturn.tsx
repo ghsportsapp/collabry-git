@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
+import { pixelTrack } from "@/lib/pixel";
 
 const POPPINS = "'Poppins', sans-serif";
 const PINK = "#F0187A";
@@ -142,6 +143,17 @@ export default function BrandPaymentReturn() {
   useEffect(() => {
     if (!authLoading && !brandId) navigate("/login-brand");
   }, [brandId, authLoading, navigate]);
+
+  // Fire the Meta Pixel Purchase event once for a successful payment.
+  useEffect(() => {
+    if (urlState.status !== "CHARGED") return;
+    const value = urlState.amount ? parseFloat(urlState.amount) : NaN;
+    pixelTrack("Purchase", {
+      currency: "INR",
+      ...(Number.isFinite(value) ? { value } : {}),
+      content_type: urlState.context,
+    });
+  }, [urlState]);
 
   if (authLoading || !brandId) return null;
 

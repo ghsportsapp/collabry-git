@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, Upload, X, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { CustomSelect } from "@/components/ui/CustomSelect";
+import { pixelTrack } from "@/lib/pixel";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -289,6 +290,7 @@ export default function BrandSignup() {
         return;
       }
       setAuth(data.accessToken, data.brandId, data.brandName);
+      pixelTrack("Lead", { content_name: "brand_signup" });
       try {
         localStorage.setItem(
           `collabry_welcome_${data.brandId}`,
