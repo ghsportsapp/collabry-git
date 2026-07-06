@@ -9,7 +9,17 @@
 // then either exits (dry-run) or executes everything in a single transaction.
 // It refuses to delete if the creator has any Deals — those need manual review.
 
-import pg from "pg";
+// `pg` isn't a direct dep of @workspace/api-server — it's pulled in via
+// @workspace/db. In pnpm's isolated node_modules layout that means Node can't
+// resolve it from this script's directory. Borrow lib/db's resolver instead,
+// so we don't have to add a redundant dep + relock.
+import { createRequire } from "module";
+import { fileURLToPath } from "url";
+import path from "path";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = path.resolve(__dirname, "../../..");
+const requireFromDb = createRequire(path.join(workspaceRoot, "lib/db/package.json"));
+const pg = requireFromDb("pg");
 
 const EMAIL = process.argv[2];
 const YES = process.argv.includes("--yes");
