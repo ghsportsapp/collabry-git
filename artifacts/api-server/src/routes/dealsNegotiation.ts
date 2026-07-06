@@ -1011,12 +1011,16 @@ async function directDealLiveNotify(id: string, deal: any, brandId: string, a: {
       title: "Deal is live!",
       body: `Brand payment confirmed. Deal is now active. Your payout: ₹${a.creatorPayout.toLocaleString("en-IN")} on completion.${deal.productRequired ? " Please share your delivery address in deal chat." : ""}`,
       relatedEntityType: "Deal", relatedEntityId: id,
+      emailTemplateId: 31, emailSubject: "Your deal is live!",
+      emailParams: { amount: Math.round(a.creatorPayout) },
     }),
     createNotification({
       userId: brandId, userType: "BRAND", type: "PAYMENT_SUCCESS",
       title: "Payment successful",
       body: `Your deal is live. Total paid: ₹${a.totalPayable.toLocaleString("en-IN")} (incl. ₹${a.gstAmount.toLocaleString("en-IN")} GST).`,
       relatedEntityType: "Deal", relatedEntityId: id,
+      emailTemplateId: 32, emailSubject: "Payment confirmed",
+      emailParams: { amount: Math.round(a.totalPayable) },
     }),
     createPopup({
       userId: deal.creatorId, userType: "CREATOR", type: "DEAL_LIVE",

@@ -54,7 +54,15 @@ async function activateDealEscrow(client: any, d: any, paymentReferenceId: strin
 
 /** "Deal is live" creator notification + both-party celebration popups. */
 async function dealLiveNotify(d: any, brandId: string, dealId: string): Promise<void> {
-  await notify(d.creatorId as string, "CREATOR", "Deal Started!", `Payment confirmed for "${d.campName}". Your deal is now active.`);
+  await createNotification({
+    userId: d.creatorId as string, userType: "CREATOR", type: "DEAL_LIVE",
+    title: "Deal Started!",
+    body: `Payment confirmed for "${d.campName}". Your deal is now active.`,
+    emailTemplateId: 30, emailSubject: "Your campaign deal is live!",
+    emailParams: { campaign_name: d.campName },
+    relatedEntityType: "Deal", relatedEntityId: dealId,
+    expiresInDays: 90,
+  }).catch(() => {});
   await createPopup({
     userId: d.creatorId as string, userType: "CREATOR", type: "DEAL_LIVE",
     title: "Congrats! Your Deal is Live 🚀",
