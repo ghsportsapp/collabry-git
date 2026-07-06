@@ -45,7 +45,37 @@ jobs:
     # runners (Azure IP ranges), so we use a runner the VPS owns instead.
     # The runner connects OUTBOUND to GitHub — no inbound port needed.
     runs-on: [self-hosted, linux, collabry-vps]
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Run deploy script
         run: /var/www/collabry/scripts-deploy.sh
+
+      # One-shot: delete shahedswe1@gmail.com from prod and fire every Brevo
+      # template to that address once. A sentinel file guarantees it never
+      # fires twice — safe to leave this block in until the next PR removes it.
+      - name: One-shot — reset shahedswe1 + resend all templates
+        run: |
+          set -euo pipefail
+          SENTINEL=/var/www/collabry/.one-shot/shahedswe1-templates-done
+          if [ -f "$SENTINEL" ]; then
+            echo "Sentinel present — one-shot already ran on $(cat "$SENTINEL"). Skipping."
+            exit 0
+          fi
+
+          API_DIR=/var/www/collabry/artifacts/api-server
+          cd "$API_DIR"
+          if [ ! -f .env ]; then
+            echo "ERROR: $API_DIR/.env not found — cannot load DATABASE_URL / BREVO_API_KEY."
+            exit 1
+          fi
+          set -a; . ./.env; set +a
+
+          echo "── Deleting shahedswe1@gmail.com from prod DB ──"
+          node scripts/deleteCreator.mjs shahedswe1@gmail.com --yes
+
+          echo "── Sending all Brevo templates to shahedswe1@gmail.com ──"
+          node scripts/sendAllTemplates.mjs shahedswe1@gmail.com Shahed
+
+          mkdir -p "$(dirname "$SENTINEL")"
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > "$SENTINEL"
+          echo "One-shot complete — sentinel written to $SENTINEL"
