@@ -253,6 +253,7 @@ router.post("/brand/deals/:id/product-issue/respond", requireBrand, async (req: 
     title: "Brand cancelled the deal",
     body: `Brand cancelled after product issue. Full refund processed for the brand.`,
     relatedEntityType: "Deal", relatedEntityId: id,
+    emailTemplateId: 49, emailSubject: "Deal cancelled",
   });
   const { handleCampaignDealCancelled } = await import("./campaigns");
   await handleCampaignDealCancelled(id as string);
@@ -367,12 +368,14 @@ router.post("/creator/deals/:id/product-issue-auto-cancel", requireCreator, asyn
     title: "Deal cancelled",
     body: `Deal cancelled after repeated product issues. Full refund has been processed for the brand.`,
     relatedEntityType: "Deal", relatedEntityId: id,
+    emailTemplateId: 49, emailSubject: "Deal cancelled",
   });
   await createNotification({
     userId: deal.brandId, userType: "BRAND", type: "DEAL_CANCELLED",
     title: "Deal cancelled after repeated product issues",
     body: `The creator was unable to proceed after the reship. Full refund processed.`,
     relatedEntityType: "Deal", relatedEntityId: id,
+    emailTemplateId: 50, emailSubject: "Deal cancelled",
   });
 
   const { handleCampaignDealCancelled } = await import("./campaigns");

@@ -124,12 +124,14 @@ async function markAllConfirmedIfReady(id: string): Promise<boolean> {
         title: "All posts confirmed — dispute window open",
         body: "⚠️ Do not delete your posted content within 7 days of deal completion. Deleting content can lead to your payment being stopped and your account being banned. You will receive your payout once the 7-day dispute window closes.",
         relatedEntityType: "DEAL", relatedEntityId: id,
+        emailTemplateId: 37, emailSubject: "All posts confirmed",
       }),
       createNotification({
         userId: p.brandId, userType: "BRAND", type: "DEAL_FINAL_POST_CONFIRMED",
         title: "All posts verified — 7-day window started",
         body: "If the creator deletes the posted content within 7 days of deal completion, you can raise a dispute from the deal page. The dispute window closes automatically after 7 days.",
         relatedEntityType: "DEAL", relatedEntityId: id,
+        emailTemplateId: 38, emailSubject: "All posts verified",
       }),
       createPopup(kycOk ? {
         userId: p.creatorId, userType: "CREATOR", type: "DEAL_COMPLETED",
@@ -908,6 +910,7 @@ router.post("/creator/deals/:id/final-post/submit", requireCreator, async (req: 
       title: "Review creator's live post links",
       body: `Confirm or flag each post link. You have ${reviewHrs}hrs before auto-confirm.`,
       relatedEntityType: "DEAL", relatedEntityId: id!,
+      emailTemplateId: 38, emailSubject: "Review creator's live posts",
     });
     await createPopup({
       userId: p.brandId, userType: "BRAND", type: "DEAL_FINAL_POST_CONFIRMED",
@@ -957,6 +960,7 @@ router.post("/brand/deals/:id/final-post/review-slot", requireBrand, async (req:
         title: `Post confirmed — ${slot.slotLabel}`,
         body: "Brand confirmed your live post link.",
         relatedEntityType: "DEAL", relatedEntityId: id!,
+        emailTemplateId: 37, emailSubject: "Brand confirmed your post",
       });
     }
   } else {
@@ -972,6 +976,7 @@ router.post("/brand/deals/:id/final-post/review-slot", requireBrand, async (req:
         title: `Your post was flagged — ${slot.slotLabel}`,
         body: `Brand flagged your live post URL. Admin is reviewing the case.`,
         relatedEntityType: "DEAL", relatedEntityId: id!,
+        emailTemplateId: 39, emailSubject: "Live post flagged — resubmit needed",
       });
       await createPopup({
         userId: p.creatorId, userType: "CREATOR", type: "DEAL_FLAGGED",
@@ -1042,6 +1047,7 @@ router.post("/creator/deals/:id/final-post/resubmit-slot", requireCreator, async
       title: `Creator resubmitted — ${slot.slotLabel}`,
       body: "The creator has updated the live post URL. Please confirm or flag again.",
       relatedEntityType: "DEAL", relatedEntityId: id!,
+      emailTemplateId: 36, emailSubject: "Creator resubmitted URL",
     });
     await createPopup({
       userId: p.brandId, userType: "BRAND", type: "DEAL_FINAL_POST_CONFIRMED",
@@ -1100,6 +1106,7 @@ router.post("/admin/deals/:id/url-flag/review", requireAdmin, async (req: Reques
       title: `Please resubmit your post URL — ${slot.slotLabel}`,
       body: note || "Admin has requested you submit a new live post URL for this slot.",
       relatedEntityType: "DEAL", relatedEntityId: id!,
+      emailTemplateId: 39, emailSubject: "Please resubmit your post URL",
     });
   }
   res.json({ ok: true });
@@ -1230,12 +1237,16 @@ router.post("/admin/deals/:id/dispute/resolve", requireAdmin, async (req: Reques
       title: outcome === "VALID" ? "Dispute resolved" : "Dispute declined",
       body: outcome === "VALID" ? "Dispute upheld. 50% refund issued." : "Dispute denied. Full payout to creator.",
       relatedEntityType: "DEAL", relatedEntityId: id!,
+      emailTemplateId: outcome === "VALID" ? 60 : 62,
+      emailSubject: outcome === "VALID" ? "Dispute upheld" : "Dispute declined",
     });
     await createNotification({
       userId: p.creatorId, userType: "CREATOR", type: "DEAL_DISPUTE_RESOLVED",
       title: "Dispute resolved",
       body: outcome === "VALID" ? "Dispute upheld. Payout cancelled." : "Dispute resolved in your favor. Full payout incoming.",
       relatedEntityType: "DEAL", relatedEntityId: id!,
+      emailTemplateId: outcome === "VALID" ? 61 : 63,
+      emailSubject: outcome === "VALID" ? "Dispute upheld — payout cancelled" : "Dispute resolved in your favour",
     });
     if (outcome === "INVALID") {
       await createPopup({
@@ -1303,12 +1314,14 @@ router.post("/admin/deals/:id/dispute/cancel", requireAdmin, async (req: Request
         title: "Dispute closed",
         body: "The dispute was closed. Creator content is verified live.",
         relatedEntityType: "DEAL", relatedEntityId: id!,
+        emailTemplateId: 64, emailSubject: "Dispute closed",
       }),
       createNotification({
         userId: p.creatorId, userType: "CREATOR", type: "DEAL_DISPUTE_RESOLVED",
         title: "Dispute resolved in your favor",
         body: "The dispute was closed. Your payout will continue normally.",
         relatedEntityType: "DEAL", relatedEntityId: id!,
+        emailTemplateId: 65, emailSubject: "Dispute resolved in your favour",
       }),
       createPopup({
         userId: p.brandId, userType: "BRAND", type: "DEAL_DISPUTE_RESOLVED",
@@ -1467,6 +1480,8 @@ router.post("/admin/deals/:id/refund-brand", requireAdmin, async (req: Request, 
       title: "Deal cancelled by Collabry",
       body: `This deal has been cancelled by Collabry. ₹${refundAmount.toLocaleString("en-IN")} has been refunded to your account. Reason: ${refundReason}`,
       relatedEntityType: "DEAL", relatedEntityId: id!,
+      emailTemplateId: 69, emailSubject: "Deal cancelled by Collabry",
+      emailParams: { reason: refundReason, amount: Math.round(refundAmount) },
     });
     await createPopup({
       userId: p.brandId, userType: "BRAND", type: "DEAL_CANCELLED",
@@ -1480,6 +1495,8 @@ router.post("/admin/deals/:id/refund-brand", requireAdmin, async (req: Request, 
       title: "Deal cancelled by Collabry",
       body: `This deal has been cancelled by Collabry. Reason: ${refundReason}`,
       relatedEntityType: "DEAL", relatedEntityId: id!,
+      emailTemplateId: 70, emailSubject: "Deal cancelled by Collabry",
+      emailParams: { reason: refundReason },
     });
     await createPopup({
       userId: p.creatorId, userType: "CREATOR", type: "DEAL_CANCELLED",
@@ -1674,6 +1691,7 @@ async function performConceptStageCancel(
       title: "Deal cancelled — escrow refunded",
       body: "The deal was cancelled at the concept stage and your escrow has been refunded in full.",
       relatedEntityType: "Deal", relatedEntityId: dealId,
+      emailTemplateId: 71, emailSubject: "Deal cancelled at concept stage",
     });
     await createPopup({
       userId: p.brandId, userType: "BRAND", type: "DEAL_CANCELLED",
@@ -1687,6 +1705,7 @@ async function performConceptStageCancel(
       title: "Deal cancelled",
       body: "The deal was cancelled at the concept stage.",
       relatedEntityType: "Deal", relatedEntityId: dealId,
+      emailTemplateId: 72, emailSubject: "Deal cancelled at concept stage",
     });
   }
   // Decrement campaign/barter slotsFilled and restore LIVE if needed
