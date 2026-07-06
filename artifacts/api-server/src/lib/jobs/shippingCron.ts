@@ -40,6 +40,8 @@ async function runDeliveryWarnings(): Promise<void> {
         body: `Your product was shipped ${daysSinceRef} days ago. If you haven't received it by day ${maxDays}, you can report non-delivery.`,
         relatedEntityType: "Deal",
         relatedEntityId: deal.id,
+        emailTemplateId: 53, emailSubject: "Product not received yet?",
+        emailParams: { day: daysSinceRef },
       });
       logger.info({ dealId: deal.id, daysSinceRef }, "Delivery warning sent");
     } catch (err) {
@@ -88,15 +90,16 @@ async function runAwbWrongAutoCancel(): Promise<void> {
         `❌ Brand did not respond to the AWB-wrong claim in time. Deal auto-cancelled and full refund issued to brand.`,
         { kind: "AWB_WRONG_AUTO_CANCEL" }
       );
-      for (const { id, type, msg } of [
-        { id: deal.brandId, type: "BRAND" as const, msg: "Deal cancelled — you did not respond to the AWB-wrong claim in time. Brand escrow has been refunded." },
-        { id: deal.creatorId, type: "CREATOR" as const, msg: "Deal cancelled — brand did not respond to the AWB-wrong claim in time." },
+      for (const { id, type, msg, tplId } of [
+        { id: deal.brandId, type: "BRAND" as const, msg: "Deal cancelled — you did not respond to the AWB-wrong claim in time. Brand escrow has been refunded.", tplId: 55 },
+        { id: deal.creatorId, type: "CREATOR" as const, msg: "Deal cancelled — brand did not respond to the AWB-wrong claim in time.", tplId: 56 },
       ]) {
         await createNotification({
           userId: id, userType: type, type: "DEAL_CANCELLED",
           title: "Deal auto-cancelled (AWB-wrong timeout)",
           body: msg,
           relatedEntityType: "Deal", relatedEntityId: deal.id,
+          emailTemplateId: tplId, emailSubject: "Deal auto-cancelled",
         });
       }
       logger.info({ dealId: deal.id }, "AWB-wrong auto-cancel complete");
@@ -148,15 +151,16 @@ async function runProductIssueAutoCancel(): Promise<void> {
         `❌ Brand did not respond to the product issue in time. Deal auto-cancelled and full refund issued.`,
         { kind: "PRODUCT_ISSUE_AUTO_CANCEL" }
       );
-      for (const { id, type, msg } of [
-        { id: deal.brandId, type: "BRAND" as const, msg: "Deal cancelled — you did not respond to the product issue in time. Escrow has been refunded to you." },
-        { id: deal.creatorId, type: "CREATOR" as const, msg: "Deal cancelled — brand did not respond to the product issue in time. Full refund issued to brand." },
+      for (const { id, type, msg, tplId } of [
+        { id: deal.brandId, type: "BRAND" as const, msg: "Deal cancelled — you did not respond to the product issue in time. Escrow has been refunded to you.", tplId: 57 },
+        { id: deal.creatorId, type: "CREATOR" as const, msg: "Deal cancelled — brand did not respond to the product issue in time. Full refund issued to brand.", tplId: 58 },
       ]) {
         await createNotification({
           userId: id, userType: type, type: "DEAL_CANCELLED",
           title: "Deal auto-cancelled (product issue timeout)",
           body: msg,
           relatedEntityType: "Deal", relatedEntityId: deal.id,
+          emailTemplateId: tplId, emailSubject: "Deal auto-cancelled",
         });
       }
       logger.info({ dealId: deal.id }, "Product issue auto-cancel complete");

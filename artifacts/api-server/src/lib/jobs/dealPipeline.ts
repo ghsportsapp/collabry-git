@@ -240,12 +240,14 @@ async function autoCancelStaleAwbWrong(): Promise<void> {
       title: "Deal auto-cancelled — no AWB response",
       body: "You did not respond to the creator's AWB-wrong claim within the deadline. The deal was cancelled and the escrow was refunded.",
       relatedEntityType: "Deal", relatedEntityId: d.id,
+      emailTemplateId: 55, emailSubject: "Deal auto-cancelled — no AWB response",
     });
     await createNotification({
       userId: d.creatorId, userType: "CREATOR", type: "AWB_WRONG_AUTO_CANCEL",
       title: "Deal auto-cancelled",
       body: "Brand did not respond in time. The deal has been cancelled.",
       relatedEntityType: "Deal", relatedEntityId: d.id,
+      emailTemplateId: 56, emailSubject: "Deal auto-cancelled",
     });
   }
 }
@@ -281,12 +283,14 @@ async function autoCancelStaleProductIssue(): Promise<void> {
       title: "Deal auto-cancelled — no issue response",
       body: "You did not respond to the creator's product issue within the deadline. The deal was cancelled.",
       relatedEntityType: "Deal", relatedEntityId: d.id,
+      emailTemplateId: 57, emailSubject: "Deal auto-cancelled — no issue response",
     });
     await createNotification({
       userId: d.creatorId, userType: "CREATOR", type: "PRODUCT_ISSUE_AUTO_CANCEL",
       title: "Deal auto-cancelled",
       body: "Brand did not respond in time. The deal has been cancelled.",
       relatedEntityType: "Deal", relatedEntityId: d.id,
+      emailTemplateId: 58, emailSubject: "Deal auto-cancelled",
     });
   }
 }
@@ -321,12 +325,16 @@ async function warnDeliveryDeadlineApproaching(): Promise<void> {
       title: "Product not delivered yet?",
       body: `It's been ${warnDay} days since shipment. If the product still hasn't arrived, you can report non-delivery on day ${d.max_delivery_days_snapshot ?? 10}.`,
       relatedEntityType: "Deal", relatedEntityId: d.id,
+      emailTemplateId: 53, emailSubject: "Product not delivered yet?",
+      emailParams: { day: warnDay },
     });
     await createNotification({
       userId: d.brandId, userType: "BRAND", type: "DELIVERY_WARNING",
       title: "Creator hasn't received the product",
       body: `${warnDay} days since shipment with no receipt. Please verify shipment status with your courier.`,
       relatedEntityType: "Deal", relatedEntityId: d.id,
+      emailTemplateId: 54, emailSubject: "Creator hasn't received the product",
+      emailParams: { day: warnDay },
     });
   }
 }
@@ -374,6 +382,7 @@ async function escalateConceptInactivity(): Promise<void> {
         title: "Concept submission pending",
         body: "Submit your concept to keep the deal moving before the deadline.",
         relatedEntityType: "Deal", relatedEntityId: d.id,
+        emailTemplateId: 41, emailSubject: "Reminder — submit your concept",
       });
       continue;
     }
@@ -385,6 +394,7 @@ async function escalateConceptInactivity(): Promise<void> {
         title: "Time is Running",
         body: "Upload your concept video to keep the collaboration moving smoothly.",
         relatedEntityType: "Deal", relatedEntityId: d.id,
+        emailTemplateId: 40, emailSubject: "Time is running — upload your concept",
       });
       await createPopup({
         userId: d.creatorId as string, userType: "CREATOR", type: "DEAL_INACTIVITY_EARLY_NUDGE",
@@ -421,6 +431,8 @@ async function escalateFinalInactivity(): Promise<void> {
         title: "Creator hasn't published yet",
         body: `It's been ${FINAL_ESCALATE_DAY} days since content approval. Admin has been notified.`,
         relatedEntityType: "Deal", relatedEntityId: d.id,
+        emailTemplateId: 44, emailSubject: "Creator hasn't published yet",
+        emailParams: { day: FINAL_ESCALATE_DAY },
       });
       continue;
     }
@@ -432,6 +444,8 @@ async function escalateFinalInactivity(): Promise<void> {
         title: "Live URL still pending",
         body: "Publish on Instagram and submit the live URL to complete the deal.",
         relatedEntityType: "Deal", relatedEntityId: d.id,
+        emailTemplateId: 43, emailSubject: "Live URL still pending",
+        emailParams: { day: FINAL_WARN_DAY },
       });
       continue;
     }
@@ -443,6 +457,8 @@ async function escalateFinalInactivity(): Promise<void> {
         title: "Time to publish",
         body: "Your content was approved — publish on Instagram and submit the live URL.",
         relatedEntityType: "Deal", relatedEntityId: d.id,
+        emailTemplateId: 42, emailSubject: "Time to publish",
+        emailParams: { day: FINAL_NUDGE_DAY },
       });
     }
   }
@@ -526,6 +542,7 @@ async function autoApproveExtensions(): Promise<void> {
         title: "Timeline Extension Auto-Approved ✅",
         body: `Your ${ext.extraDays}-day extension was auto-approved (brand didn't respond in 48h). New deadline: ${fmtDate}.`,
         relatedEntityType: "DEAL", relatedEntityId: ext.dealId,
+        emailParams: { new_deadline: fmtDate },
       });
       await createNotification({
         userId: ext.brandId, userType: "BRAND",
@@ -533,6 +550,8 @@ async function autoApproveExtensions(): Promise<void> {
         title: "Timeline Extension Auto-Approved",
         body: `Creator's ${ext.extraDays}-day extension was auto-approved as you didn't respond within 48h. New deadline: ${fmtDate}.`,
         relatedEntityType: "DEAL", relatedEntityId: ext.dealId,
+        emailTemplateId: 75, emailSubject: "Extension auto-approved",
+        emailParams: { new_deadline: fmtDate, extension_days: ext.extraDays },
       });
     } catch (e) {
       await client.query("ROLLBACK");

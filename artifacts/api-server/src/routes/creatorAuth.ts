@@ -8,6 +8,7 @@ import {
 import { saveRefreshToken, revokeToken, rotateRefreshToken } from "../lib/session";
 import { sendEmail } from "../lib/email";
 import { renderPasswordResetEmail } from "../lib/notificationEmail";
+import { createNotification } from "../lib/notifications";
 import { logger } from "../lib/logger";
 import crypto from "crypto";
 
@@ -231,6 +232,14 @@ router.post("/auth/creator/signup", async (req: Request, res: Response): Promise
   } finally {
     client.release();
   }
+
+  // Welcome notification (in-app + Brevo template 2 via CREATOR_WELCOME).
+  await createNotification({
+    userId: creatorId, userType: "CREATOR", type: "CREATOR_WELCOME",
+    title: "Welcome to Collabry! 🎉",
+    body: "Your profile is under review — you'll get notified once it's approved and live.",
+    expiresInDays: 90,
+  }).catch(() => {});
 
   const accessToken = generateAccessToken(creatorId, UserType.CREATOR, getAccessSecret());
   const refreshToken = generateRefreshToken(creatorId, UserType.CREATOR);
