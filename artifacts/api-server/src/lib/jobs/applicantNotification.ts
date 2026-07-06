@@ -1,13 +1,6 @@
 import { pool } from "@workspace/db";
 import { createPopup } from "../popups";
-
-async function notify(userId: string, userType: string, title: string, body: string, type = "INFO") {
-  await pool.query(
-    `INSERT INTO "Notification" (id,"userId","userType",type,title,body,"isRead","createdAt","expiresAt")
-     VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,false,NOW(),NOW()+INTERVAL '90 days')`,
-    [userId, userType, type, title, body]
-  ).catch(() => {});
-}
+import { createNotification } from "../notifications";
 
 export async function runApplicantNotification(): Promise<void> {
   try {
@@ -36,12 +29,15 @@ export async function runApplicantNotification(): Promise<void> {
       const brandId: string = row.brandId;
       const campaignId: string = row.id;
 
-      await notify(
-        brandId, "BRAND",
-        "Creators are interested!",
-        `${count} creator${count > 1 ? "s have" : " has"} applied to your campaign "${name}". Review applicants now.`,
-        "INFO"
-      );
+      await createNotification({
+        userId: brandId, userType: "BRAND", type: "CAMPAIGN_CREATORS_INTERESTED",
+        title: "Creators are interested!",
+        body: `${count} creator${count > 1 ? "s have" : " has"} applied to your campaign "${name}". Review applicants now.`,
+        emailTemplateId: 18, emailSubject: "Creators are interested in your campaign",
+        emailParams: { campaign_name: name, credits: count },
+        relatedEntityType: "CAMPAIGN", relatedEntityId: campaignId,
+        expiresInDays: 90,
+      }).catch(() => {});
       await createPopup({
         userId: brandId,
         userType: "BRAND",
@@ -80,12 +76,15 @@ export async function runApplicantNotification(): Promise<void> {
       const brandId: string = row.brandId;
       const barterId: string = row.id;
 
-      await notify(
-        brandId, "BRAND",
-        "Creators are interested!",
-        `${count} creator${count > 1 ? "s have" : " has"} applied to your barter campaign "${name}". Review applicants now.`,
-        "INFO"
-      );
+      await createNotification({
+        userId: brandId, userType: "BRAND", type: "BARTER_CREATORS_INTERESTED",
+        title: "Creators are interested!",
+        body: `${count} creator${count > 1 ? "s have" : " has"} applied to your barter campaign "${name}". Review applicants now.`,
+        emailTemplateId: 26, emailSubject: "Creators are interested in your barter campaign",
+        emailParams: { campaign_name: name, credits: count },
+        relatedEntityType: "BARTER_CAMPAIGN", relatedEntityId: barterId,
+        expiresInDays: 90,
+      }).catch(() => {});
       await createPopup({
         userId: brandId,
         userType: "BRAND",

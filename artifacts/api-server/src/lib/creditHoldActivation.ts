@@ -91,12 +91,19 @@ export async function activateCreditHoldCampaigns(brandId: string): Promise<void
       }
 
       await client.query("COMMIT");
+      const isPaid = item._type === "Campaign";
       await createNotification({
         userId: brandId,
         userType: "BRAND",
-        type: "CAMPAIGN_LIVE",
-        title: item._type === "Campaign" ? "Campaign is Live!" : "Barter Campaign is Live!",
-        body: `Your ${item._type === "BarterCampaign" ? "barter " : ""}campaign "${item.name}" is now live — credits have been deducted. Creators can start applying.`,
+        type: isPaid ? "CAMPAIGN_BACK_LIVE" : "BARTER_BACK_LIVE",
+        title: isPaid ? "Campaign is Live!" : "Barter Campaign is Live!",
+        body: `Your ${isPaid ? "" : "barter "}campaign "${item.name}" is now live — credits have been deducted. Creators can start applying.`,
+        emailTemplateId: isPaid ? 17 : 25,
+        emailSubject: isPaid ? "Your campaign is back live!" : "Your barter campaign is back live!",
+        emailParams: { campaign_name: item.name, credits: creditsCost },
+        relatedEntityType: isPaid ? "CAMPAIGN" : "BARTER_CAMPAIGN",
+        relatedEntityId: item.id,
+        expiresInDays: 90,
       }).catch(() => {});
     } catch {
       await client.query("ROLLBACK");

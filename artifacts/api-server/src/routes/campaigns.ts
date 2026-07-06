@@ -6,6 +6,7 @@ import { requireBrand } from "../middleware/requireBrand";
 import { requireCreator } from "../middleware/requireCreator";
 import { broadcastToAllCreators } from "../lib/sseManager";
 import { createPopup } from "../lib/popups";
+import { createNotification } from "../lib/notifications";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -1092,8 +1093,15 @@ router.post("/creator/barter/:id/applications/:appId/confirm", requireCreator, a
     );
     await client.query(`UPDATE "BarterApplication" SET status='CONFIRMED',"confirmedAt"=NOW(),"dealId"=$1 WHERE id=$2`, [dealId, req.params["appId"]]);
     await client.query("COMMIT");
-    await notify(a.brandId as string, "BRAND", "Creator Confirmed!",
-      `A creator confirmed your barter campaign "${a.name}". Ship ${a.productName} to them after they share their address in the deal chat.`);
+    await createNotification({
+      userId: a.brandId as string, userType: "BRAND", type: "BARTER_CREATOR_CONFIRMED",
+      title: "Creator Confirmed!",
+      body: `A creator confirmed your barter campaign "${a.name}". Ship ${a.productName} to them after they share their address in the deal chat.`,
+      emailTemplateId: 23, emailSubject: "Creator confirmed your barter campaign",
+      emailParams: { campaign_name: a.name, product_name: a.productName },
+      relatedEntityType: "BARTER_CAMPAIGN", relatedEntityId: a.barterId as string,
+      expiresInDays: 90,
+    }).catch(() => {});
     await createPopup({
       userId: a.brandId as string, userType: "BRAND", type: "DEAL_LIVE",
       title: "Congrats! Your Deal is Live 🚀",
@@ -1492,7 +1500,15 @@ router.post("/admin/campaigns/:id/cancel", requireAdmin, async (req: Request, re
   const camp = await pool.query(`SELECT * FROM "Campaign" WHERE id=$1`, [req.params["id"]]);
   if (!camp.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
   await pool.query(`UPDATE "Campaign" SET status='CANCELLED' WHERE id=$1`, [req.params["id"]]);
-  await notify(camp.rows[0].brandId, "BRAND", "Campaign Cancelled", `Your campaign "${camp.rows[0].name}" has been cancelled.`);
+  await createNotification({
+    userId: camp.rows[0].brandId, userType: "BRAND", type: "CAMPAIGN_CANCELLED",
+    title: "Campaign Cancelled",
+    body: `Your campaign "${camp.rows[0].name}" has been cancelled.`,
+    emailTemplateId: 15, emailSubject: "Campaign cancelled",
+    emailParams: { campaign_name: camp.rows[0].name },
+    relatedEntityType: "CAMPAIGN", relatedEntityId: req.params["id"] as string,
+    expiresInDays: 90,
+  }).catch(() => {});
   res.json({ ok: true });
 });
 
@@ -1511,8 +1527,15 @@ router.post("/admin/campaigns/:id/approve", requireAdmin, async (req: Request, r
 
   if (balance < creditsCost) {
     await pool.query(`UPDATE "Campaign" SET status='CREDIT_HOLD',"adminReviewedBy"=$1 WHERE id=$2`, [adminId, id]);
-    await notify(c.brandId, "BRAND", "Campaign Approved — Top Up Needed",
-      `Your campaign "${c.name}" was approved! You need ${creditsCost - balance} more credit(s) to go live. Top up to activate.`);
+    await createNotification({
+      userId: c.brandId, userType: "BRAND", type: "CAMPAIGN_TOP_UP_NEEDED",
+      title: "Campaign Approved — Top Up Needed",
+      body: `Your campaign "${c.name}" was approved! You need ${creditsCost - balance} more credit(s) to go live. Top up to activate.`,
+      emailTemplateId: 12, emailSubject: "Campaign approved — top-up needed",
+      emailParams: { campaign_name: c.name, credits: creditsCost - balance },
+      relatedEntityType: "CAMPAIGN", relatedEntityId: id,
+      expiresInDays: 90,
+    }).catch(() => {});
     await createPopup({
       userId: c.brandId, userType: "BRAND", type: "CAMPAIGN_APPROVED",
       title: "Campaign Approved — Top Up Needed 💳",
@@ -1536,7 +1559,15 @@ router.post("/admin/campaigns/:id/approve", requireAdmin, async (req: Request, r
     await client.query("COMMIT");
   } catch { await client.query("ROLLBACK"); res.status(500).json({ error: "Internal error" }); return; }
   finally { client.release(); }
-  await notify(c.brandId, "BRAND", "Campaign is Live!", `Your campaign "${c.name}" has been approved and is now live! Creators can apply.`);
+  await createNotification({
+    userId: c.brandId, userType: "BRAND", type: "CAMPAIGN_LIVE",
+    title: "Campaign is Live!",
+    body: `Your campaign "${c.name}" has been approved and is now live! Creators can apply.`,
+    emailTemplateId: 11, emailSubject: "Your campaign is live!",
+    emailParams: { campaign_name: c.name },
+    relatedEntityType: "CAMPAIGN", relatedEntityId: id,
+    expiresInDays: 90,
+  }).catch(() => {});
   await createPopup({
     userId: c.brandId, userType: "BRAND", type: "CAMPAIGN_APPROVED",
     title: "Your Campaign is Live! 🎉",
@@ -1558,8 +1589,15 @@ router.post("/admin/campaigns/:id/reject", requireAdmin, async (req: Request, re
   const camp = await pool.query(`SELECT * FROM "Campaign" WHERE id=$1 AND status='PENDING_APPROVAL'`, [id]);
   if (!camp.rows[0]) { res.status(404).json({ error: "Campaign not found or not pending approval" }); return; }
   await pool.query(`UPDATE "Campaign" SET status='REJECTED',"adminRejectionReason"=$1,"adminReviewedBy"=$2 WHERE id=$3`, [reason.trim(), adminId, id]);
-  await notify(camp.rows[0].brandId, "BRAND", "Campaign Not Approved",
-    `Your campaign "${camp.rows[0].name}" was not approved. Reason: ${reason.trim()}`);
+  await createNotification({
+    userId: camp.rows[0].brandId, userType: "BRAND", type: "CAMPAIGN_REJECTED",
+    title: "Campaign Not Approved",
+    body: `Your campaign "${camp.rows[0].name}" was not approved. Reason: ${reason.trim()}`,
+    emailTemplateId: 13, emailSubject: "Campaign not approved",
+    emailParams: { campaign_name: camp.rows[0].name, reason: reason.trim() },
+    relatedEntityType: "CAMPAIGN", relatedEntityId: id,
+    expiresInDays: 90,
+  }).catch(() => {});
   await createPopup({
     userId: camp.rows[0].brandId, userType: "BRAND", type: "CAMPAIGN_REJECTED",
     title: "Campaign Not Approved ❌",
@@ -1578,8 +1616,15 @@ router.post("/admin/campaigns/:id/hold", requireAdmin, async (req: Request, res:
   const camp = await pool.query(`SELECT * FROM "Campaign" WHERE id=$1 AND status='PENDING_APPROVAL'`, [id]);
   if (!camp.rows[0]) { res.status(404).json({ error: "Campaign not found or not pending approval" }); return; }
   await pool.query(`UPDATE "Campaign" SET "adminReviewedBy"=$1,"heldAt"=NOW(),"adminNotes"=$2 WHERE id=$3`, [adminId, message ?? null, id]);
-  await notify(camp.rows[0].brandId, "BRAND", "Campaign On Hold",
-    `Your campaign "${camp.rows[0].name}" has been put on hold. Our team will contact you shortly.`);
+  await createNotification({
+    userId: camp.rows[0].brandId, userType: "BRAND", type: "CAMPAIGN_ON_HOLD",
+    title: "Campaign On Hold",
+    body: `Your campaign "${camp.rows[0].name}" has been put on hold. Our team will contact you shortly.`,
+    emailTemplateId: 14, emailSubject: "Campaign on hold",
+    emailParams: { campaign_name: camp.rows[0].name, admin_message: message ?? "" },
+    relatedEntityType: "CAMPAIGN", relatedEntityId: id,
+    expiresInDays: 90,
+  }).catch(() => {});
   res.json({ ok: true });
 });
 
@@ -1615,8 +1660,15 @@ router.post("/admin/barter/:id/approve", requireAdmin, async (req: Request, res:
   const balance = brandBalance.rows[0]?.creditBalance ?? 0;
   if (balance < creditsCost) {
     await pool.query(`UPDATE "BarterCampaign" SET status='CREDIT_HOLD',"adminReviewedBy"=$1 WHERE id=$2`, [adminId, b.id]);
-    await notify(b.brandId, "BRAND", "Campaign Approved — Top Up Needed",
-      `Your barter campaign "${b.name}" was approved! You need ${creditsCost - balance} more credit(s) to go live. Top up to activate.`);
+    await createNotification({
+      userId: b.brandId, userType: "BRAND", type: "BARTER_TOP_UP_NEEDED",
+      title: "Campaign Approved — Top Up Needed",
+      body: `Your barter campaign "${b.name}" was approved! You need ${creditsCost - balance} more credit(s) to go live. Top up to activate.`,
+      emailTemplateId: 20, emailSubject: "Barter approved — top-up needed",
+      emailParams: { campaign_name: b.name, credits: creditsCost - balance },
+      relatedEntityType: "BARTER_CAMPAIGN", relatedEntityId: b.id,
+      expiresInDays: 90,
+    }).catch(() => {});
     await createPopup({
       userId: b.brandId, userType: "BRAND", type: "CAMPAIGN_APPROVED",
       title: "Barter Campaign Approved — Top Up Needed 💳",
@@ -1643,7 +1695,15 @@ router.post("/admin/barter/:id/approve", requireAdmin, async (req: Request, res:
     await client.query("COMMIT");
   } catch { await client.query("ROLLBACK"); res.status(500).json({ error: "Internal error" }); return; }
   finally { client.release(); }
-  await notify(b.brandId, "BRAND", "Barter Campaign Live!", `Your barter campaign "${b.name}" was approved! ${creditsCost} credits deducted. Campaign is now live.`);
+  await createNotification({
+    userId: b.brandId, userType: "BRAND", type: "BARTER_LIVE",
+    title: "Barter Campaign Live!",
+    body: `Your barter campaign "${b.name}" was approved! ${creditsCost} credits deducted. Campaign is now live.`,
+    emailTemplateId: 19, emailSubject: "Your barter campaign is live!",
+    emailParams: { campaign_name: b.name, credits: creditsCost },
+    relatedEntityType: "BARTER_CAMPAIGN", relatedEntityId: b.id,
+    expiresInDays: 90,
+  }).catch(() => {});
   await createPopup({
     userId: b.brandId, userType: "BRAND", type: "CAMPAIGN_APPROVED",
     title: "Your Barter Campaign is Live! 🎉",
@@ -1666,8 +1726,15 @@ router.post("/admin/barter/:id/reject", requireAdmin, async (req: Request, res: 
     `UPDATE "BarterCampaign" SET status='REJECTED',"adminRejectionReason"=$1,"rejectionReason"=$1,"adminReviewedBy"=$2 WHERE id=$3`,
     [reason.trim(), adminId, req.params["id"]]
   );
-  await notify(barter.rows[0].brandId, "BRAND", "Barter Campaign Not Approved",
-    `Your barter campaign "${barter.rows[0].name}" was not approved. Reason: ${reason.trim()}`);
+  await createNotification({
+    userId: barter.rows[0].brandId, userType: "BRAND", type: "BARTER_REJECTED",
+    title: "Barter Campaign Not Approved",
+    body: `Your barter campaign "${barter.rows[0].name}" was not approved. Reason: ${reason.trim()}`,
+    emailTemplateId: 21, emailSubject: "Barter campaign not approved",
+    emailParams: { campaign_name: barter.rows[0].name, reason: reason.trim() },
+    relatedEntityType: "BARTER_CAMPAIGN", relatedEntityId: req.params["id"] as string,
+    expiresInDays: 90,
+  }).catch(() => {});
   await createPopup({
     userId: barter.rows[0].brandId, userType: "BRAND", type: "CAMPAIGN_REJECTED",
     title: "Barter Campaign Not Approved ❌",
@@ -1742,11 +1809,17 @@ export async function expireCampaign(campaignId: string): Promise<void> {
   await pool.query(`UPDATE "CampaignApplication" SET status='EXPIRED',"expiredAt"=NOW() WHERE "campaignId"=$1 AND status='SELECTED' AND "confirmationDeadline" < NOW()`, [campaignId]);
   const pendingApps = await pool.query(`SELECT "creatorId" FROM "CampaignApplication" WHERE "campaignId"=$1 AND status IN ('PENDING','SHORTLISTED')`, [campaignId]);
   for (const pa of pendingApps.rows) await notify(pa.creatorId as string, "CREATOR", "Campaign Closed", `The campaign "${c.name}" has closed.`);
-  await notify(c.brandId as string, "BRAND", "Campaign Expired",
-    c.slotsFilled > 0
+  await createNotification({
+    userId: c.brandId as string, userType: "BRAND", type: "CAMPAIGN_EXPIRED",
+    title: "Campaign Expired",
+    body: c.slotsFilled > 0
       ? `${c.slotsFilled} of ${c.slotCount} slots filled in "${c.name}".`
-      : `Your campaign "${c.name}" received no accepted applications.`
-  );
+      : `Your campaign "${c.name}" received no accepted applications.`,
+    emailTemplateId: 16, emailSubject: "Campaign expired",
+    emailParams: { campaign_name: c.name },
+    relatedEntityType: "CAMPAIGN", relatedEntityId: campaignId,
+    expiresInDays: 90,
+  }).catch(() => {});
 }
 
 export async function expireBarterCampaign(barterId: string): Promise<void> {
@@ -1756,7 +1829,15 @@ export async function expireBarterCampaign(barterId: string): Promise<void> {
   await pool.query(`UPDATE "BarterCampaign" SET status='EXPIRED' WHERE id=$1`, [barterId]);
   const pendingApps = await pool.query(`SELECT "creatorId" FROM "BarterApplication" WHERE "barterId"=$1 AND status='PENDING'`, [barterId]);
   for (const pa of pendingApps.rows) await notify(pa.creatorId, "CREATOR", "Campaign Closed", `The barter campaign "${b.name}" has closed.`);
-  await notify(b.brandId, "BRAND", "Barter Campaign Expired", `Your barter campaign "${b.name}" has closed.`);
+  await createNotification({
+    userId: b.brandId, userType: "BRAND", type: "BARTER_EXPIRED",
+    title: "Barter Campaign Expired",
+    body: `Your barter campaign "${b.name}" has closed.`,
+    emailTemplateId: 24, emailSubject: "Barter campaign expired",
+    emailParams: { campaign_name: b.name },
+    relatedEntityType: "BARTER_CAMPAIGN", relatedEntityId: barterId,
+    expiresInDays: 90,
+  }).catch(() => {});
 }
 
 export default router;
