@@ -25,12 +25,23 @@ type UserType = "BRAND" | "CREATOR";
 
 // Unambiguous single-template, single-recipient types.
 const SIMPLE: Record<string, ResolvedTemplate> = {
+  // Creator profile approval — the actual notification type strings emitted from
+  // adminCreators.ts (CREATOR_APPROVED / CREATOR_REJECTED). PROFILE_* kept as
+  // aliases for anywhere else that might still emit them.
+  CREATOR_APPROVED: { templateId: 3, subject: "You're live on Collabry!", requiredParams: [] },
+  CREATOR_REJECTED: { templateId: 4, subject: "Profile not approved", requiredParams: ["reason"] },
   PROFILE_APPROVED: { templateId: 3, subject: "You're live on Collabry!", requiredParams: [] },
   PROFILE_REJECTED: { templateId: 4, subject: "Profile not approved", requiredParams: ["reason"] },
+  // Creator suspend/unsuspend uses CREATOR_SUSPENDED / CREATOR_UNSUSPENDED types
+  // in code; brand suspend/unsuspend uses ACCOUNT_SUSPENDED / ACCOUNT_UNSUSPENDED
+  // (see BY_USER_TYPE below for those).
+  CREATOR_SUSPENDED: { templateId: 6, subject: "Account suspended", requiredParams: ["reason"] },
+  CREATOR_UNSUSPENDED: { templateId: 7, subject: "Welcome back!", requiredParams: [] },
   KYC_APPROVED: { templateId: 8, subject: "KYC verified!", requiredParams: [] },
   KYC_REJECTED: { templateId: 9, subject: "KYC needs attention", requiredParams: ["reason"] },
   FIELD_REQUIRED: { templateId: 10, subject: "Action needed — update profile", requiredParams: ["field_name"] },
 
+  CREATOR_WELCOME: { templateId: 2, subject: "Welcome to Collabry!", requiredParams: [] },
   WELCOME_CREDITS: { templateId: 1, subject: "Welcome to Collabry!", requiredParams: ["credits"] },
 
   REQUEST_COUNTERED: { templateId: 28, subject: "Counter-offer received", requiredParams: ["creator_name", "counter_amount"] },
@@ -68,6 +79,12 @@ const BY_USER_TYPE: Record<string, Partial<Record<UserType, ResolvedTemplate>>> 
   ACCOUNT_UNSUSPENDED: {
     CREATOR: { templateId: 7, subject: "Welcome back!", requiredParams: [] },
     BRAND: { templateId: 79, subject: "Welcome back!", requiredParams: ["admin_message"] },
+  },
+  // Sent to brand when creator accepts brand's offer (template 27), or to
+  // creator when brand accepts creator's counter (template 29).
+  REQUEST_ACCEPTED: {
+    BRAND: { templateId: 27, subject: "Creator accepted your offer", requiredParams: [] },
+    CREATOR: { templateId: 29, subject: "Brand accepted your counter", requiredParams: [] },
   },
 };
 

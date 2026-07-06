@@ -134,21 +134,6 @@ router.post("/admin/brands/:id/adjust-credits", requireAdmin, async (req: Reques
       [adminId, id, JSON.stringify({ type, requestedAmount: amount, actualDelta: Math.abs(actualDelta), newBalance, expiresAt }), reason.trim()]
     );
 
-    const notifType = type === "add" ? "ADMIN_GIFT_RECEIVED" : "ADMIN_CREDIT_REMOVED";
-    const notifAmount = Math.abs(actualDelta);
-    const notifTitle = type === "add"
-      ? `You received ${notifAmount} free credit${notifAmount === 1 ? "" : "s"}!`
-      : `${notifAmount} credit${notifAmount === 1 ? "" : "s"} removed`;
-    const expiryStr = expiresAt
-      ? ` · Expires in ${expiryDays} day${expiryDays === 1 ? "" : "s"} (${expiresAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})`
-      : "";
-    const notifBody = `Reason: ${reason.trim()}${expiryStr}`;
-    await client.query(
-      `INSERT INTO "Notification" (id,"userId","userType",type,title,body,"isRead","expiresAt","createdAt")
-       VALUES (gen_random_uuid(),$1,'BRAND',$2,$3,$4,false,NOW() + INTERVAL '90 days',NOW())`,
-      [id, notifType, notifTitle, notifBody]
-    );
-
     await client.query("COMMIT");
     if (type === "add" && actualDelta > 0) {
       activateCreditHoldCampaigns(id).catch(() => {});
@@ -158,6 +143,26 @@ router.post("/admin/brands/:id/adjust-credits", requireAdmin, async (req: Reques
     throw err;
   } finally {
     client.release();
+  }
+
+  // Notification fires only after a successful commit so a rolled-back
+  // adjustment doesn't leak a bogus "credits added" message.
+  const notifType = type === "add" ? "ADMIN_GIFT_RECEIVED" : "ADMIN_CREDIT_REMOVED";
+  const notifAmount = Math.abs(actualDelta);
+  const notifTitle = type === "add"
+    ? `You received ${notifAmount} free credit${notifAmount === 1 ? "" : "s"}!`
+    : `${notifAmount} credit${notifAmount === 1 ? "" : "s"} removed`;
+  const expiryStr = expiresAt
+    ? ` · Expires in ${expiryDays} day${expiryDays === 1 ? "" : "s"} (${expiresAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})`
+    : "";
+  const notifBody = `Reason: ${reason.trim()}${expiryStr}`;
+  if (notifAmount > 0) {
+    await createNotification({
+      userId: id, userType: "BRAND", type: notifType,
+      title: notifTitle, body: notifBody,
+      emailParams: { credits: notifAmount, admin_message: reason.trim() },
+      expiresInDays: 90,
+    }).catch(() => {});
   }
 
   // Popup for credit adjustment

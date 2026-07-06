@@ -1,4 +1,5 @@
 import { createPopup } from "../lib/popups";
+import { createNotification } from "../lib/notifications";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { getSupportEmail } from "../lib/supportEmail";
@@ -157,11 +158,11 @@ router.post("/admin/creators/:id/approve", requireAdmin, async (req: Request, re
   const notifBody = isNewSignup
     ? "Your Collabry profile has been approved! You can now receive brand requests."
     : `Your updated ${summary} have been approved and are now live.`;
-  await pool.query(
-    `INSERT INTO "Notification" (id,"userId","userType",type,title,body,"isRead","expiresAt","createdAt")
-     VALUES (gen_random_uuid(),$1,'CREATOR','CREATOR_APPROVED',$2,$3,false,NOW()+INTERVAL '90 days',NOW())`,
-    [id, notifTitle, notifBody]
-  );
+  await createNotification({
+    userId: id, userType: "CREATOR", type: "CREATOR_APPROVED",
+    title: notifTitle, body: notifBody,
+    expiresInDays: 90,
+  }).catch(() => {});
   await pool.query(
     `INSERT INTO "AdminActionLog" (id,"adminId",action,"entityType","entityId",details,"createdAt")
      VALUES (gen_random_uuid(),$1,'APPROVE_CREATOR','CREATOR',$2,$3::jsonb,NOW())`,
@@ -204,11 +205,12 @@ router.post("/admin/creators/:id/reject", requireAdmin, async (req: Request, res
     const notifBody = freeReason?.trim()
       ? `Your updated ${summary} were not approved. Reason: ${freeReason.trim()}`
       : `Your updated ${summary} were not approved. Your current profile remains active.`;
-    await pool.query(
-      `INSERT INTO "Notification" (id,"userId","userType",type,title,body,"isRead","expiresAt","createdAt")
-       VALUES (gen_random_uuid(),$1,'CREATOR','CREATOR_REJECTED',$2,$3,false,NOW()+INTERVAL '90 days',NOW())`,
-      [id, "Update Not Approved", notifBody]
-    );
+    await createNotification({
+      userId: id, userType: "CREATOR", type: "CREATOR_REJECTED",
+      title: "Update Not Approved", body: notifBody,
+      emailParams: { reason: freeReason?.trim() || `Updates to ${summary} were not approved.` },
+      expiresInDays: 90,
+    }).catch(() => {});
     await pool.query(
       `INSERT INTO "AdminActionLog" (id,"adminId",action,"entityType","entityId",details,"createdAt")
        VALUES (gen_random_uuid(),$1,'REJECT_PROFILE_CHANGE','CREATOR',$2,$3::jsonb,NOW())`,
@@ -243,11 +245,12 @@ router.post("/admin/creators/:id/reject", requireAdmin, async (req: Request, res
     `UPDATE "Creator" SET status='REJECTED', "rejectionReason"=$1, "rejectionSolution"=$2, "rejectionNote"=NULL, "updatedAt"=NOW() WHERE id=$3`,
     [reason, solution || null, id]
   );
-  await pool.query(
-    `INSERT INTO "Notification" (id,"userId","userType",type,title,body,"isRead","expiresAt","createdAt")
-     VALUES (gen_random_uuid(),$1,'CREATOR','CREATOR_REJECTED',$2,$3,false,NOW()+INTERVAL '90 days',NOW())`,
-    [id, "Profile Review Update", `Your profile was not approved. Reason: ${reason}.`]
-  );
+  await createNotification({
+    userId: id, userType: "CREATOR", type: "CREATOR_REJECTED",
+    title: "Profile Review Update", body: `Your profile was not approved. Reason: ${reason}.`,
+    emailParams: { reason },
+    expiresInDays: 90,
+  }).catch(() => {});
   await pool.query(
     `INSERT INTO "AdminActionLog" (id,"adminId",action,"entityType","entityId",details,"createdAt")
      VALUES (gen_random_uuid(),$1,'REJECT_CREATOR','CREATOR',$2,$3::jsonb,NOW())`,
@@ -274,11 +277,13 @@ router.post("/admin/creators/:id/suspend", requireAdmin, async (req: Request, re
     [adminId, reason, id]
   );
   const suspendEmail = await getSupportEmail();
-  await pool.query(
-    `INSERT INTO "Notification" (id,"userId","userType",type,title,body,"isRead","expiresAt","createdAt")
-     VALUES (gen_random_uuid(),$1,'CREATOR','CREATOR_SUSPENDED',$2,$3,false,NOW()+INTERVAL '90 days',NOW())`,
-    [id, "Account Suspended", `Your account has been suspended. Reason: ${reason}. Contact ${suspendEmail}`]
-  );
+  await createNotification({
+    userId: id, userType: "CREATOR", type: "CREATOR_SUSPENDED",
+    title: "Account Suspended",
+    body: `Your account has been suspended. Reason: ${reason}. Contact ${suspendEmail}`,
+    emailParams: { reason },
+    expiresInDays: 90,
+  }).catch(() => {});
   await pool.query(
     `INSERT INTO "AdminActionLog" (id,"adminId",action,"entityType","entityId",details,"createdAt")
      VALUES (gen_random_uuid(),$1,'SUSPEND_CREATOR','CREATOR',$2,$3::jsonb,NOW())`,
@@ -301,11 +306,12 @@ router.post("/admin/creators/:id/unsuspend", requireAdmin, async (req: Request, 
   await pool.query(
     `UPDATE "Creator" SET status='ACTIVE', "suspendedAt"=NULL, "suspendedBy"=NULL, "suspensionReason"=NULL, "updatedAt"=NOW() WHERE id=$1`, [id]
   );
-  await pool.query(
-    `INSERT INTO "Notification" (id,"userId","userType",type,title,body,"isRead","expiresAt","createdAt")
-     VALUES (gen_random_uuid(),$1,'CREATOR','CREATOR_UNSUSPENDED',$2,$3,false,NOW()+INTERVAL '90 days',NOW())`,
-    [id, "Account Reactivated ✓", "Your Collabry account has been reactivated. Welcome back!"]
-  );
+  await createNotification({
+    userId: id, userType: "CREATOR", type: "CREATOR_UNSUSPENDED",
+    title: "Account Reactivated ✓",
+    body: "Your Collabry account has been reactivated. Welcome back!",
+    expiresInDays: 90,
+  }).catch(() => {});
   await pool.query(
     `INSERT INTO "AdminActionLog" (id,"adminId",action,"entityType","entityId",details,"createdAt")
      VALUES (gen_random_uuid(),$1,'UNSUSPEND_CREATOR','CREATOR',$2,$3::jsonb,NOW())`,
