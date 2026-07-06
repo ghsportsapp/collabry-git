@@ -219,6 +219,7 @@ router.post("/auth/brand/signup", async (req: Request, res: Response): Promise<v
     type: "WELCOME_CREDITS",
     title: "Welcome to Collabry! 🎉",
     body: `You received ${freeCredits} free credit${freeCredits === 1 ? "" : "s"} to start collaborating. Use them to unlock creator profiles and post campaigns.`,
+    emailParams: { credits: freeCredits },
   }).catch(() => {});
   await createPopup({
     userId: brandId,

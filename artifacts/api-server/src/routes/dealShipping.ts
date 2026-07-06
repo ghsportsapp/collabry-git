@@ -128,6 +128,7 @@ router.post("/creator/deals/:id/product-issue", requireCreator, async (req: Requ
     title: "Creator raised a product issue",
     body: `Creator has reported a product issue. Please review and respond — Reship, ask creator to make do, or cancel the deal.`,
     relatedEntityType: "Deal", relatedEntityId: id,
+    emailParams: { issue: desc },
   });
 
   res.json({ ok: true });
@@ -196,6 +197,7 @@ router.post("/brand/deals/:id/product-issue/respond", requireBrand, async (req: 
       title: "Brand reshipped the product",
       body: `New AWB: ${awbT} via ${courierT}. Shipped on ${shipDateT}.`,
       relatedEntityType: "Deal", relatedEntityId: id,
+      emailParams: { awb: awbT },
     });
     res.json({ ok: true, action: "RESHIP" });
     return;
@@ -420,6 +422,7 @@ router.post("/creator/deals/:id/awb-wrong", requireCreator, async (req: Request,
     title: "Creator says the AWB is wrong",
     body: `Respond within ${responseHours} hours — update AWB or confirm it is correct. No response will auto-cancel the deal.`,
     relatedEntityType: "Deal", relatedEntityId: id,
+    emailParams: { awb: deal.awbNumber ?? "" },
   });
   res.json({ ok: true });
 });
@@ -508,6 +511,7 @@ router.post("/brand/deals/:id/awb-wrong/respond", requireBrand, async (req: Requ
     title: "Brand updated the AWB",
     body: `New AWB: ${awbT} via ${courierT}.`,
     relatedEntityType: "Deal", relatedEntityId: id,
+    emailParams: { awb: awbT },
   });
   res.json({ ok: true, action: "UPDATE", correctionCount: newCount, limit });
 });

@@ -97,6 +97,7 @@ router.post(
       title: "Timeline Extension Requested",
       body: `Creator requested a ${days}-day extension. Approve or reject — auto-approves in 48h if no response.`,
       relatedEntityType: "DEAL", relatedEntityId: dealId,
+      emailParams: { extension_days: days },
     });
     await createPopup({
       userId: deal.brandId, userType: "BRAND",
@@ -185,6 +186,7 @@ router.post(
           title: "Timeline Extension Approved ✅",
           body: `Brand approved your ${ext.extraDays}-day extension. New deadline: ${fmt(newDeadline)}.`,
           relatedEntityType: "DEAL", relatedEntityId: dealId,
+          emailParams: { new_deadline: fmt(newDeadline) },
         });
         await createPopup({
           userId: deal.creatorId, userType: "CREATOR",
@@ -214,6 +216,7 @@ router.post(
           title: "Timeline Extension Declined",
           body: `Brand declined your ${ext.extraDays}-day extension request.`,
           relatedEntityType: "DEAL", relatedEntityId: dealId,
+          emailParams: { deadline: deal.deadlineAt ? fmt(new Date(deal.deadlineAt)) : "" },
         });
         await createPopup({
           userId: deal.creatorId, userType: "CREATOR",

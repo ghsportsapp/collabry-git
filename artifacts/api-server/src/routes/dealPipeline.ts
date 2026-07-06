@@ -1394,6 +1394,7 @@ router.post("/admin/deals/:id/simulate-payout", requireAdmin, async (req: Reques
     title: "Payment received",
     body: `₹${finalPayout.toLocaleString("en-IN")} has been released to your account.${adjustmentReason ? ` Note: ${adjustmentReason}` : ""} Ref: ${ref}.`,
     relatedEntityType: "DEAL", relatedEntityId: id!,
+    emailParams: { reference: ref, amount: Math.round(finalPayout) },
   });
   await createPopup({
     userId: d.creatorId, userType: "CREATOR", type: "PAYOUT_RELEASED",

@@ -389,11 +389,14 @@ router.post("/creator/requests/:id/counter", requireCreator, async (req: Request
     );
     await client.query(`UPDATE "DealRequest" SET status='NEGOTIATING', "respondedAt"=NOW() WHERE id=$1`, [id]);
     await client.query("COMMIT");
+    const creatorNameRow = await pool.query(`SELECT "fullName" FROM "Creator" WHERE id=$1`, [parent.creatorId]);
+    const creatorFullName = (creatorNameRow.rows[0]?.fullName as string | undefined) ?? "the creator";
     await createNotification({
       userId: parent.brandId, userType: "BRAND", type: "REQUEST_COUNTERED",
       title: "Creator countered your offer",
       body: `Round ${newRound}: ₹${total.toLocaleString("en-IN")} for ${rc} reels, ${sc} stories, ${pc} posts (${td} days).`,
       relatedEntityType: "DealRequest", relatedEntityId: ins.rows[0].id,
+      emailParams: { creator_name: creatorFullName, counter_amount: Math.round(total) },
     });
     await createPopup({
       userId: parent.brandId, userType: "BRAND", type: "NEGOTIATION_UPDATE",
