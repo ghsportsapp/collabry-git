@@ -108,8 +108,13 @@ export async function createNotification(n: CreateNotifInput): Promise<void> {
  * Auto-fill the four common deal params (campaign_name, creator_name,
  * brand_name, amount) from the related Deal so most deal emails need no
  * per-call-site params. Best-effort: a bad/missing row returns {} and the
- * required-params gate keeps the email in-app. Direct deals (no campaign/barter)
- * simply have no campaign_name; their templates don't use it.
+ * required-params gate keeps the email in-app.
+ *
+ * Direct deals (no campaign/barter linked) fall back to a generic label so
+ * every deal template that requires `campaign_name` fires for BOTH campaign
+ * deals and direct deals — otherwise the gate would silently skip half the
+ * deal-related templates whenever the deal wasn't tied to a Campaign or
+ * BarterCampaign row.
  */
 async function getDealEmailParams(dealId: string): Promise<Record<string, string | number>> {
   try {
@@ -117,7 +122,7 @@ async function getDealEmailParams(dealId: string): Promise<Record<string, string
       `SELECT d."totalAgreedValue"::text AS amount,
               b."brandName"  AS brand_name,
               c."fullName"   AS creator_name,
-              COALESCE(camp.name, bart.name) AS campaign_name
+              COALESCE(camp.name, bart.name, 'your direct deal') AS campaign_name
          FROM "Deal" d
          JOIN "Brand"   b ON b.id = d."brandId"
          JOIN "Creator" c ON c.id = d."creatorId"
