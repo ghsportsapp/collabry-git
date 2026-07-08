@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { pixelTrack } from "@/lib/pixel";
+import { trackEvent } from "@/lib/analytics";
 
 const POPPINS = "'Poppins', sans-serif";
 const PINK = "#F0187A";
@@ -144,7 +145,8 @@ export default function BrandPaymentReturn() {
     if (!authLoading && !brandId) navigate("/login-brand");
   }, [brandId, authLoading, navigate]);
 
-  // Fire the Meta Pixel Purchase event once for a successful payment.
+  // Fire the Meta Pixel Purchase event + GTM purchase event once for a
+  // successful payment. GTM tags can attribute this to GA4, Google Ads, etc.
   useEffect(() => {
     if (urlState.status !== "CHARGED") return;
     const value = urlState.amount ? parseFloat(urlState.amount) : NaN;
@@ -152,6 +154,13 @@ export default function BrandPaymentReturn() {
       currency: "INR",
       ...(Number.isFinite(value) ? { value } : {}),
       content_type: urlState.context,
+    });
+    trackEvent("payment_success", {
+      currency: "INR",
+      ...(Number.isFinite(value) ? { value } : {}),
+      context: urlState.context,
+      order_id: urlState.orderId ?? null,
+      deal_id: urlState.dealId ?? null,
     });
   }, [urlState]);
 

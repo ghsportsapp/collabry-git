@@ -4,6 +4,7 @@ import { Eye, EyeOff, Upload, X, CheckCircle, XCircle, AlertCircle } from "lucid
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { pixelTrack } from "@/lib/pixel";
+import { trackEvent, identifyUser } from "@/lib/analytics";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -291,6 +292,12 @@ export default function BrandSignup() {
       }
       setAuth(data.accessToken, data.brandId, data.brandName);
       pixelTrack("Lead", { content_name: "brand_signup" });
+      identifyUser(data.brandId, "BRAND");
+      trackEvent("signup_completed", {
+        user_type: "BRAND",
+        method: "email",
+        free_credits: data.freeCredits ?? null,
+      });
       try {
         localStorage.setItem(
           `collabry_welcome_${data.brandId}`,

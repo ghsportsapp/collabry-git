@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { ArrowLeft, ArrowRight, CheckCircle, Info, X } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
+import { trackEvent } from "@/lib/analytics";
 
 interface Slab { id: string; label: string; minFollowers: number; maxFollowers: number | null; }
 interface Category { id: string; name: string; }
@@ -318,6 +319,12 @@ export default function BrandCreateCampaign() {
       const data = await r.json();
       if (!r.ok) { setErrors({ submit: data.error ?? "Failed to create campaign" }); setSubmitting(false); return; }
       try { localStorage.removeItem(CAMPAIGN_DRAFT_KEY); } catch {}
+      trackEvent("campaign_created", {
+        campaign_type: form.type,
+        price_per_creator: parseFloat(form.pricePerCreator) || 0,
+        slot_count: parseInt(form.slotCount) || 0,
+        product_required: form.productRequired,
+      });
       setSubmitted(true);
     } catch { setErrors({ submit: "Something went wrong. Please try again." }); setSubmitting(false); }
   };

@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Eye, EyeOff } from "lucide-react";
 import { useCreatorAuth } from "@/contexts/CreatorAuthContext";
 import { useSupportEmail } from "@/hooks/useSupportEmail";
+import { trackEvent, identifyUser } from "@/lib/analytics";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -53,6 +54,8 @@ export default function CreatorLogin() {
         else localStorage.removeItem("collabry.creator.rememberedHandle");
       } catch {}
       setAuth(data.accessToken, data.creatorId, data.fullName);
+      identifyUser(data.creatorId, "CREATOR");
+      trackEvent("login_success", { user_type: "CREATOR", method: "email" });
       navigate("/home-creator");
     } catch { setError("Network error. Please try again."); }
     finally { setSubmitting(false); }

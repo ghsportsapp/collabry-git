@@ -11,6 +11,7 @@ import TopProgressBar from "@/components/TopProgressBar";
 import PageLoader from "@/components/PageLoader";
 import ScrollToTop from "@/components/ScrollToTop";
 import PixelPageViews from "@/components/PixelPageViews";
+import DataLayerPageViews from "@/components/DataLayerPageViews";
 import AdminProtectedRoute from "@/components/AdminProtectedRoute";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { BrandFcmAutoRegister, CreatorFcmAutoRegister } from "@/components/FcmAutoRegister";
@@ -179,6 +180,7 @@ function App() {
               <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
                 <ScrollToTop />
                 <PixelPageViews />
+                <DataLayerPageViews />
                 <TopProgressBar />
                 <Suspense fallback={<PageLoader />}>
                   <Router />

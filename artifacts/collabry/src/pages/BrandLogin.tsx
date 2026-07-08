@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Eye, EyeOff } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { useSupportEmail } from "@/hooks/useSupportEmail";
+import { trackEvent, identifyUser } from "@/lib/analytics";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -56,6 +57,8 @@ export default function BrandLogin() {
         else localStorage.removeItem("collabry.brand.rememberedEmail");
       } catch {}
       setAuth(data.accessToken, data.brandId, data.brandName);
+      identifyUser(data.brandId, "BRAND");
+      trackEvent("login_success", { user_type: "BRAND", method: "email" });
       navigate("/home-brand");
     } catch { setError("Network error. Please try again."); }
     finally { setSubmitting(false); }
