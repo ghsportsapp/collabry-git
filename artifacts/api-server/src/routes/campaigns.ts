@@ -63,6 +63,14 @@ async function dealLiveNotify(d: any, brandId: string, dealId: string): Promise<
     relatedEntityType: "Deal", relatedEntityId: dealId,
     expiresInDays: 90,
   }).catch(() => {});
+  // Brand-side "payment done, deal is live" — template 96 (N15).
+  await createNotification({
+    userId: brandId, userType: "BRAND", type: "PAYMENT_DONE_DEAL_STARTED",
+    title: "Deal is live!",
+    body: `Payment confirmed for "${d.campName}". Deal is now active.`,
+    relatedEntityType: "Deal", relatedEntityId: dealId,
+    expiresInDays: 90,
+  }).catch(() => {});
   await createPopup({
     userId: d.creatorId as string, userType: "CREATOR", type: "DEAL_LIVE",
     title: "Congrats! Your Deal is Live 🚀",
@@ -813,8 +821,14 @@ router.post("/creator/campaigns/:id/applications/:appId/confirm", requireCreator
 
     await client.query(`UPDATE "CampaignApplication" SET status='CONFIRMED',"confirmedAt"=NOW(),"dealId"=$1 WHERE id=$2`, [dealId, appId]);
     await client.query("COMMIT");
-    await notify(a.brandId as string, "BRAND", `Creator confirmed for "${a.campName}"!`,
-      `A creator confirmed! Please make payment within 48 hours to start the deal.`);
+    await createNotification({
+      userId: a.brandId as string, userType: "BRAND", type: "BARTER_CREATOR_CONFIRMED_PAID",
+      title: `Creator confirmed for "${a.campName}"!`,
+      body: `A creator confirmed! Please make payment within 48 hours to start the deal.`,
+      relatedEntityType: "CAMPAIGN", relatedEntityId: a.campaignId as string,
+      emailParams: { campaign_name: a.campName },
+      expiresInDays: 90,
+    }).catch(() => {});
     await createPopup({
       userId: a.brandId as string, userType: "BRAND", type: "OFFER_ACCEPTED",
       title: "Campaign Accepted 🎉",

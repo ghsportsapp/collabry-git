@@ -847,11 +847,18 @@ router.post("/brand/requests", requireBrand, async (req: Request, res: Response)
   // Notify creator about new deal request
   const brandRow = await pool.query(`SELECT "brandName" FROM "Brand" WHERE id=$1`, [brandId]);
   const brandName = brandRow.rows[0]?.brandName ?? "A brand";
+  const script = [reelScript, storyScript, postContent].filter(Boolean).map((s: string) => s.trim()).join("\n\n") || "See deal chat for details.";
   await createNotification({
     userId: creatorId, userType: "CREATOR", type: "REQUEST_RECEIVED",
     title: "New deal request!",
     body: `${brandName} sent you a deal offer — ₹${total.toLocaleString("en-IN")} for ${rc > 0 ? `${rc} reel${rc > 1 ? "s" : ""}` : ""}${sc > 0 ? `${rc > 0 ? ", " : ""}${sc} stor${sc > 1 ? "ies" : "y"}` : ""}${pc > 0 ? `${rc + sc > 0 ? ", " : ""}${pc} post${pc > 1 ? "s" : ""}` : ""}. Tap to respond.`,
     relatedEntityType: "DealRequest", relatedEntityId: inserted.rows[0].id,
+    emailParams: {
+      brand_name: brandName,
+      amount: Math.round(total),
+      product_description: (productDescription as string | undefined)?.trim() || (productRequired ? "See deal chat for details." : "No product for this deal."),
+      script,
+    },
   });
   await createPopup({
     userId: creatorId, userType: "CREATOR", type: "COLLAB_OFFER",

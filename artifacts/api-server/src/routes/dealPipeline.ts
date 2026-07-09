@@ -480,11 +480,14 @@ async function maybeFinalizeConceptApproval(dealId: string): Promise<void> {
   }
   const p = await getDealParticipants(dealId);
   if (p) {
+    const dueRow = await pool.query(`SELECT to_char("deadlineAt", 'DD Mon YYYY') AS due FROM "Deal" WHERE id=$1`, [dealId]);
+    const conceptFinalDue = (dueRow.rows[0]?.due as string | undefined) ?? "";
     await createNotification({
       userId: p.creatorId, userType: "CREATOR", type: "DEAL_CONCEPT_APPROVED",
       title: "All concepts approved",
       body: dealRow.productRequired ? "Brand will ship product next." : "Upload your final content before the deal deadline.",
       relatedEntityType: "DEAL", relatedEntityId: dealId,
+      emailParams: { final_due: conceptFinalDue },
     });
     await createPopup({
       userId: p.creatorId, userType: "CREATOR", type: "DEAL_CONCEPT_APPROVED",
@@ -548,6 +551,7 @@ router.post("/creator/deals/:id/content/submit", requireCreator, async (req: Req
       userId: p.brandId, userType: "BRAND", type: "DEAL_CONTENT_SUBMITTED",
       title: "Final content submitted", body: "Review the content within 48 hours or it will be auto-approved.",
       relatedEntityType: "DEAL", relatedEntityId: id!,
+      emailParams: { review_hours: 48 },
     });
     await createPopup({
       userId: p.brandId, userType: "BRAND", type: "DEAL_CONTENT_SUBMITTED",
@@ -608,6 +612,7 @@ router.post("/creator/deals/:id/content/resubmit", requireCreator, async (req: R
       userId: p.brandId, userType: "BRAND", type: "DEAL_CONTENT_RESUBMITTED",
       title: "Revised content submitted", body: "Creator has resubmitted content for review.",
       relatedEntityType: "DEAL", relatedEntityId: id!,
+      emailParams: { review_hours: 48 },
     });
     await createPopup({
       userId: p.brandId, userType: "BRAND", type: "DEAL_CONTENT_SUBMITTED",
@@ -711,6 +716,7 @@ router.post("/brand/deals/:id/content/revise", requireBrand, async (req: Request
       title: "Content revision requested",
       body: `Brand requested revision on ${r.rows[0].slotLabel}. ${reasonText}.`,
       relatedEntityType: "DEAL", relatedEntityId: id!,
+      emailParams: { reason: reasonText },
     });
     await createPopup({
       userId: p.creatorId, userType: "CREATOR", type: "DEAL_CONTENT_REVISION_REQUESTED",

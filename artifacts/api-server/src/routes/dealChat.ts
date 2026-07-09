@@ -413,6 +413,7 @@ router.post("/brand/deals/:id/product-shipped", requireBrand, async (req: Reques
       title: "Product is on the way!",
       body: `The brand has shipped the product.${awbTrim ? ` AWB: ${awbTrim}${courierTrim ? ` via ${courierTrim}` : ""}` : ""} Confirm receipt once it arrives.`,
       relatedEntityType: "Deal", relatedEntityId: id,
+      emailParams: { awb: awbTrim, courier: courierTrim },
     });
   }
   res.json({ ok: true });
@@ -451,11 +452,14 @@ router.post("/creator/deals/:id/product-received", requireCreator, async (req: R
   await createSystemMessage(id, `✅ Creator confirmed product received! Deal timeline has started. Deadline: ${deal.timelineDays} days from now.`);
   const dealFull2 = await pool.query(`SELECT "brandId" FROM "Deal" WHERE id=$1`, [id]);
   if (dealFull2.rows.length > 0) {
+    const finalDueRow = await pool.query(`SELECT to_char("deadlineAt", 'DD Mon YYYY') AS due FROM "Deal" WHERE id=$1`, [id]);
+    const finalDue = (finalDueRow.rows[0]?.due as string | undefined) ?? `${deal.timelineDays} days`;
     await createNotification({
       userId: dealFull2.rows[0].brandId, userType: "BRAND", type: "PRODUCT_RECEIVED",
       title: "Creator received the product!",
       body: `The creator confirmed receipt. The deal timeline has started — ${deal.timelineDays} day${deal.timelineDays !== 1 ? "s" : ""} to deliver content.`,
       relatedEntityType: "Deal", relatedEntityId: id,
+      emailParams: { final_due: finalDue },
     });
   }
   res.json({ ok: true });
@@ -496,10 +500,11 @@ router.post("/creator/deals/:id/delivery-address", requireCreator, async (req: R
   await createSystemMessage(id, `📍 Creator's delivery address:\n${address}\n📞 Phone: ${phoneTrim}`);
 
   await createNotification({
-    userId: deal.brandId, userType: "BRAND", type: "FIELD_REQUIRED",
+    userId: deal.brandId, userType: "BRAND", type: "DELIVERY_ADDRESS_UPDATED",
     title: "Creator shared delivery address",
     body: `Address: ${address} | Phone: ${phoneTrim}. Please review and click Ship Product when ready.`,
     relatedEntityType: "Deal", relatedEntityId: id,
+    emailParams: { address: `${address}\nPhone: ${phoneTrim}` },
   });
 
   res.json({ ok: true, deliveryAddress: address, phone: phoneTrim });

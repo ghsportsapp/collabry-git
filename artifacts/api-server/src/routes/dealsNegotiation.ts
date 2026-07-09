@@ -642,11 +642,14 @@ router.post("/brand/requests/:id/counter-back", requireBrand, async (req: Reques
     );
     await client.query(`UPDATE "DealRequest" SET status='NEGOTIATING', "respondedAt"=NOW() WHERE id=$1`, [id]);
     await client.query("COMMIT");
+    const brandRow1 = await pool.query(`SELECT "brandName" FROM "Brand" WHERE id=$1`, [parent.brandId]);
+    const brandNameNudge1 = (brandRow1.rows[0]?.brandName as string | undefined) ?? "the brand";
     await createNotification({
       userId: parent.creatorId, userType: "CREATOR", type: "REQUEST_COUNTERED",
       title: "Brand counter-offered (final round)",
       body: `Round ${newRound}: ₹${total.toLocaleString("en-IN")} for ${rc} reels, ${sc} stories, ${pc} posts (${td} days). Final offer — accept or reject only.`,
       relatedEntityType: "DealRequest", relatedEntityId: ins.rows[0].id,
+      emailParams: { amount: Math.round(total), brand_name: brandNameNudge1 },
     });
     await createPopup({
       userId: parent.creatorId, userType: "CREATOR", type: "NEGOTIATION_UPDATE",
@@ -749,11 +752,14 @@ router.post("/brand/requests/:id/stay-on-original", requireBrand, async (req: Re
     );
     await client.query(`UPDATE "DealRequest" SET status='NEGOTIATING', "respondedAt"=NOW() WHERE id=$1`, [id]);
     await client.query("COMMIT");
+    const brandRow2 = await pool.query(`SELECT "brandName" FROM "Brand" WHERE id=$1`, [parent.brandId]);
+    const brandNameNudge2 = (brandRow2.rows[0]?.brandName as string | undefined) ?? "the brand";
     await createNotification({
       userId: parent.creatorId, userType: "CREATOR", type: "REQUEST_COUNTERED",
       title: "Brand is holding their original offer",
       body: `Round ${newRound} (Final): ₹${total.toLocaleString("en-IN")} — the brand's original terms. Accept or reject.`,
       relatedEntityType: "DealRequest", relatedEntityId: ins.rows[0].id,
+      emailParams: { amount: Math.round(total), brand_name: brandNameNudge2 },
     });
     await createPopup({
       userId: parent.creatorId, userType: "CREATOR", type: "NEGOTIATION_UPDATE",

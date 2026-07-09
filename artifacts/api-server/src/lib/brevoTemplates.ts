@@ -44,7 +44,8 @@ const SIMPLE: Record<string, ResolvedTemplate> = {
   CREATOR_WELCOME: { templateId: 2, subject: "Welcome to Collabry!", requiredParams: [] },
   WELCOME_CREDITS: { templateId: 1, subject: "Welcome to Collabry!", requiredParams: ["credits"] },
 
-  REQUEST_COUNTERED: { templateId: 28, subject: "Counter-offer received", requiredParams: ["creator_name", "counter_amount"] },
+  // REQUEST_COUNTERED moved to BY_USER_TYPE below — brand-side uses 28 (creator
+  // countered brand's offer), creator-side uses 93 (brand countered creator's).
 
   DEAL_CONCEPT_SUBMITTED: { templateId: 33, subject: "Concept submitted — review needed", requiredParams: ["creator_name", "campaign_name"] },
   DEAL_CONCEPT_RESUBMITTED: { templateId: 34, subject: "Concept resubmitted", requiredParams: ["creator_name", "campaign_name"] },
@@ -68,6 +69,22 @@ const SIMPLE: Record<string, ResolvedTemplate> = {
 
   ADMIN_GIFT_RECEIVED: { templateId: 76, subject: "Credits added!", requiredParams: ["credits", "admin_message"] },
   ADMIN_CREDIT_REMOVED: { templateId: 77, subject: "Credits adjustment", requiredParams: ["credits", "admin_message"] },
+
+  // Fresh Emails batch 19 (Navneet, 2026-07-08). N-templates for events that
+  // previously had no branded email or an in-app-only notification.
+  PRODUCT_SHIPPED: { templateId: 100, subject: "Your product is on the way!", requiredParams: ["awb", "courier"] },
+  AWB_CONFIRMED: { templateId: 101, subject: "Tracking confirmed", requiredParams: ["awb"] },
+  PRODUCT_RECEIVED: { templateId: 102, subject: "Content underway", requiredParams: ["final_due"] },
+  ISSUE_RESOLVED_PROCEED: { templateId: 103, subject: "Content underway", requiredParams: ["final_due"] },
+  CAMPAIGN_SELECTED: { templateId: 94, subject: "You're selected!", requiredParams: [] },
+  REQUEST_RECEIVED: { templateId: 97, subject: "New deal request!", requiredParams: ["product_description", "script"] },
+  DEAL_CONCEPT_APPROVED: { templateId: 98, subject: "Concept approved!", requiredParams: ["final_due"] },
+  DELIVERY_ADDRESS_UPDATED: { templateId: 99, subject: "Ship the product", requiredParams: ["address"] },
+  DEAL_CONTENT_SUBMITTED: { templateId: 104, subject: "Final video is in", requiredParams: ["review_hours"] },
+  DEAL_CONTENT_REVISION_REQUESTED: { templateId: 105, subject: "Revision requested", requiredParams: ["reason"] },
+  DEAL_CONTENT_RESUBMITTED: { templateId: 106, subject: "Final video resubmitted", requiredParams: ["review_hours"] },
+  BARTER_CREATOR_CONFIRMED_PAID: { templateId: 95, subject: "Creator confirmed!", requiredParams: [] },
+  PAYMENT_DONE_DEAL_STARTED: { templateId: 96, subject: "Deal is live!", requiredParams: [] },
 };
 
 // Types whose template differs by recipient userType.
@@ -85,6 +102,17 @@ const BY_USER_TYPE: Record<string, Partial<Record<UserType, ResolvedTemplate>>> 
   REQUEST_ACCEPTED: {
     BRAND: { templateId: 27, subject: "Creator accepted your offer", requiredParams: [] },
     CREATOR: { templateId: 29, subject: "Brand accepted your counter", requiredParams: [] },
+  },
+  // "New message in your deal" nudges — templates 91 (brand) / 92 (creator).
+  DEAL_CHAT_MESSAGE: {
+    BRAND: { templateId: 91, subject: "New message", requiredParams: [] },
+    CREATOR: { templateId: 92, subject: "New message", requiredParams: [] },
+  },
+  // Counter-offer received — brand-side (creator countered) uses template 28,
+  // creator-side (brand countered) uses template 93 with different copy.
+  REQUEST_COUNTERED: {
+    BRAND: { templateId: 28, subject: "Counter-offer received", requiredParams: ["creator_name", "counter_amount"] },
+    CREATOR: { templateId: 93, subject: "Brand responded to your offer", requiredParams: ["amount", "brand_name"] },
   },
 };
 

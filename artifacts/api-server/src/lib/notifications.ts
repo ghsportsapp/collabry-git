@@ -116,10 +116,16 @@ export async function createNotification(n: CreateNotifInput): Promise<void> {
  * deal-related templates whenever the deal wasn't tied to a Campaign or
  * BarterCampaign row.
  */
-async function getDealEmailParams(dealId: string): Promise<Record<string, string | number>> {
+interface DealMeta {
+  params: Record<string, string | number>;
+  source: string | null;
+}
+
+async function getDealMeta(dealId: string): Promise<DealMeta> {
   try {
     const r = await pool.query(
       `SELECT d."totalAgreedValue"::text AS amount,
+              d.source                    AS source,
               b."brandName"  AS brand_name,
               c."fullName"   AS creator_name,
               COALESCE(camp.name, bart.name, 'your direct deal') AS campaign_name
@@ -132,17 +138,35 @@ async function getDealEmailParams(dealId: string): Promise<Record<string, string
       [dealId]
     );
     const row = r.rows[0];
-    if (!row) return {};
-    const out: Record<string, string | number> = {};
-    if (row.brand_name) out["brand_name"] = row.brand_name;
-    if (row.creator_name) out["creator_name"] = row.creator_name;
-    if (row.campaign_name) out["campaign_name"] = row.campaign_name;
-    if (row.amount != null) out["amount"] = Math.round(Number(row.amount));
-    return out;
+    if (!row) return { params: {}, source: null };
+    const params: Record<string, string | number> = {};
+    if (row.brand_name) params["brand_name"] = row.brand_name;
+    if (row.creator_name) params["creator_name"] = row.creator_name;
+    if (row.campaign_name) params["campaign_name"] = row.campaign_name;
+    if (row.amount != null) params["amount"] = Math.round(Number(row.amount));
+    return { params, source: row.source ?? null };
   } catch (err) {
     logger.debug({ err, dealId }, "Deal email-params lookup failed");
-    return {};
+    return { params: {}, source: null };
   }
+}
+
+/**
+ * DEAL_COMPLETED fires to BOTH creator and brand on completion, and there are
+ * three deal sources (CAMPAIGN paid, BARTER, and DIRECT). Historically the
+ * SIMPLE map pinned it to template 66 for every recipient, so brands received
+ * the creator's "your payout will be released" copy on their side too.
+ *
+ * The four-way split:
+ *   CREATOR + paid/direct → template 66 (unchanged)
+ *   CREATOR + barter      → template 88
+ *   BRAND   + paid/direct → template 89
+ *   BRAND   + barter      → template 90
+ */
+function dealCompletedTemplateId(source: string | null, userType: NotifUserType): number {
+  const isBarter = source === "BARTER";
+  if (userType === "CREATOR") return isBarter ? 88 : 66;
+  return isBarter ? 90 : 89;
 }
 
 async function dispatchEmail(n: CreateNotifInput, tpl: ResolvedTemplate | null): Promise<void> {
@@ -167,23 +191,33 @@ async function dispatchEmail(n: CreateNotifInput, tpl: ResolvedTemplate | null):
   if (tpl) {
     // Effective params: deal-derived auto-fill underneath, explicit on top.
     let params: Record<string, string | number | null | undefined> = { ...n.emailParams };
+    let templateId = tpl.templateId;
+    let subjectOverride: string | undefined = n.emailSubject ?? tpl.subject;
     if (n.relatedEntityType?.toUpperCase() === "DEAL" && n.relatedEntityId) {
-      const auto = await getDealEmailParams(n.relatedEntityId);
-      params = { ...auto, ...params };
+      const meta = await getDealMeta(n.relatedEntityId);
+      params = { ...meta.params, ...params };
+      // DEAL_COMPLETED needs a different template per (userType, source). Only
+      // override when the call site hasn't already pinned an explicit id, and
+      // let Brevo's per-template stored subject win so brand doesn't inherit
+      // the creator's "payout coming!" subject line.
+      if (n.type === "DEAL_COMPLETED" && !n.emailTemplateId) {
+        templateId = dealCompletedTemplateId(meta.source, n.userType);
+        subjectOverride = n.emailSubject; // undefined → Brevo uses stored subject
+      }
     }
     const missing = tpl.requiredParams.filter((p) => params[p] == null);
     if (missing.length === 0) {
       await sendBrevoTemplateEmail({
-        templateId: tpl.templateId,
+        templateId,
         to: email,
         firstName,
-        subject: n.emailSubject ?? tpl.subject,
+        ...(subjectOverride ? { subject: subjectOverride } : {}),
         params,
       });
-      logger.info({ userId: n.userId, type: n.type, templateId: tpl.templateId }, "Notification email sent (template)");
+      logger.info({ userId: n.userId, type: n.type, templateId }, "Notification email sent (template)");
       return;
     }
-    logger.debug({ userId: n.userId, type: n.type, templateId: tpl.templateId, missing }, "Template params missing — using legacy fallback if eligible");
+    logger.debug({ userId: n.userId, type: n.type, templateId, missing }, "Template params missing — using legacy fallback if eligible");
   }
 
   // 2) Legacy fallback: any type that emailed before the Brevo migration still

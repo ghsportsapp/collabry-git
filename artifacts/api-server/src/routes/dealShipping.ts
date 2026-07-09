@@ -292,11 +292,14 @@ router.post("/creator/deals/:id/issue-decision", requireCreator, async (req: Req
       [id, creatorId]
     );
     await createSystemMessage(id, `✅ Creator agreed to work with the product. Timeline started.`, { kind: "ISSUE_PROCEED" });
+    const dueRow = await pool.query(`SELECT to_char("deadlineAt", 'DD Mon YYYY') AS due FROM "Deal" WHERE id=$1`, [id]);
+    const proceedFinalDue = (dueRow.rows[0]?.due as string | undefined) ?? "";
     await createNotification({
       userId: deal.brandId, userType: "BRAND", type: "ISSUE_RESOLVED_PROCEED",
       title: "Creator agreed to work with the product",
       body: `The deal timeline has started.`,
       relatedEntityType: "Deal", relatedEntityId: id,
+      emailParams: { final_due: proceedFinalDue },
     });
     res.json({ ok: true, decision: "PROCEED" });
     return;
@@ -466,6 +469,7 @@ router.post("/brand/deals/:id/awb-wrong/respond", requireBrand, async (req: Requ
       title: "Brand confirmed the AWB is correct",
       body: `Please use the tracking link to check your shipment status. No more AWB-wrong claims allowed for this deal.`,
       relatedEntityType: "Deal", relatedEntityId: id,
+      emailParams: { awb: deal.awbNumber ?? "" },
     });
     res.json({ ok: true, action: "CONFIRM" });
     return;
