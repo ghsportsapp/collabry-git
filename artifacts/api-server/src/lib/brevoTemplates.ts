@@ -30,6 +30,10 @@ const SIMPLE: Record<string, ResolvedTemplate> = {
   // aliases for anywhere else that might still emit them.
   CREATOR_APPROVED: { templateId: 3, subject: "You're live on Collabry!", requiredParams: [] },
   CREATOR_REJECTED: { templateId: 4, subject: "Profile not approved", requiredParams: ["reason"] },
+  // Distinct from CREATOR_REJECTED (which fires on full-profile rejection at
+  // signup) — this fires when an admin rejects a follower-count or pricing
+  // update on an already-active profile. Maps to template 5.
+  CREATOR_PROFILE_UPDATE_REJECTED: { templateId: 5, subject: "Update not approved", requiredParams: [] },
   PROFILE_APPROVED: { templateId: 3, subject: "You're live on Collabry!", requiredParams: [] },
   PROFILE_REJECTED: { templateId: 4, subject: "Profile not approved", requiredParams: ["reason"] },
   // Creator suspend/unsuspend uses CREATOR_SUSPENDED / CREATOR_UNSUSPENDED types

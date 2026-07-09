@@ -205,8 +205,10 @@ router.post("/admin/creators/:id/reject", requireAdmin, async (req: Request, res
     const notifBody = freeReason?.trim()
       ? `Your updated ${summary} were not approved. Reason: ${freeReason.trim()}`
       : `Your updated ${summary} were not approved. Your current profile remains active.`;
+    // Use the profile-update-rejected type (→ template 5) so the creator
+    // doesn't get the harsher "full profile rejected" email (→ template 4).
     await createNotification({
-      userId: id, userType: "CREATOR", type: "CREATOR_REJECTED",
+      userId: id, userType: "CREATOR", type: "CREATOR_PROFILE_UPDATE_REJECTED",
       title: "Update Not Approved", body: notifBody,
       emailParams: { reason: freeReason?.trim() || `Updates to ${summary} were not approved.` },
       expiresInDays: 90,

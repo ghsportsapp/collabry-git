@@ -1773,8 +1773,15 @@ router.post("/admin/barter/:id/hold", requireAdmin, async (req: Request, res: Re
   const barter = await pool.query(`SELECT * FROM "BarterCampaign" WHERE id=$1`, [req.params["id"]]);
   if (!barter.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
   await pool.query(`UPDATE "BarterCampaign" SET "adminReviewedBy"=$1,"heldAt"=NOW(),"adminNotes"=$2 WHERE id=$3`, [adminId, message, req.params["id"]]);
-  await notify(barter.rows[0].brandId, "BRAND", "More Information Needed",
-    `Regarding your barter campaign "${barter.rows[0].name}": ${message ?? "Please provide more information."}`);
+  await createNotification({
+    userId: barter.rows[0].brandId, userType: "BRAND", type: "BARTER_ON_HOLD",
+    title: "Barter Campaign On Hold",
+    body: `Regarding your barter campaign "${barter.rows[0].name}": ${message ?? "Please provide more information."}`,
+    emailTemplateId: 22, emailSubject: "Barter campaign on hold",
+    emailParams: { campaign_name: barter.rows[0].name, admin_message: message ?? "" },
+    relatedEntityType: "BARTER_CAMPAIGN", relatedEntityId: req.params["id"] as string,
+    expiresInDays: 90,
+  }).catch(() => {});
   res.json({ ok: true });
 });
 
