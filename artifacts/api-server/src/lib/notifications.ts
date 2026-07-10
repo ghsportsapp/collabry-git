@@ -207,17 +207,29 @@ async function dispatchEmail(n: CreateNotifInput, tpl: ResolvedTemplate | null):
     }
     const missing = tpl.requiredParams.filter((p) => params[p] == null);
     if (missing.length === 0) {
-      await sendBrevoTemplateEmail({
-        templateId,
-        to: email,
-        firstName,
-        ...(subjectOverride ? { subject: subjectOverride } : {}),
-        params,
-      });
-      logger.info({ userId: n.userId, type: n.type, templateId }, "Notification email sent (template)");
-      return;
+      try {
+        await sendBrevoTemplateEmail({
+          templateId,
+          to: email,
+          firstName,
+          ...(subjectOverride ? { subject: subjectOverride } : {}),
+          params,
+        });
+        logger.info({ userId: n.userId, type: n.type, templateId }, "Notification email sent (template)");
+        return;
+      } catch (err) {
+        // Brevo send failed (401 unauthorised, IP not allowlisted, template
+        // disabled in dashboard, etc). Fall through to the legacy SMTP path
+        // below so users on the pre-migration email allowlist still get an
+        // email instead of silently getting nothing.
+        logger.warn(
+          { err, userId: n.userId, type: n.type, templateId },
+          "Brevo template send failed — trying legacy SMTP fallback if eligible"
+        );
+      }
+    } else {
+      logger.debug({ userId: n.userId, type: n.type, templateId, missing }, "Template params missing — using legacy fallback if eligible");
     }
-    logger.debug({ userId: n.userId, type: n.type, templateId, missing }, "Template params missing — using legacy fallback if eligible");
   }
 
   // 2) Legacy fallback: any type that emailed before the Brevo migration still
