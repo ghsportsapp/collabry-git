@@ -104,18 +104,21 @@ router.patch("/admin/creators/:id/notes", requireAdmin, async (req: Request, res
 router.post("/admin/creators/:id/approve", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
-  const cr = await pool.query(`SELECT "fullName", status, "pendingReason", "pendingImages", "pendingCategories", "pendingFollowerCount", "pendingPricing" FROM "Creator" WHERE id=$1`, [id]);
+  const cr = await pool.query(`SELECT "fullName", status, "pendingReason", "pendingImages", "pendingCategories", "pendingFollowerCount", "pendingInstagramHandle", "pendingPricing" FROM "Creator" WHERE id=$1`, [id]);
   if (cr.rows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
-  const { fullName, pendingReason, pendingImages, pendingCategories, pendingFollowerCount, pendingPricing } = cr.rows[0];
+  const { fullName, pendingReason, pendingImages, pendingCategories, pendingFollowerCount, pendingInstagramHandle, pendingPricing } = cr.rows[0];
   const reasons = (pendingReason ?? "").split("|").filter(Boolean) as string[];
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // Apply RE_VERIFICATION: apply pending follower count
+    // Apply RE_VERIFICATION: apply pending follower count and/or pending username (Instagram handle)
     if (reasons.includes("RE_VERIFICATION") && pendingFollowerCount != null) {
       await client.query(`UPDATE "Creator" SET "followerCount"=$1, "pendingFollowerCount"=NULL WHERE id=$2`, [pendingFollowerCount, id]);
+    }
+    if (reasons.includes("RE_VERIFICATION") && pendingInstagramHandle != null) {
+      await client.query(`UPDATE "Creator" SET "instagramHandle"=$1, "pendingInstagramHandle"=NULL WHERE id=$2`, [pendingInstagramHandle, id]);
     }
 
     // Apply PRICING_CHANGE: apply each pending pricing type to actual columns
@@ -151,7 +154,8 @@ router.post("/admin/creators/:id/approve", requireAdmin, async (req: Request, re
   const isNewSignup = reasons.length === 0;
   const parts: string[] = [];
   if (isNewSignup) parts.push("profile");
-  if (reasons.includes("RE_VERIFICATION")) parts.push("follower count");
+  if (reasons.includes("RE_VERIFICATION") && pendingFollowerCount != null) parts.push("follower count");
+  if (reasons.includes("RE_VERIFICATION") && pendingInstagramHandle != null) parts.push("username");
   if (reasons.includes("PRICING_CHANGE")) parts.push("pricing");
   const summary = parts.join(", ");
   const notifTitle = isNewSignup ? "Profile Approved! 🎉" : `Updates Approved ✓`;
@@ -186,20 +190,25 @@ router.post("/admin/creators/:id/reject", requireAdmin, async (req: Request, res
   const { id } = req.params as Record<string, string>;
   const { reasonId, reason: freeReason } = req.body as { reasonId?: string; reason?: string };
 
-  const crCheck = await pool.query(`SELECT "pendingReason", status FROM "Creator" WHERE id=$1`, [id]);
+  const crCheck = await pool.query(`SELECT "pendingReason", status, "pendingFollowerCount", "pendingInstagramHandle" FROM "Creator" WHERE id=$1`, [id]);
   const pendingReason: string = crCheck.rows[0]?.pendingReason ?? "";
+  const pendingFollowerCount = crCheck.rows[0]?.pendingFollowerCount ?? null;
+  const pendingInstagramHandle = crCheck.rows[0]?.pendingInstagramHandle ?? null;
   const reasons = pendingReason.split("|").filter(Boolean);
   const isProfileChange = reasons.some(r => ["RE_VERIFICATION", "PRICING_CHANGE"].includes(r));
 
-  // Rejecting profile updates (not a new signup): clear ALL pending data, restore ACTIVE
+  // Rejecting profile updates (not a new signup): clear ALL pending data, restore ACTIVE.
+  // Also release the username cooldown so a rejected creator can correct and resubmit.
   if (isProfileChange) {
     await pool.query(
-      `UPDATE "Creator" SET "pendingImages"=NULL, "pendingCategories"=NULL, "pendingFollowerCount"=NULL, "pendingPricing"=NULL,
+      `UPDATE "Creator" SET "pendingImages"=NULL, "pendingCategories"=NULL, "pendingFollowerCount"=NULL,
+       "pendingInstagramHandle"=NULL, "instagramHandleLockedUntil"=NULL, "pendingPricing"=NULL,
        status='ACTIVE', "pendingReason"=NULL, "updatedAt"=NOW() WHERE id=$1`,
       [id]
     );
     const parts: string[] = [];
-    if (reasons.includes("RE_VERIFICATION")) parts.push("follower count");
+    if (reasons.includes("RE_VERIFICATION") && pendingFollowerCount != null) parts.push("follower count");
+    if (reasons.includes("RE_VERIFICATION") && pendingInstagramHandle != null) parts.push("username");
     if (reasons.includes("PRICING_CHANGE")) parts.push("pricing");
     const summary = parts.join(", ");
     const notifBody = freeReason?.trim()

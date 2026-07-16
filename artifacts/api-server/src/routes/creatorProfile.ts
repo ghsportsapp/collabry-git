@@ -16,7 +16,8 @@ router.get("/creator/profile", requireCreator, async (req: Request, res: Respons
                 "audienceLocation", "contentType", images, "pendingImages",
                 "reelPriceMin", "reelPriceMax", "storyPriceMin", "storyPriceMax", "postPriceMin", "postPriceMax",
                 "reelPricingLockedUntil", "storyPricingLockedUntil", "postPricingLockedUntil",
-                status, "pendingReason", "pendingFollowerCount", "pendingPricing",
+                "instagramHandleLockedUntil",
+                status, "pendingReason", "pendingFollowerCount", "pendingInstagramHandle", "pendingPricing",
                 "kycStatus", "averageRating", "ratingCount", "rejectionReason", "rejectionNote",
                 "selectedSlabId", "createdAt", "updatedAt"
                 FROM "Creator" WHERE id=$1`, [creatorId]),
@@ -44,6 +45,9 @@ router.get("/creator/profile", requireCreator, async (req: Request, res: Respons
   ];
   const msRemaining = Math.max(0, Math.max(...lockEnds) - nowMs);
   creator.pricingDaysRemaining = Math.ceil(msRemaining / (1000 * 60 * 60 * 24));
+  // Compute username (Instagram handle) cooldown server-side — same 14-day pattern as pricing
+  const usernameMsRemaining = Math.max(0, (creator.instagramHandleLockedUntil ? new Date(creator.instagramHandleLockedUntil).getTime() : 0) - nowMs);
+  creator.usernameDaysRemaining = Math.ceil(usernameMsRemaining / (1000 * 60 * 60 * 24));
   res.json({ creator, categories: catsR.rows, portfolio: portfolioR.rows });
 });
 
@@ -245,6 +249,49 @@ router.patch("/creator/follower-count", requireCreator, async (req: Request, res
     [Math.round(followerCount), newReason, creatorId]
   );
   res.json({ ok: true, reviewTriggered: true });
+});
+
+// Update username (Instagram handle) — triggers re-review, 14-day cooldown (mirrors follower-count + pricing lock)
+router.patch("/creator/username", requireCreator, async (req: Request, res: Response): Promise<void> => {
+  const creatorId = (req as any).creatorId as string;
+  const { instagramHandle } = req.body as { instagramHandle?: string };
+  const clean = (instagramHandle ?? "").trim().replace(/^@/, "").toLowerCase();
+  if (!clean) { res.status(400).json({ error: "Username is required" }); return; }
+  if (!/^[a-zA-Z0-9_.]+$/.test(clean)) { res.status(400).json({ error: "Username can only contain letters, numbers, underscores, and periods" }); return; }
+
+  const existing = await pool.query(
+    `SELECT "instagramHandle", "pendingReason", "instagramHandleLockedUntil" FROM "Creator" WHERE id=$1`, [creatorId]
+  );
+  if (!existing.rows[0]) { res.status(404).json({ error: "Creator not found" }); return; }
+  const row = existing.rows[0];
+
+  // No-op if unchanged from the current live handle
+  if (clean === String(row.instagramHandle).toLowerCase()) { res.status(400).json({ error: "This is already your username" }); return; }
+
+  // 14-day cooldown — validated server-side (immune to client clock)
+  const now = new Date();
+  if (row.instagramHandleLockedUntil && new Date(row.instagramHandleLockedUntil) > now) {
+    const daysLeft = Math.ceil((new Date(row.instagramHandleLockedUntil).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    res.status(400).json({ error: "Username locked", daysRemaining: daysLeft }); return;
+  }
+
+  // Uniqueness across Creator + Brand, excluding self
+  const dupe = await pool.query(
+    `SELECT 1 FROM "Creator" WHERE LOWER("instagramHandle")=$1 AND id<>$2
+     UNION ALL SELECT 1 FROM "Brand" WHERE LOWER("instagramHandle")=$1 LIMIT 1`,
+    [clean, creatorId]
+  );
+  if (dupe.rows.length > 0) { res.status(400).json({ error: "This username is already linked to a Collabry account." }); return; }
+
+  const existingReasons = (row.pendingReason ?? "").split("|").filter(Boolean);
+  const newReason = [...(existingReasons as string[]).filter(r => r !== "RE_VERIFICATION"), "RE_VERIFICATION"].join("|");
+  const lockedUntil = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  await pool.query(
+    `UPDATE "Creator" SET "pendingInstagramHandle"=$1, status='PENDING', "pendingReason"=$2,
+     "instagramHandleLockedUntil"=$3, "updatedAt"=NOW() WHERE id=$4`,
+    [clean, newReason, lockedUntil, creatorId]
+  );
+  res.json({ ok: true, reviewTriggered: true, lockedUntil: lockedUntil.toISOString() });
 });
 
 // Update phone number — uniqueness check across both tables, excludes self

@@ -559,6 +559,23 @@ export default function AdminCreatorOnboarding() {
                   </div>
                 )}
 
+                {/* Pending Username (Instagram handle) Change Review */}
+                {hasReVerify && detail.creator?.pendingInstagramHandle != null && (
+                  <div className="rounded-xl p-4" style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)" }}>
+                    <p className="text-yellow-300 text-xs font-semibold uppercase tracking-wide mb-3">Username Change Pending Review</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-white/70 text-[11px] mb-1">Current</p>
+                        <p className="text-white font-semibold text-sm">@{detail.creator?.instagramHandle}</p>
+                      </div>
+                      <div>
+                        <p className="text-yellow-300 text-[11px] mb-1">Requested (pending)</p>
+                        <p className="text-yellow-300 font-semibold text-sm">@{detail.creator.pendingInstagramHandle}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Pending Pricing Change Review */}
                 {tabReasons.includes("PRICING_CHANGE") && detail.creator?.pendingPricing && (() => {
                   const pp = detail.creator.pendingPricing as Record<string, { min: number; max: number }>;
@@ -730,7 +747,8 @@ export default function AdminCreatorOnboarding() {
               const mReasons = (detail?.creator?.pendingReason ?? "").split("|").filter(Boolean);
               const mIsProfileChange = mReasons.some((r: string) => ["RE_VERIFICATION", "PRICING_CHANGE"].includes(r));
               const mParts: string[] = [];
-              if (mReasons.includes("RE_VERIFICATION")) mParts.push("follower count");
+              if (mReasons.includes("RE_VERIFICATION") && detail?.creator?.pendingFollowerCount != null) mParts.push("follower count");
+              if (mReasons.includes("RE_VERIFICATION") && detail?.creator?.pendingInstagramHandle != null) mParts.push("username");
               if (mReasons.includes("PRICING_CHANGE")) mParts.push("pricing");
               return mIsProfileChange ? (
                 <div className="mb-4 space-y-2">
@@ -766,7 +784,8 @@ export default function AdminCreatorOnboarding() {
             {modal === "approve" && (() => {
               const aReasons = (detail?.creator?.pendingReason ?? "").split("|").filter(Boolean);
               const aParts: string[] = [];
-              if (aReasons.includes("RE_VERIFICATION")) aParts.push("follower count");
+              if (aReasons.includes("RE_VERIFICATION") && detail?.creator?.pendingFollowerCount != null) aParts.push("follower count");
+              if (aReasons.includes("RE_VERIFICATION") && detail?.creator?.pendingInstagramHandle != null) aParts.push("username");
               if (aReasons.includes("PRICING_CHANGE")) aParts.push("pricing");
               return aParts.length > 0
                 ? <p className="text-white/80 text-sm mb-4">Approve the updated {aParts.join(", ")} — changes will go live and the creator will be notified.</p>

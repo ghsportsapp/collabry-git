@@ -23,6 +23,7 @@ model Creator {
   otherSocialHandle       String?
   pendingReason           String?
   pendingFollowerCount    Int?
+  pendingInstagramHandle  String?
   pendingPricing          String?
   pendingImages           String[]
   images                  String[]
@@ -46,6 +47,7 @@ model Creator {
   reelPricingLockedUntil  DateTime?
   storyPricingLockedUntil DateTime?
   postPricingLockedUntil  DateTime?
+  instagramHandleLockedUntil DateTime?
   status                  String    @default("PENDING")
   kycStatus               String    @default("NOT_SUBMITTED")
   averageRating           Decimal   @default(0)

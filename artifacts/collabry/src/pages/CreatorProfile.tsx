@@ -228,6 +228,7 @@ function FunQuestionsSection({ token, onToast }: { token: string; onToast: (msg:
 interface EditState {
   fullName: string; bio: string; youtubeHandle: string; otherSocialHandle: string; gender: string; state: string;
   phone: string;
+  username: string;
   followerCount: string;
   editCats: Array<{ categoryId: string; subcategoryId?: string }>;
   gF: string; gM: string; audienceAge: string; audienceLocation: string;
@@ -253,6 +254,10 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
   // Lock state comes exclusively from backend (server-side, immune to device clock manipulation)
   const pricingDaysLeft: number = creator.pricingDaysRemaining ?? 0;
   const pricingLocked = pricingDaysLeft > 0;
+  // Username (Instagram handle) 14-day cooldown — server-computed, immune to device clock
+  const usernameDaysLeft: number = creator.usernameDaysRemaining ?? 0;
+  const usernameLocked = usernameDaysLeft > 0;
+  const normHandle = (v: string) => v.trim().replace(/^@/, "").toLowerCase();
 
   const [allSlabs, setAllSlabs] = useState<any[]>([]);
   const [loadingSlabs, setLoadingSlabs] = useState(true);
@@ -291,11 +296,13 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
   }, []);
 
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
 
   const [s, setS] = useState<EditState>({
     fullName: creator.fullName ?? "", bio: creator.bio ?? "",
     gender: creator.gender ?? "", state: creator.state ?? "",
     phone: creator.phone ?? "",
+    username: creator.instagramHandle ?? "",
     youtubeHandle: creator.youtubeHandle ?? "", otherSocialHandle: creator.otherSocialHandle ?? "",
     followerCount: String(creator.followerCount ?? ""),
     editCats: initialCats.map((c: any) => ({ categoryId: c.categoryId, subcategoryId: c.subcategoryId })),
@@ -330,6 +337,7 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
   const newCatSig = s.editCats.map(c => `${c.categoryId}:${c.subcategoryId ?? ""}`).sort().join(",");
   const catsChanged = origCatSig !== newCatSig;
   const followerChanged = Number(s.followerCount) !== Number(creator.followerCount);
+  const usernameChanged = !usernameLocked && normHandle(s.username) !== "" && normHandle(s.username) !== normHandle(creator.instagramHandle ?? "");
   const audChanged = Number(s.gF) !== Number(creator.audienceGenderFemale) || Number(s.gM) !== Number(creator.audienceGenderMale) || s.audienceAge !== creator.audienceAge || s.audienceLocation !== creator.audienceLocation || s.contentType !== creator.contentType;
   const origImages = (Array.isArray(creator.images) ? creator.images : []).join("|");
   const imagesChanged = s.images.join("|") !== origImages;
@@ -339,8 +347,8 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
   // Slab is considered "changed" when user picks a different tier and pricing is not locked
   const resolvedOrigSlabId = creator.selectedSlabId ?? "";
   const slabChanged = !pricingLocked && s.editSlabId !== "" && s.editSlabId !== resolvedOrigSlabId;
-  // Only category/follower changes require admin review — pricing is direct
-  const anyReview = followerChanged;
+  // Follower-count and username changes require admin re-verification — pricing is direct
+  const anyReview = followerChanged || usernameChanged;
   const basicChanged = s.fullName !== creator.fullName || s.bio !== (creator.bio ?? "") || s.gender !== (creator.gender ?? "") || s.state !== (creator.state ?? "") || s.youtubeHandle !== (creator.youtubeHandle ?? "") || s.otherSocialHandle !== (creator.otherSocialHandle ?? "");
   const phoneChanged = s.phone !== (creator.phone ?? "");
 
@@ -381,6 +389,13 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
       const cd = await cr.json();
       if (!cd.available) { setPhoneError("This phone number is already linked to another account."); return; }
     }
+    if (usernameChanged) {
+      const handle = normHandle(s.username);
+      if (!/^[a-zA-Z0-9_.]+$/.test(handle)) { setUsernameError("Username can only contain letters, numbers, underscores, and periods."); return; }
+      const ur = await fetch(`${BASE_URL}/api/creators/check-handle?handle=${encodeURIComponent(handle)}`);
+      const ud = await ur.json();
+      if (!ud.available) { setUsernameError("This username is already linked to a Collabry account."); return; }
+    }
     setSaving(true); setShowPopup(false);
     try {
       if (basicChanged) await apiFetch(token, "/api/creator/profile/basic", { method: "PATCH", body: JSON.stringify({ fullName: s.fullName, bio: s.bio, gender: s.gender, state: s.state || null, youtubeHandle: s.youtubeHandle, otherSocialHandle: s.otherSocialHandle }) });
@@ -389,6 +404,10 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
         if (!pr.ok) { const pd = await pr.json(); onToast(pd.error ?? "Failed to update phone"); setSaving(false); return; }
       }
       if (followerChanged) await apiFetch(token, "/api/creator/follower-count", { method: "PATCH", body: JSON.stringify({ followerCount: Number(s.followerCount) }) });
+      if (usernameChanged) {
+        const ur = await apiFetch(token, "/api/creator/username", { method: "PATCH", body: JSON.stringify({ instagramHandle: normHandle(s.username) }) });
+        if (!ur.ok) { const ud = await ur.json(); setUsernameError(ud.error === "Username locked" ? `Username can be changed in ${ud.daysRemaining} day${ud.daysRemaining === 1 ? "" : "s"}.` : (ud.error ?? "Failed to update username")); setSaving(false); return; }
+      }
       if (slabChanged) {
         const r = await apiFetch(token, "/api/creator/pricing/slab", { method: "PATCH", body: JSON.stringify({ slabId: s.editSlabId }) });
         if (!r.ok) { const d = await r.json(); onToast(d.error ?? "Failed to submit pricing"); setSaving(false); return; }
@@ -452,15 +471,8 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
       <div ref={scrollBodyRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4" style={{ scrollbarWidth: "none" }}>
 
         {/* Locked */}
-        <EditSection title="Account Info" subtitle="These cannot be changed">
-          <div>
-            <FieldLabel text="Instagram Handle" />
-            <div className="flex items-center gap-2 px-3.5 py-3 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <Lock className="w-3.5 h-3.5 text-white/70" />
-              <span className="text-white/70 text-sm" style={{ fontFamily: POPPINS }}>@{creator.instagramHandle}</span>
-            </div>
-          </div>
-          {creator.email && (
+        {creator.email && (
+          <EditSection title="Account Info" subtitle="This cannot be changed">
             <div>
               <FieldLabel text="Email" />
               <div className="flex items-center gap-2 px-3.5 py-3 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -468,6 +480,49 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
                 <span className="text-white/70 text-sm" style={{ fontFamily: POPPINS }}>{creator.email}</span>
               </div>
             </div>
+          </EditSection>
+        )}
+
+        {/* Username / Instagram handle (review + 14-day cooldown) */}
+        <EditSection title="Username" subtitle={usernameLocked ? `Username can be changed in ${usernameDaysLeft} day${usernameDaysLeft === 1 ? "" : "s"}` : "Changes trigger a profile review · Locked for 14 days after each change"}>
+          {usernameLocked ? (
+            <div>
+              <FieldLabel text="Instagram Handle" />
+              <div className="flex items-center gap-2 px-3.5 py-3 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <Lock className="w-3.5 h-3.5 text-white/70" />
+                <span className="text-white/70 text-sm" style={{ fontFamily: POPPINS }}>@{creator.instagramHandle}</span>
+              </div>
+              <p className="text-white/70 text-[11px] mt-1.5" style={{ fontFamily: POPPINS }}>You can change your username again in {usernameDaysLeft} day{usernameDaysLeft === 1 ? "" : "s"}.</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.20)" }}>
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#f59e0b" }} />
+                <p className="text-xs" style={{ color: "#f59e0b", fontFamily: POPPINS }}>Changing your username requires re-verification</p>
+              </div>
+              <div>
+                <FieldLabel text="Instagram Handle" />
+                <div className="flex items-center rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}>
+                  <span className="pl-3.5 text-white/60 text-sm" style={{ fontFamily: POPPINS }}>@</span>
+                  <input
+                    value={s.username.replace(/^@/, "")}
+                    onChange={e => { setUsernameError(null); upd("username", e.target.value.replace(/^@/, "").replace(/[^a-zA-Z0-9_.]/g, "").toLowerCase()); }}
+                    onBlur={async () => {
+                      const handle = normHandle(s.username);
+                      if (!handle || handle === normHandle(creator.instagramHandle ?? "")) { setUsernameError(null); return; }
+                      if (!/^[a-zA-Z0-9_.]+$/.test(handle)) { setUsernameError("Username can only contain letters, numbers, underscores, and periods."); return; }
+                      const r = await fetch(`${BASE_URL}/api/creators/check-handle?handle=${encodeURIComponent(handle)}`);
+                      const d = await r.json();
+                      setUsernameError(d.available ? null : "This username is already linked to a Collabry account.");
+                    }}
+                    placeholder="yourusername"
+                    className="flex-1 px-2 py-3 text-sm outline-none bg-transparent"
+                    style={{ color: "white", fontFamily: POPPINS }}
+                  />
+                </div>
+                {usernameError && <p className="text-[11px] mt-1.5" style={{ color: PINK, fontFamily: POPPINS }}>{usernameError}</p>}
+              </div>
+            </>
           )}
         </EditSection>
 

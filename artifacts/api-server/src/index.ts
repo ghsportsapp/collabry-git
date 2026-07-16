@@ -71,6 +71,8 @@ async function initCreatorColumns() {
     `ALTER TABLE "Creator" ADD COLUMN IF NOT EXISTS "pendingCategories" JSONB`,
     `ALTER TABLE "Creator" ADD COLUMN IF NOT EXISTS "pendingImages" TEXT[]`,
     `ALTER TABLE "Creator" ADD COLUMN IF NOT EXISTS "pendingFollowerCount" INTEGER`,
+    `ALTER TABLE "Creator" ADD COLUMN IF NOT EXISTS "pendingInstagramHandle" TEXT`,
+    `ALTER TABLE "Creator" ADD COLUMN IF NOT EXISTS "instagramHandleLockedUntil" TIMESTAMPTZ`,
     `ALTER TABLE "Creator" ADD COLUMN IF NOT EXISTS "pendingPricing" JSONB`,
     `ALTER TABLE "Creator" ADD COLUMN IF NOT EXISTS "pendingReason" TEXT`,
     `ALTER TABLE "Creator" ADD COLUMN IF NOT EXISTS "rejectionReason" TEXT`,
