@@ -4,7 +4,7 @@ import { useServerTime, fmtCountdown } from "@/hooks/useServerTime";
 import { Zap, Clock, CheckCircle, XCircle, MessageCircle, AlertCircle, ChevronDown, ChevronUp, ChevronRight, Package, PackageCheck, CalendarClock, PlusCircle, AlertTriangle, FileText } from "lucide-react";
 import { useCreatorAuth } from "@/contexts/CreatorAuthContext";
 import DealChat from "@/components/DealChat";
-import DealScriptModal from "@/components/DealScriptModal";
+import DealScriptModal, { hasDealScript } from "@/components/DealScriptModal";
 import DealDeliverablesPanel from "@/components/DealDeliverablesPanel";
 import DealProgressBar from "@/components/DealProgressBar";
 import { CreatorLayout } from "@/components/CreatorNavLayout";
@@ -134,6 +134,8 @@ interface DealRow {
   productIssueStatus?: string | null;
   aboutProduct?: string | null;
   reelScript?: string | null;
+  storyScript?: string | null;
+  postContent?: string | null;
   brand: Brand | null;
 }
 interface RequestRow {
@@ -1226,6 +1228,8 @@ function LiveTab({ deals, apiFetch, onRefresh, chatDealId }: {
         <DealScriptModal
           aboutProduct={scriptDeal.aboutProduct ?? null}
           reelScript={scriptDeal.reelScript ?? null}
+          storyScript={scriptDeal.storyScript ?? null}
+          postContent={scriptDeal.postContent ?? null}
           onClose={() => setScriptDeal(null)}
         />
       )}
@@ -1377,7 +1381,7 @@ function LiveTab({ deals, apiFetch, onRefresh, chatDealId }: {
                   </button>
                 </div>
               )}
-              {(d.aboutProduct?.trim() || d.reelScript?.trim()) && (
+              {hasDealScript(d) && (
                 <button
                   onClick={() => setScriptDeal(d)}
                   style={{

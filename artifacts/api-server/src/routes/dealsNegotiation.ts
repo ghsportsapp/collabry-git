@@ -802,7 +802,9 @@ router.get("/creator/deals", requireCreator, async (req: Request, res: Response)
               COALESCE(camp.name, bc.name) as "campaignName",
               bc."productName" as "barterProductName",
               bc."productValueInr" as "barterProductValue",
-              dreq."aboutProduct" as "aboutProduct", dreq."reelScript" as "reelScript"
+              dreq."aboutProduct" as "aboutProduct", dreq.brief as "requestBrief",
+              dreq."reelScript" as "reelScript", dreq."storyScript" as "storyScript",
+              dreq."postContent" as "postContent"
        FROM "Deal" d
        JOIN "Brand" b ON b.id=d."brandId"
        LEFT JOIN "Campaign" camp ON camp.id=d."campaignId"
@@ -841,7 +843,9 @@ router.get("/creator/deals", requireCreator, async (req: Request, res: Response)
             COALESCE(camp.name, bc.name) as "campaignName",
             bc."productName" as "barterProductName",
             bc."productValueInr" as "barterProductValue",
-            dreq."aboutProduct" as "aboutProduct", dreq."reelScript" as "reelScript"
+            dreq."aboutProduct" as "aboutProduct", dreq.brief as "requestBrief",
+              dreq."reelScript" as "reelScript", dreq."storyScript" as "storyScript",
+              dreq."postContent" as "postContent"
      FROM "Deal" d
      JOIN "Brand" b ON b.id=d."brandId"
      LEFT JOIN "Campaign" camp ON camp.id=d."campaignId"
@@ -905,7 +909,9 @@ router.get("/brand/deals", requireBrand, async (req: Request, res: Response): Pr
     );
     const deals = await pool.query(
       `SELECT d.*, c."fullName" as "creatorName", c."instagramHandle", c."profilePhotoUrl", c."followerCount",
-              dreq."aboutProduct" as "aboutProduct", dreq."reelScript" as "reelScript"
+              dreq."aboutProduct" as "aboutProduct", dreq.brief as "requestBrief",
+              dreq."reelScript" as "reelScript", dreq."storyScript" as "storyScript",
+              dreq."postContent" as "postContent"
        FROM "Deal" d
        JOIN "Creator" c ON c.id=d."creatorId"
        LEFT JOIN "DealRequest" dreq ON dreq.id=d."requestId"
@@ -937,7 +943,9 @@ router.get("/brand/deals", requireBrand, async (req: Request, res: Response): Pr
   const deals = await pool.query(
     `SELECT d.*, c."fullName" as "creatorName", c."instagramHandle", c."profilePhotoUrl", c."followerCount",
             COALESCE(camp.name, bc.name) as "campaignName",
-            dreq."aboutProduct" as "aboutProduct", dreq."reelScript" as "reelScript"
+            dreq."aboutProduct" as "aboutProduct", dreq.brief as "requestBrief",
+              dreq."reelScript" as "reelScript", dreq."storyScript" as "storyScript",
+              dreq."postContent" as "postContent"
      FROM "Deal" d
      JOIN "Creator" c ON c.id=d."creatorId"
      LEFT JOIN "Campaign" camp ON camp.id=d."campaignId"
@@ -1331,9 +1339,13 @@ function serializeDeal(d: any) {
     paymentReferenceId: d.paymentReferenceId,
     barterProductName: d.barterProductName ?? null,
     barterProductValue: d.barterProductValue != null ? num(d.barterProductValue) : null,
-    // Brief the brand submitted with the original deal request (joined from DealRequest)
-    aboutProduct: d.aboutProduct ?? null,
+    // Brief + scripts the brand submitted with the original deal request (joined from
+    // DealRequest). aboutProduct falls back to the legacy `brief` column for requests
+    // created before aboutProduct existed — same fallback the request POST applies.
+    aboutProduct: d.aboutProduct ?? d.requestBrief ?? null,
     reelScript: d.reelScript ?? null,
+    storyScript: d.storyScript ?? null,
+    postContent: d.postContent ?? null,
     productImageUrl: d.productImageUrl ?? null,
     orderId: d.orderId ?? null,
     createdAt: d.createdAt,

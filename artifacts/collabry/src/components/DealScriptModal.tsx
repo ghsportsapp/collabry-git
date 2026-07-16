@@ -3,15 +3,30 @@ import { FileText, X } from "lucide-react";
 const POPPINS = "'Poppins', sans-serif";
 const PINK = "#E14F69";
 
+export interface DealScriptFields {
+  aboutProduct?: string | null;
+  reelScript?: string | null;
+  storyScript?: string | null;
+  postContent?: string | null;
+}
+
+/** True when the brand submitted any brief/script content worth showing for this deal. */
+export function hasDealScript(d: DealScriptFields): boolean {
+  return [d.aboutProduct, d.reelScript, d.storyScript, d.postContent].some(v => Boolean(v?.trim()));
+}
+
 /**
  * Read-only view of the brief the brand submitted with the original deal request.
  * Shared by the creator and brand Deals views — neither side can edit here.
  */
-export default function DealScriptModal({ aboutProduct, reelScript, onClose }: {
+export default function DealScriptModal({ aboutProduct, reelScript, storyScript, postContent, onClose }: {
   aboutProduct: string | null;
   reelScript: string | null;
+  storyScript?: string | null;
+  postContent?: string | null;
   onClose: () => void;
 }) {
+  const hasAny = hasDealScript({ aboutProduct, reelScript, storyScript, postContent });
   return (
     <div
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
@@ -35,7 +50,9 @@ export default function DealScriptModal({ aboutProduct, reelScript, onClose }: {
         <div style={{ overflowY: "auto", flex: 1 }}>
           <Section label="About the Product" value={aboutProduct} />
           <Section label="Reel Script" value={reelScript} />
-          {!aboutProduct?.trim() && !reelScript?.trim() && (
+          <Section label="Story Script" value={storyScript ?? null} />
+          <Section label="Post Content" value={postContent ?? null} />
+          {!hasAny && (
             <p style={{ color: "rgba(255,255,255,0.60)", fontSize: 13, fontFamily: POPPINS, margin: 0, lineHeight: 1.6 }}>
               No script details were submitted with this deal.
             </p>

@@ -7,7 +7,7 @@ import { openRazorpayCheckout } from "@/lib/razorpay";
 import { useSupportEmail } from "@/hooks/useSupportEmail";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
-import DealScriptModal from "@/components/DealScriptModal";
+import DealScriptModal, { hasDealScript } from "@/components/DealScriptModal";
 import DealChat from "@/components/DealChat";
 import DealDeliverablesPanel from "@/components/DealDeliverablesPanel";
 import DealProgressBar from "@/components/DealProgressBar";
@@ -69,6 +69,8 @@ interface DealRow {
   productIssueStatus?: string | null;
   aboutProduct?: string | null;
   reelScript?: string | null;
+  storyScript?: string | null;
+  postContent?: string | null;
   creator: { id: string; fullName: string; instagramHandle: string; profilePhotoUrl: string | null; followerCount: number } | null;
   postedBy?: string | null;
 }
@@ -1582,6 +1584,8 @@ function DealsList({ deals, variant, apiFetch, onRefresh, cancelledRequests = []
         <DealScriptModal
           aboutProduct={scriptDeal.aboutProduct ?? null}
           reelScript={scriptDeal.reelScript ?? null}
+          storyScript={scriptDeal.storyScript ?? null}
+          postContent={scriptDeal.postContent ?? null}
           onClose={() => setScriptDeal(null)}
         />
       )}
@@ -1715,7 +1719,7 @@ function DealsList({ deals, variant, apiFetch, onRefresh, cancelledRequests = []
           )}
           {/* Chat section */}
           <div className="mt-3">
-            {variant === "live" && (d.aboutProduct?.trim() || d.reelScript?.trim()) && (
+            {variant === "live" && hasDealScript(d) && (
               <button
                 onClick={() => setScriptDeal(d)}
                 className="w-full flex items-center justify-between px-4 py-3 rounded-xl mb-2 transition-all"
