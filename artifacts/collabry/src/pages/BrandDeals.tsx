@@ -7,6 +7,7 @@ import { openRazorpayCheckout } from "@/lib/razorpay";
 import { useSupportEmail } from "@/hooks/useSupportEmail";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
+import DealScriptModal from "@/components/DealScriptModal";
 import DealChat from "@/components/DealChat";
 import DealDeliverablesPanel from "@/components/DealDeliverablesPanel";
 import DealProgressBar from "@/components/DealProgressBar";
@@ -66,6 +67,8 @@ interface DealRow {
   nonDeliveryReportedAt?: string | null;
   nonDeliveryResolution?: string | null;
   productIssueStatus?: string | null;
+  aboutProduct?: string | null;
+  reelScript?: string | null;
   creator: { id: string; fullName: string; instagramHandle: string; profilePhotoUrl: string | null; followerCount: number } | null;
   postedBy?: string | null;
 }
@@ -1555,6 +1558,7 @@ function DealsList({ deals, variant, apiFetch, onRefresh, cancelledRequests = []
 }) {
   const [openChat, setOpenChat] = useState<string | null>(chatDealId ?? null);
   const [reportDeal, setReportDeal] = useState<DealRow | null>(null);
+  const [scriptDeal, setScriptDeal] = useState<DealRow | null>(null);
   useEffect(() => {
     if (!chatDealId) return;
     setOpenChat(chatDealId);
@@ -1574,6 +1578,13 @@ function DealsList({ deals, variant, apiFetch, onRefresh, cancelledRequests = []
     <>
       {orderModal && <ViewOrderModal deal={orderModal} onClose={() => setOrderModal(null)} />}
       {reportDeal && <ReportCreatorModal deal={reportDeal} apiFetch={apiFetch} onClose={() => setReportDeal(null)} />}
+      {scriptDeal && (
+        <DealScriptModal
+          aboutProduct={scriptDeal.aboutProduct ?? null}
+          reelScript={scriptDeal.reelScript ?? null}
+          onClose={() => setScriptDeal(null)}
+        />
+      )}
       <div className="space-y-5">
         {variant === "cancelled" && cancelledRequests.map(r => (
           <CancelledRequestCardBrand key={r.id} req={r} />
@@ -1704,6 +1715,23 @@ function DealsList({ deals, variant, apiFetch, onRefresh, cancelledRequests = []
           )}
           {/* Chat section */}
           <div className="mt-3">
+            {variant === "live" && (d.aboutProduct?.trim() || d.reelScript?.trim()) && (
+              <button
+                onClick={() => setScriptDeal(d)}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl mb-2 transition-all"
+                style={{
+                  background: "rgba(240,24,122,0.15)",
+                  border: "1px solid rgba(255,255,255,0.09)",
+                  fontFamily: POPPINS,
+                }}
+              >
+                <span className="flex items-center gap-2 text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.85)" }}>
+                  <FileText className="w-4 h-4" />
+                  Script
+                </span>
+                <ChevronRight className="w-3.5 h-3.5 text-white/70" />
+              </button>
+            )}
             <button
               onClick={() => setOpenChat(openChat === d.id ? null : d.id)}
               className="w-full flex items-center justify-between px-4 py-3 rounded-xl mb-1 transition-all"

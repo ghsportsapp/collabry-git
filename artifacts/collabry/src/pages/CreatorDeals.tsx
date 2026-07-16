@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { useServerTime, fmtCountdown } from "@/hooks/useServerTime";
-import { Zap, Clock, CheckCircle, XCircle, MessageCircle, AlertCircle, ChevronDown, ChevronUp, Package, PackageCheck, CalendarClock, PlusCircle, AlertTriangle } from "lucide-react";
+import { Zap, Clock, CheckCircle, XCircle, MessageCircle, AlertCircle, ChevronDown, ChevronUp, ChevronRight, Package, PackageCheck, CalendarClock, PlusCircle, AlertTriangle, FileText } from "lucide-react";
 import { useCreatorAuth } from "@/contexts/CreatorAuthContext";
 import DealChat from "@/components/DealChat";
+import DealScriptModal from "@/components/DealScriptModal";
 import DealDeliverablesPanel from "@/components/DealDeliverablesPanel";
 import DealProgressBar from "@/components/DealProgressBar";
 import { CreatorLayout } from "@/components/CreatorNavLayout";
@@ -131,6 +132,8 @@ interface DealRow {
   nonDeliveryReportedAt?: string | null;
   nonDeliveryResolution?: string | null;
   productIssueStatus?: string | null;
+  aboutProduct?: string | null;
+  reelScript?: string | null;
   brand: Brand | null;
 }
 interface RequestRow {
@@ -1205,6 +1208,7 @@ function LiveTab({ deals, apiFetch, onRefresh, chatDealId }: {
 }) {
   const [openChat, setOpenChat] = useState<string | null>(chatDealId ?? null);
   const [reportDeal, setReportDeal] = useState<DealRow | null>(null);
+  const [scriptDeal, setScriptDeal] = useState<DealRow | null>(null);
   useEffect(() => {
     if (!chatDealId) return;
     setOpenChat(chatDealId);
@@ -1218,6 +1222,13 @@ function LiveTab({ deals, apiFetch, onRefresh, chatDealId }: {
   return (
     <>
       {reportDeal && <ReportBrandModal deal={reportDeal} apiFetch={apiFetch} onClose={() => setReportDeal(null)} />}
+      {scriptDeal && (
+        <DealScriptModal
+          aboutProduct={scriptDeal.aboutProduct ?? null}
+          reelScript={scriptDeal.reelScript ?? null}
+          onClose={() => setScriptDeal(null)}
+        />
+      )}
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {deals.map(d => (
         <div key={d.id} id={`deal-card-${d.id}`} style={{ background: CARD_BG, borderRadius: 20, border: "1px solid rgba(240,24,122,0.30)", overflow: "hidden" }}>
@@ -1365,6 +1376,23 @@ function LiveTab({ deals, apiFetch, onRefresh, chatDealId }: {
                     Open Deal Chat
                   </button>
                 </div>
+              )}
+              {(d.aboutProduct?.trim() || d.reelScript?.trim()) && (
+                <button
+                  onClick={() => setScriptDeal(d)}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    width: "100%", padding: "11px 14px", borderRadius: 12, marginBottom: 8,
+                    background: "rgba(240,24,122,0.15)", border: "1px solid rgba(255,255,255,0.08)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.85)", fontSize: "clamp(12px, 1.1vw, 14px)", fontWeight: 600, fontFamily: POPPINS }}>
+                    <FileText size={15} />
+                    Script
+                  </span>
+                  <ChevronRight size={15} color="rgba(255,255,255,0.70)" />
+                </button>
               )}
               <button
                 onClick={() => setOpenChat(openChat === d.id ? null : d.id)}

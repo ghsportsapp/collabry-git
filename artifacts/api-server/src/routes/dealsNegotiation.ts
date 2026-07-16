@@ -801,11 +801,13 @@ router.get("/creator/deals", requireCreator, async (req: Request, res: Response)
       `SELECT d.*, b."brandName" as "brandName", b."logoUrl" as "brandLogo",
               COALESCE(camp.name, bc.name) as "campaignName",
               bc."productName" as "barterProductName",
-              bc."productValueInr" as "barterProductValue"
+              bc."productValueInr" as "barterProductValue",
+              dreq."aboutProduct" as "aboutProduct", dreq."reelScript" as "reelScript"
        FROM "Deal" d
        JOIN "Brand" b ON b.id=d."brandId"
        LEFT JOIN "Campaign" camp ON camp.id=d."campaignId"
        LEFT JOIN "BarterCampaign" bc ON bc.id=d."barterId"
+       LEFT JOIN "DealRequest" dreq ON dreq.id=d."requestId"
        WHERE d."creatorId"=$1 AND d.status='PENDING_PAYMENT'
        ORDER BY d."createdAt" DESC`,
       [creatorId]
@@ -838,11 +840,13 @@ router.get("/creator/deals", requireCreator, async (req: Request, res: Response)
     `SELECT d.*, b."brandName" as "brandName", b."logoUrl" as "brandLogo",
             COALESCE(camp.name, bc.name) as "campaignName",
             bc."productName" as "barterProductName",
-            bc."productValueInr" as "barterProductValue"
+            bc."productValueInr" as "barterProductValue",
+            dreq."aboutProduct" as "aboutProduct", dreq."reelScript" as "reelScript"
      FROM "Deal" d
      JOIN "Brand" b ON b.id=d."brandId"
      LEFT JOIN "Campaign" camp ON camp.id=d."campaignId"
      LEFT JOIN "BarterCampaign" bc ON bc.id=d."barterId"
+     LEFT JOIN "DealRequest" dreq ON dreq.id=d."requestId"
      WHERE d."creatorId"=$1 AND d.status = ANY($2::text[])
      ORDER BY d."createdAt" DESC`,
     [creatorId, statusList]
@@ -900,9 +904,11 @@ router.get("/brand/deals", requireBrand, async (req: Request, res: Response): Pr
       [brandId]
     );
     const deals = await pool.query(
-      `SELECT d.*, c."fullName" as "creatorName", c."instagramHandle", c."profilePhotoUrl", c."followerCount"
+      `SELECT d.*, c."fullName" as "creatorName", c."instagramHandle", c."profilePhotoUrl", c."followerCount",
+              dreq."aboutProduct" as "aboutProduct", dreq."reelScript" as "reelScript"
        FROM "Deal" d
        JOIN "Creator" c ON c.id=d."creatorId"
+       LEFT JOIN "DealRequest" dreq ON dreq.id=d."requestId"
        WHERE d."brandId"=$1 AND d.status='PENDING_PAYMENT'
        ORDER BY d."createdAt" DESC`,
       [brandId]
@@ -930,11 +936,13 @@ router.get("/brand/deals", requireBrand, async (req: Request, res: Response): Pr
 
   const deals = await pool.query(
     `SELECT d.*, c."fullName" as "creatorName", c."instagramHandle", c."profilePhotoUrl", c."followerCount",
-            COALESCE(camp.name, bc.name) as "campaignName"
+            COALESCE(camp.name, bc.name) as "campaignName",
+            dreq."aboutProduct" as "aboutProduct", dreq."reelScript" as "reelScript"
      FROM "Deal" d
      JOIN "Creator" c ON c.id=d."creatorId"
      LEFT JOIN "Campaign" camp ON camp.id=d."campaignId"
      LEFT JOIN "BarterCampaign" bc ON bc.id=d."barterId"
+     LEFT JOIN "DealRequest" dreq ON dreq.id=d."requestId"
      WHERE d."brandId"=$1 AND d.status = ANY($2::text[])
      ORDER BY d."createdAt" DESC`,
     [brandId, statusList]
@@ -1323,6 +1331,9 @@ function serializeDeal(d: any) {
     paymentReferenceId: d.paymentReferenceId,
     barterProductName: d.barterProductName ?? null,
     barterProductValue: d.barterProductValue != null ? num(d.barterProductValue) : null,
+    // Brief the brand submitted with the original deal request (joined from DealRequest)
+    aboutProduct: d.aboutProduct ?? null,
+    reelScript: d.reelScript ?? null,
     productImageUrl: d.productImageUrl ?? null,
     orderId: d.orderId ?? null,
     createdAt: d.createdAt,
