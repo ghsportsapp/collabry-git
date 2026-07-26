@@ -4,7 +4,7 @@ import { Eye, EyeOff, Upload, X, Plus, AlertCircle, ChevronRight, ChevronLeft, C
 import { useCreatorAuth } from "@/contexts/CreatorAuthContext";
 import MultiImageUpload from "@/components/MultiImageUpload";
 import { pixelTrack } from "@/lib/pixel";
-import { trackEvent, identifyUser } from "@/lib/analytics";
+import { trackSignup, identifyUser } from "@/lib/analytics";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -545,7 +545,7 @@ export default function CreatorSignup() {
       setAuth(data.accessToken, data.creatorId, data.fullName);
       pixelTrack("Lead", { content_name: "creator_signup" });
       identifyUser(data.creatorId, "CREATOR");
-      trackEvent("signup_completed", { user_type: "CREATOR", method: "email" });
+      trackSignup("CREATOR");
       navigate("/home-creator");
     } finally { setSubmitting(false); }
   };
