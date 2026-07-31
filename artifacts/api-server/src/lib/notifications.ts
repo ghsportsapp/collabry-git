@@ -7,6 +7,8 @@ import { sendBrevoTemplateEmail } from "./brevoEmail";
 import { resolveEmailTemplate, type ResolvedTemplate } from "./brevoTemplates";
 import { sendEmail } from "./email";
 import { shouldEmailNotification, renderNotificationEmail } from "./notificationEmail";
+import { isWhatsAppEnabled, sendWhatsApp, toWhatsAppNumber } from "./aisensy";
+import { resolveWhatsAppCampaign, COUNTERPARTY } from "./whatsappCampaigns";
 
 export type NotifUserType = "BRAND" | "CREATOR";
 
@@ -83,6 +85,15 @@ export async function createNotification(n: CreateNotifInput): Promise<void> {
     logger.error(
       { err, userId: n.userId, userType: n.userType, type: n.type },
       "Notification email failed"
+    );
+  });
+
+  // WhatsApp — same fire-and-forget contract as email. Off unless AISENSY_ENABLED
+  // is set, so this is inert until the campaigns are verified.
+  void dispatchWhatsApp(n).catch((err) => {
+    logger.error(
+      { err, userId: n.userId, userType: n.userType, type: n.type },
+      "Notification WhatsApp failed"
     );
   });
 
@@ -240,4 +251,86 @@ async function dispatchEmail(n: CreateNotifInput, tpl: ResolvedTemplate | null):
     await sendEmail({ to: email, ...rendered });
     logger.info({ userId: n.userId, type: n.type }, "Notification email sent (legacy fallback)");
   }
+}
+
+/**
+ * WhatsApp via AiSensy. Every gate below skips silently rather than throwing,
+ * because this runs alongside a notification that has already been created —
+ * a missing phone or an unmapped type is a non-event, not an error.
+ *
+ * Gates, in order: feature flag -> type has a campaign -> recipient has a
+ * dialable number -> the template's params can all be filled. See
+ * whatsappCampaigns.ts for why most two-param campaigns stop at the last gate
+ * until the approved template bodies land.
+ */
+async function dispatchWhatsApp(n: CreateNotifInput): Promise<void> {
+  if (!isWhatsAppEnabled()) return;
+
+  const camp = resolveWhatsAppCampaign(n.type, n.userType);
+  if (!camp) return;
+
+  const table = n.userType === "BRAND" ? "Brand" : "Creator";
+  const nameCol = n.userType === "BRAND" ? '"brandName"' : '"fullName"';
+  const result = await pool.query(
+    `SELECT phone, ${nameCol} AS name FROM "${table}" WHERE id = $1`,
+    [n.userId]
+  );
+  const destination = toWhatsAppNumber(result.rows[0]?.phone as string | null | undefined);
+  if (!destination) {
+    logger.debug({ userId: n.userId, type: n.type }, "Skipping WhatsApp — no dialable phone");
+    return;
+  }
+  const name = (result.rows[0]?.name as string | null | undefined)?.trim() || undefined;
+  // A creator is a person, so greet them by first name. A brand is a company —
+  // use the whole name, because "Hi Snitch" reads wrong for "Snitch Clothing".
+  const greeting = (n.userType === "BRAND" ? name : name?.split(/\s+/)[0]) || "there";
+
+  const templateParams: string[] = [greeting];
+  // `param2` present means a two-param template. null = we don't yet know what
+  // {{2}} is, so sending would fill it with the wrong value.
+  if ("param2" in camp) {
+    if (!camp.param2) {
+      logger.debug(
+        { userId: n.userId, type: n.type, campaign: camp.campaign },
+        "Skipping WhatsApp — awaiting approved template body for {{2}}"
+      );
+      return;
+    }
+    // Same enrichment the email path does: most deal call sites never pass
+    // brand_name/creator_name explicitly, they come from the Deal row. Without
+    // this the counterparty lookup below would miss on nearly every deal.
+    let params: Record<string, string | number | null | undefined> = { ...n.emailParams };
+    if (n.relatedEntityType?.toUpperCase() === "DEAL" && n.relatedEntityId) {
+      const meta = await getDealMeta(n.relatedEntityId);
+      params = { ...meta.params, ...params };
+    }
+    // "the other party" resolves against the recipient: a brand hears about the
+    // creator, a creator hears about the brand.
+    const key =
+      camp.param2 === COUNTERPARTY
+        ? n.userType === "BRAND"
+          ? "creator_name"
+          : "brand_name"
+        : camp.param2;
+    const value = params[key];
+    if (value == null) {
+      logger.debug(
+        { userId: n.userId, type: n.type, campaign: camp.campaign, param: key },
+        "Skipping WhatsApp — {{2}} param missing"
+      );
+      return;
+    }
+    templateParams.push(String(value));
+  }
+
+  const submittedMessageId = await sendWhatsApp({
+    campaignName: camp.campaign,
+    destination,
+    userName: name ?? greeting,
+    templateParams,
+  });
+  logger.info(
+    { userId: n.userId, type: n.type, campaign: camp.campaign, submittedMessageId },
+    "Notification WhatsApp sent"
+  );
 }
