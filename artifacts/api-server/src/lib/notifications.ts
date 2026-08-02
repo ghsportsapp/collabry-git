@@ -269,10 +269,21 @@ async function dispatchWhatsApp(n: CreateNotifInput): Promise<void> {
   const camp = resolveWhatsAppCampaign(n.type, n.userType);
   if (!camp) return;
 
-  const table = n.userType === "BRAND" ? "Brand" : "Creator";
-  const nameCol = n.userType === "BRAND" ? '"brandName"' : '"fullName"';
+  // Creators keep their number on Creator.phone, but brands do NOT — brand
+  // signup never writes Brand.phone (see brandAuth.ts); the number goes into
+  // BrandCustomFieldValue under whichever signup field is of type 'tel'.
+  // Reading Brand.phone here would silently skip every brand message.
   const result = await pool.query(
-    `SELECT phone, ${nameCol} AS name FROM "${table}" WHERE id = $1`,
+    n.userType === "BRAND"
+      ? `SELECT b."brandName" AS name,
+                (SELECT v.value
+                   FROM "BrandCustomFieldValue" v
+                   JOIN "BrandSignupField" f ON f.id = v."fieldId"
+                  WHERE v."brandId" = b.id AND f."fieldType" = 'tel'
+                  ORDER BY f."displayOrder", f."createdAt"
+                  LIMIT 1) AS phone
+           FROM "Brand" b WHERE b.id = $1`
+      : `SELECT "fullName" AS name, phone FROM "Creator" WHERE id = $1`,
     [n.userId]
   );
   const destination = toWhatsAppNumber(result.rows[0]?.phone as string | null | undefined);

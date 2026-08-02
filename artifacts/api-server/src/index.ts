@@ -10,6 +10,7 @@ import { initMatchmakingTables } from "./routes/matchmaking";
 import { activateAllCreditHoldCampaigns } from "./lib/creditHoldActivation";
 import { pool } from "@workspace/db";
 import { ensureExtensionTable } from "./routes/dealExtensions";
+import { isWhatsAppEnabled } from "./lib/aisensy";
 
 const rawPort = process.env["PORT"];
 
@@ -249,6 +250,13 @@ async function bootstrap() {
     }
 
     logger.info({ port }, "Server listening");
+    // Stated at boot because a disabled channel is otherwise invisible: with
+    // the flag off, dispatchWhatsApp returns before logging anything, so
+    // "no WhatsApp arrived" and "WhatsApp is switched off" look identical.
+    logger.info(
+      { enabled: isWhatsAppEnabled(), hasKey: !!process.env["AISENSY_API_KEY"] },
+      "WhatsApp (AiSensy) notifications"
+    );
     startCampaignExpiryJob();
     startSelectionExpiryJob();
     startDealPipelineJob().catch(e => { logger.error({ err: e }, "startDealPipelineJob error"); });
