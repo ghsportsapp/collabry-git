@@ -85,24 +85,27 @@ const SIMPLE: Record<string, WhatsAppCampaign> = {
   TIMELINE_EXTENSION_REJECTED: { campaign: "Timeline Extension Declined-Creator", param2: COUNTERPARTY },
 
   REQUEST_RECEIVED: { campaign: "Deal Request Received-Creator", param2: COUNTERPARTY },
-  // Fires against a campaign, not a deal, and the call sites carry only
-  // campaign_name — so {{2}} follows the campaign rule, not the counterparty
-  // one. Worth confirming with Navneet: the copy mentions a creator.
-  BARTER_CREATOR_CONFIRMED: { campaign: "Barter Participation Confirmed-Brand", param2: "campaign_name" },
-  BARTER_CREATOR_CONFIRMED_PAID: { campaign: "Campaign Participation Confirmed-Brand", param2: "campaign_name" },
+  // Campaign-level, so these lost their second param too — verified live.
+  BARTER_CREATOR_CONFIRMED: { campaign: "Barter Participation Confirmed-Brand" },
+  BARTER_CREATOR_CONFIRMED_PAID: { campaign: "Campaign Participation Confirmed-Brand" },
   // NOTE: CAMPAIGN_SELECTED ("Campaign Application Approved-Creator") is emitted
   // via createPopup, not createNotification, so it never reaches this dispatcher.
   // Wiring it means adding a createNotification call alongside the popup.
 
-  // ── Campaign messages: {{2}} is the campaign name ──────────────────────
-  CAMPAIGN_CREATORS_INTERESTED: { campaign: "Campaign New Applicants-Brand", param2: "campaign_name" },
-  CAMPAIGN_ON_HOLD: { campaign: "Campaign On Hold-Brand", param2: "campaign_name" },
-  CAMPAIGN_REJECTED: { campaign: "Campaign Rejected-Brand", param2: "campaign_name" },
-  CAMPAIGN_CANCELLED: { campaign: "Campaign Cancelled-Brand", param2: "campaign_name" },
-  CAMPAIGN_TOP_UP_NEEDED: { campaign: "Campaign Balance Low-Brand", param2: "campaign_name" },
-  BARTER_ON_HOLD: { campaign: "Barter On Hold-Brand", param2: "campaign_name" },
-  BARTER_REJECTED: { campaign: "Barter Rejected-Brand", param2: "campaign_name" },
-  BARTER_TOP_UP_NEEDED: { campaign: "Barter Balance Low-Brand", param2: "campaign_name" },
+  // ── Campaign messages: single-param ────────────────────────────────────
+  // These carried a campaign-name {{2}} in the original export, but Navneet
+  // dropped the second param from every campaign-level template on 2026-08-02
+  // ("i will remove 2nd param in case of campaign"). Verified against the live
+  // API: sending two params returns 400 "Template params does not match the
+  // campaign". Keep these single-param unless the templates change again.
+  CAMPAIGN_CREATORS_INTERESTED: { campaign: "Campaign New Applicants-Brand" },
+  CAMPAIGN_ON_HOLD: { campaign: "Campaign On Hold-Brand" },
+  CAMPAIGN_REJECTED: { campaign: "Campaign Rejected-Brand" },
+  CAMPAIGN_CANCELLED: { campaign: "Campaign Cancelled-Brand" },
+  CAMPAIGN_TOP_UP_NEEDED: { campaign: "Campaign Balance Low-Brand" },
+  BARTER_ON_HOLD: { campaign: "Barter On Hold-Brand" },
+  BARTER_REJECTED: { campaign: "Barter Rejected-Brand" },
+  BARTER_TOP_UP_NEEDED: { campaign: "Barter Balance Low-Brand" },
 
   // A credit gift has neither a counterparty nor a campaign. `credits` is the
   // only sensible {{2}} but Navneet hasn't confirmed it — stays gated.
@@ -149,8 +152,33 @@ const BY_USER_TYPE: Record<string, Partial<Record<UserType, WhatsAppCampaign>>> 
 /**
  * Resolve the AiSensy campaign for a notification type, or null if it must be
  * wired explicitly (see CONTEXT-DEPENDENT below) or has no campaign at all.
+ *
+ * `dealSource` is the Deal's source ("CAMPAIGN" | "BARTER" | "DIRECT"), needed
+ * only by the two families below that split on it. Pass it for deal-linked
+ * notifications; omit it elsewhere.
  */
-export function resolveWhatsAppCampaign(type: string, userType: UserType): WhatsAppCampaign | null {
+export function resolveWhatsAppCampaign(
+  type: string,
+  userType: UserType,
+  dealSource?: string | null,
+): WhatsAppCampaign | null {
+  // Completion splits four ways on (recipient, barter-or-not) — the same split
+  // dealCompletedTemplateId() makes for email. Campaigns 71-74.
+  if (type === "DEAL_COMPLETED") {
+    const barter = dealSource === "BARTER";
+    return userType === "CREATOR"
+      ? { campaign: barter ? "Deal Completed Barter-Creator" : "Deal Completed-Creator", param2: COUNTERPARTY }
+      : { campaign: barter ? "Deal Completed Barter-Brand" : "Deal Completed-Brand", param2: COUNTERPARTY };
+  }
+  // Deal going live. The creator's copy differs for campaign vs direct deals;
+  // the brand gets one campaign, and that one is single-param (verified live).
+  if (type === "DEAL_LIVE" || type === "PAYMENT_DONE_DEAL_STARTED") {
+    if (userType === "BRAND") return { campaign: "Deal Started-Brand" };
+    return {
+      campaign: dealSource === "DIRECT" ? "Deal Started Direct-Creator" : "Deal Started Campaign-Creator",
+      param2: COUNTERPARTY,
+    };
+  }
   if (BY_USER_TYPE[type]) return BY_USER_TYPE[type][userType] ?? null;
   return SIMPLE[type] ?? null;
 }
@@ -160,13 +188,6 @@ export function resolveWhatsAppCampaign(type: string, userType: UserType): Whats
 // depends on context the `type` alone doesn't carry. These mirror the
 // equivalent block in brevoTemplates.ts and need the same call-site wiring:
 //
-//   DEAL_COMPLETED        -> "Deal Completed-{Brand,Creator}" for paid/direct
-//                            vs "Deal Completed Barter-{Brand,Creator}".
-//                            Same four-way split as dealCompletedTemplateId().
-//   DEAL_LIVE /
-//   PAYMENT_DONE_DEAL_STARTED -> "Deal Started Campaign-Creator" vs
-//                            "Deal Started Direct-Creator"; brand side is
-//                            "Deal Started-Brand".
 //   PAYMENT_SUCCESS       -> "Deal Payment Confirmed-Brand" (deal) vs
 //                            "Brand Credit Payment Confirmed-Brand" (credits).
 //   DEAL_CANCELLED        -> "Deal Cancelled Concept-{Brand,Creator}" vs

@@ -266,7 +266,14 @@ async function dispatchEmail(n: CreateNotifInput, tpl: ResolvedTemplate | null):
 async function dispatchWhatsApp(n: CreateNotifInput): Promise<void> {
   if (!isWhatsAppEnabled()) return;
 
-  const camp = resolveWhatsAppCampaign(n.type, n.userType);
+  // One deal lookup serves both jobs: picking the paid-vs-barter campaign
+  // variant, and supplying brand_name/creator_name for {{2}} further down.
+  const meta =
+    n.relatedEntityType?.toUpperCase() === "DEAL" && n.relatedEntityId
+      ? await getDealMeta(n.relatedEntityId)
+      : { params: {} as Record<string, string | number | null | undefined>, source: null };
+
+  const camp = resolveWhatsAppCampaign(n.type, n.userType, meta.source);
   if (!camp) return;
 
   // Creators keep their number on Creator.phone, but brands do NOT — brand
@@ -310,11 +317,7 @@ async function dispatchWhatsApp(n: CreateNotifInput): Promise<void> {
     // Same enrichment the email path does: most deal call sites never pass
     // brand_name/creator_name explicitly, they come from the Deal row. Without
     // this the counterparty lookup below would miss on nearly every deal.
-    let params: Record<string, string | number | null | undefined> = { ...n.emailParams };
-    if (n.relatedEntityType?.toUpperCase() === "DEAL" && n.relatedEntityId) {
-      const meta = await getDealMeta(n.relatedEntityId);
-      params = { ...meta.params, ...params };
-    }
+    const params = { ...meta.params, ...n.emailParams };
     // "the other party" resolves against the recipient: a brand hears about the
     // creator, a creator hears about the brand.
     const key =
