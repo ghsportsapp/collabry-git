@@ -84,6 +84,17 @@ const SIMPLE: Record<string, WhatsAppCampaign> = {
   TIMELINE_EXTENSION_REQUESTED: { campaign: "Timeline Extension Request-Brand", param2: COUNTERPARTY },
   TIMELINE_EXTENSION_REJECTED: { campaign: "Timeline Extension Declined-Creator", param2: COUNTERPARTY },
 
+  // Inactivity escalation. The campaign names carry day numbers, and they line
+  // up exactly with the constants driving the job in jobs/dealPipeline.ts:
+  // CONCEPT_EARLY_NUDGE_DAY=2, CONCEPT_NUDGE_DAY=3, FINAL_NUDGE_DAY=5,
+  // FINAL_WARN_DAY=7. The brand-side escalation fires on day 10 but its
+  // campaign is named for the condition ("overdue") rather than the day.
+  DEAL_INACTIVITY_EARLY_NUDGE: { campaign: "Deal Pending Day2-Creator", param2: COUNTERPARTY },
+  DEAL_INACTIVITY_NUDGE: { campaign: "Deal Pending Day3-Creator", param2: COUNTERPARTY },
+  DEAL_FINAL_INACTIVITY_NUDGE: { campaign: "Deal Post Pending Day5-Creator", param2: COUNTERPARTY },
+  DEAL_FINAL_INACTIVITY_WARNING: { campaign: "Deal Video Pending Day7-Creator", param2: COUNTERPARTY },
+  DEAL_FINAL_INACTIVITY_ESCALATED: { campaign: "Deal Overdue-Brand", param2: COUNTERPARTY },
+
   REQUEST_RECEIVED: { campaign: "Deal Request Received-Creator", param2: COUNTERPARTY },
   // Campaign-level, so these lost their second param too — verified live.
   BARTER_CREATOR_CONFIRMED: { campaign: "Barter Participation Confirmed-Brand" },
@@ -157,11 +168,33 @@ const BY_USER_TYPE: Record<string, Partial<Record<UserType, WhatsAppCampaign>>> 
  * only by the two families below that split on it. Pass it for deal-linked
  * notifications; omit it elsewhere.
  */
+export interface CampaignContext {
+  /** Deal.source — "CAMPAIGN" | "BARTER" | "DIRECT". Null when not deal-linked. */
+  dealSource?: string | null;
+  /** True when the notification carries a Deal relation. */
+  isDealLinked?: boolean;
+  /** The Brevo template the call site picked, where that identifies the variant. */
+  emailTemplateId?: number | null;
+}
+
+// DEAL_CANCELLED covers six different situations and the call sites already
+// distinguish them by Brevo template, so reuse that rather than inventing a
+// second discriminator. 69/70 are admin cancellations, which have no WhatsApp
+// campaign; 55-58 are the auto-cancels, still blocked on Navneet confirming
+// which of "No Tracking" / "No Response" is which.
+const CANCELLED_BY_TEMPLATE: Record<number, string> = {
+  49: "Deal Cancelled Shipping-Creator",
+  50: "Deal Cancelled Shipping-Brand",
+  71: "Deal Cancelled Concept-Brand",
+  72: "Deal Cancelled Concept-Creator",
+};
+
 export function resolveWhatsAppCampaign(
   type: string,
   userType: UserType,
-  dealSource?: string | null,
+  ctx: CampaignContext = {},
 ): WhatsAppCampaign | null {
+  const { dealSource, isDealLinked, emailTemplateId } = ctx;
   // Completion splits four ways on (recipient, barter-or-not) — the same split
   // dealCompletedTemplateId() makes for email. Campaigns 71-74.
   if (type === "DEAL_COMPLETED") {
@@ -178,6 +211,17 @@ export function resolveWhatsAppCampaign(
       campaign: dealSource === "DIRECT" ? "Deal Started Direct-Creator" : "Deal Started Campaign-Creator",
       param2: COUNTERPARTY,
     };
+  }
+  if (type === "DEAL_CANCELLED") {
+    const campaign = emailTemplateId ? CANCELLED_BY_TEMPLATE[emailTemplateId] : undefined;
+    return campaign ? { campaign, param2: COUNTERPARTY } : null;
+  }
+  // A brand pays either for a specific deal or for a credit top-up. Only the
+  // former carries a Deal relation, and the credit template takes just a name.
+  if (type === "PAYMENT_SUCCESS") {
+    return isDealLinked
+      ? { campaign: "Deal Payment Confirmed-Brand", param2: COUNTERPARTY }
+      : { campaign: "Brand Credit Payment Confirmed-Brand" };
   }
   if (BY_USER_TYPE[type]) return BY_USER_TYPE[type][userType] ?? null;
   return SIMPLE[type] ?? null;

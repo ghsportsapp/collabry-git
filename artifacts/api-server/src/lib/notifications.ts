@@ -268,12 +268,16 @@ async function dispatchWhatsApp(n: CreateNotifInput): Promise<void> {
 
   // One deal lookup serves both jobs: picking the paid-vs-barter campaign
   // variant, and supplying brand_name/creator_name for {{2}} further down.
-  const meta =
-    n.relatedEntityType?.toUpperCase() === "DEAL" && n.relatedEntityId
-      ? await getDealMeta(n.relatedEntityId)
-      : { params: {} as Record<string, string | number | null | undefined>, source: null };
+  const isDealLinked = n.relatedEntityType?.toUpperCase() === "DEAL" && !!n.relatedEntityId;
+  const meta = isDealLinked
+    ? await getDealMeta(n.relatedEntityId as string)
+    : { params: {} as Record<string, string | number | null | undefined>, source: null };
 
-  const camp = resolveWhatsAppCampaign(n.type, n.userType, meta.source);
+  const camp = resolveWhatsAppCampaign(n.type, n.userType, {
+    dealSource: meta.source,
+    isDealLinked,
+    emailTemplateId: n.emailTemplateId ?? null,
+  });
   if (!camp) return;
 
   // Creators keep their number on Creator.phone, but brands do NOT — brand
