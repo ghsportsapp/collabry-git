@@ -757,6 +757,15 @@ router.post("/brand/campaigns/:id/applications/:appId/select", requireBrand, asy
       `Your selection of @${handle} for "${c.name}" has been sent. Waiting for their confirmation (48-hour window).`);
     if (newStatus === "HIDDEN") await notify(brandId, "BRAND", "Campaign Full — All Slots Reserved",
       `All slots for "${c.name}" are now reserved. The campaign is now hidden from new creators.`);
+    // The popup only shows in-app. The notification is what reaches the other
+    // channels — email (Brevo 94) and WhatsApp.
+    await createNotification({
+      userId: creatorId, userType: "CREATOR", type: "CAMPAIGN_SELECTED",
+      title: "You've Been Selected 🎉",
+      body: `A brand selected you for "${c.name}". Respond now to continue.`,
+      relatedEntityType: "CAMPAIGN", relatedEntityId: campaignId,
+      emailParams: { campaign_name: c.name },
+    }).catch(() => {});
     await createPopup({
       userId: creatorId, userType: "CREATOR", type: "CAMPAIGN_SELECTED",
       title: "You've Been Selected 🎉",
@@ -1061,6 +1070,14 @@ router.post("/brand/barter/:id/applications/:appId/select", requireBrand, async 
     `${b.brandName ?? "A brand"} selected you for barter campaign "${b.name}". You will receive ${b.productName} (₹${b.productValueInr}) for creating ${b.contentType} content. Please confirm within 48 hours.`);
   if (newStatus === "HIDDEN") await notify(brandId, "BRAND", "Campaign Full — All Slots Reserved",
     `All slots for "${b.name}" are now reserved. The campaign is now hidden from new creators.`);
+  // As above — the popup is in-app only; this drives email and WhatsApp.
+  await createNotification({
+    userId: creatorId, userType: "CREATOR", type: "CAMPAIGN_SELECTED",
+    title: "You've Been Selected 🎉",
+    body: `A brand selected you for "${b.name}". Respond now to continue.`,
+    relatedEntityType: "BARTER_CAMPAIGN", relatedEntityId: String(req.params["id"]),
+    emailParams: { campaign_name: b.name },
+  }).catch(() => {});
   await createPopup({
     userId: creatorId, userType: "CREATOR", type: "CAMPAIGN_SELECTED",
     title: "You've Been Selected 🎉",

@@ -96,12 +96,15 @@ const SIMPLE: Record<string, WhatsAppCampaign> = {
   DEAL_FINAL_INACTIVITY_ESCALATED: { campaign: "Deal Overdue-Brand", param2: COUNTERPARTY },
 
   REQUEST_RECEIVED: { campaign: "Deal Request Received-Creator", param2: COUNTERPARTY },
+  // {{1}} brand name, {{2}} credits — confirmed by Navneet. The admin
+  // credit-adjustment route already supplies `credits` in emailParams.
+  ADMIN_GIFT_RECEIVED: { campaign: "Brand Credits Added-Brand", param2: "credits" },
+  // Single-param as of 2026-08-03 — this template changed after the export,
+  // same as the campaign-level ones. Verified against the live API.
+  CAMPAIGN_SELECTED: { campaign: "Campaign Application Approved-Creator" },
   // Campaign-level, so these lost their second param too — verified live.
   BARTER_CREATOR_CONFIRMED: { campaign: "Barter Participation Confirmed-Brand" },
   BARTER_CREATOR_CONFIRMED_PAID: { campaign: "Campaign Participation Confirmed-Brand" },
-  // NOTE: CAMPAIGN_SELECTED ("Campaign Application Approved-Creator") is emitted
-  // via createPopup, not createNotification, so it never reaches this dispatcher.
-  // Wiring it means adding a createNotification call alongside the popup.
 
   // ── Campaign messages: single-param ────────────────────────────────────
   // These carried a campaign-name {{2}} in the original export, but Navneet
@@ -117,10 +120,6 @@ const SIMPLE: Record<string, WhatsAppCampaign> = {
   BARTER_ON_HOLD: { campaign: "Barter On Hold-Brand" },
   BARTER_REJECTED: { campaign: "Barter Rejected-Brand" },
   BARTER_TOP_UP_NEEDED: { campaign: "Barter Balance Low-Brand" },
-
-  // A credit gift has neither a counterparty nor a campaign. `credits` is the
-  // only sensible {{2}} but Navneet hasn't confirmed it — stays gated.
-  ADMIN_GIFT_RECEIVED: { campaign: "Brand Credits Added-Brand", param2: null },
 };
 
 // Types whose campaign differs by recipient.
@@ -143,9 +142,7 @@ const BY_USER_TYPE: Record<string, Partial<Record<UserType, WhatsAppCampaign>>> 
     BRAND: { campaign: "Deal Counter-Brand", param2: COUNTERPARTY },
     CREATOR: { campaign: "Deal Response-Creator", param2: COUNTERPARTY },
   },
-  // NON_DELIVERY_REPORTED is currently only a Deal *status* string — nothing
-  // emits it as a notification type, so these two never fire today. Kept so
-  // they're wired the moment that notification is added.
+  // Fired from the creator's "not received" report — see dealShipping.ts.
   NON_DELIVERY_REPORTED: {
     BRAND: { campaign: "Product Not Received-Brand", param2: COUNTERPARTY },
     CREATOR: { campaign: "Product Not Received-Creator", param2: COUNTERPARTY },
@@ -179,12 +176,21 @@ export interface CampaignContext {
 
 // DEAL_CANCELLED covers six different situations and the call sites already
 // distinguish them by Brevo template, so reuse that rather than inventing a
-// second discriminator. 69/70 are admin cancellations, which have no WhatsApp
-// campaign; 55-58 are the auto-cancels, still blocked on Navneet confirming
-// which of "No Tracking" / "No Response" is which.
+// second discriminator.
+//
+// The auto-cancel pairs follow Navneet's definitions (2026-08-03): "No
+// Tracking" is the brand failing to fix the tracking number in time — our
+// AWB-wrong timeout, templates 55/56 — and "No Response" is a product issue
+// left unresolved, our product-issue timeout, templates 57/58.
+//
+// 69/70 are admin cancellations, which have no WhatsApp campaign.
 const CANCELLED_BY_TEMPLATE: Record<number, string> = {
   49: "Deal Cancelled Shipping-Creator",
   50: "Deal Cancelled Shipping-Brand",
+  55: "Autocancel No Tracking-Brand",
+  56: "Autocancel No Tracking-Creator",
+  57: "Autocancel No Response-Brand",
+  58: "Autocancel No Response-Creator",
   71: "Deal Cancelled Concept-Brand",
   72: "Deal Cancelled Concept-Creator",
 };
