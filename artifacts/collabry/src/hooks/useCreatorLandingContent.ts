@@ -21,6 +21,7 @@ const CREATOR_DEFAULTS: CreatorContentMap = {
   "creator.hero.badge1": "Escrow Protected",
   "creator.hero.badge2": "Verified Brands",
   "creator.hero.badge3": "4 Ways to Collab",
+  "creator.hero.banners": JSON.stringify([]),
 
   "creator.earnings.heading_line1": "Earnings & Safety",
   "creator.earnings.heading_highlight1": "focused",

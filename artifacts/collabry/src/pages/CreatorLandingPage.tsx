@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { ShieldCheck, BadgeCheck, LayoutGrid } from "lucide-react";
 import { useCreatorLandingContent } from "@/hooks/useCreatorLandingContent";
 import { useLandingContent } from "@/hooks/useLandingContent";
+import HeroBannerCarousel, { normalizeBanners } from "@/components/landing/HeroBannerCarousel";
 import HowItWorks from "@/components/landing/HowItWorks";
 import CollabModes from "@/components/landing/CollabModes";
 import ComparisonTable from "@/components/landing/ComparisonTable";
@@ -117,7 +118,7 @@ function CreatorPageHeader({ c }: { c: ReturnType<typeof useCreatorLandingConten
 /* ── HERO ── */
 const trustBadgeIcons = [ShieldCheck, BadgeCheck, LayoutGrid];
 
-function HeroSection({ c }: { c: ReturnType<typeof useCreatorLandingContent> }) {
+function HeroSection({ c, showCta }: { c: ReturnType<typeof useCreatorLandingContent>; showCta: boolean }) {
   const line1 = c.get("creator.hero.heading_line1");
   const highlight1 = c.get("creator.hero.heading_highlight1");
   const line2 = c.get("creator.hero.heading_line2");
@@ -159,14 +160,16 @@ function HeroSection({ c }: { c: ReturnType<typeof useCreatorLandingContent> }) 
           {tagline}
         </p>
 
-        <Link href={ctaLink}>
-          <button
-            className="w-auto px-7 py-2.5 lg:w-full lg:max-w-sm lg:py-4 text-white font-semibold rounded-xl transition-colors cursor-pointer mb-8 hover:opacity-90"
-            style={{ background: PINK, fontFamily: POPPINS, fontSize: "1rem" }}
-          >
-            {cta}
-          </button>
-        </Link>
+        {showCta && (
+          <Link href={ctaLink}>
+            <button
+              className="w-auto px-7 py-2.5 lg:w-full lg:max-w-sm lg:py-4 text-white font-semibold rounded-xl transition-colors cursor-pointer mb-8 hover:opacity-90"
+              style={{ background: PINK, fontFamily: POPPINS, fontSize: "1rem" }}
+            >
+              {cta}
+            </button>
+          </Link>
+        )}
 
         <div className="flex flex-nowrap items-center justify-center gap-2 lg:gap-6">
           {badges.map((label, i) => {
@@ -249,6 +252,7 @@ export default function CreatorLandingPage() {
   const c = useCreatorLandingContent();
   const landingContent = useLandingContent();
 
+  const banners = normalizeBanners(c.getJson("creator.hero.banners"));
   const collabModes = c.getJson<Array<{ num: string; title: string; desc: string; steps: string[] }>>("creator.collab_modes.modes");
   const collabHeadingLine = c.get("creator.collab_modes.heading_line1");
   const collabHighlight = c.get("creator.collab_modes.heading_highlight1");
@@ -258,8 +262,14 @@ export default function CreatorLandingPage() {
     <div ref={containerRef} className="min-h-screen" style={{ background: BG }}>
       <CreatorPageHeader c={c} />
       <main>
+        <HeroBannerCarousel
+          banners={banners}
+          ctaLabel={c.get("creator.hero.cta_btn")}
+          ctaLink={c.get("creator.hero.cta_link") || "/signup-creator"}
+        />
+
         <div className="fade-in-section">
-          <HeroSection c={c} />
+          <HeroSection c={c} showCta={banners.length === 0} />
         </div>
 
         <div>
