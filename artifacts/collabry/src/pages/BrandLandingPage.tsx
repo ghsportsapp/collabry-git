@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { ShieldCheck, BadgeCheck, LayoutGrid } from "lucide-react";
 import { useBrandLandingContent } from "@/hooks/useBrandLandingContent";
 import { useLandingContent } from "@/hooks/useLandingContent";
+import HeroBannerCarousel, { normalizeBanners } from "@/components/landing/HeroBannerCarousel";
 import HowItWorks from "@/components/landing/HowItWorks";
 import CollabModes from "@/components/landing/CollabModes";
 import ComparisonTable from "@/components/landing/ComparisonTable";
@@ -31,8 +32,15 @@ function useFadeIn() {
 }
 
 /* ── HEADER ── */
+/** Scroll depth at which the header stops floating over the hero image and
+ *  becomes a solid bar. Roughly the point where the image has left the top. */
+const HEADER_SOLID_AT = 80;
+const HEADER_SCRIM =
+  "linear-gradient(to bottom, rgba(10,10,15,0.72) 0%, rgba(10,10,15,0.38) 55%, rgba(10,10,15,0) 100%)";
+
 function BrandPageHeader() {
   const [open, setOpen] = useState(false);
+  const [solid, setSolid] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
@@ -40,9 +48,31 @@ function BrandPageHeader() {
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
 
+  useEffect(() => {
+    const onScroll = () => setSolid(window.scrollY > HEADER_SOLID_AT);
+    onScroll(); // a reload can restore a mid-page scroll position
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
-    <header className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-md border-b border-white/5">
-      <div className="max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between">
+    /* Over the hero image the bar is transparent and carries only a fading
+       legibility scrim; past HEADER_SOLID_AT it turns solid. The scrim is a
+       separate layer rather than a background swap so both states can
+       cross-fade (a gradient background-image cannot transition to a colour). */
+    <header
+      className="sticky top-0 z-50 transition-colors duration-300"
+      style={{
+        backgroundColor: solid ? BG : "transparent",
+        borderBottom: `1px solid ${solid ? "rgba(255,255,255,0.05)" : "transparent"}`,
+      }}
+    >
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none transition-opacity duration-300"
+        style={{ opacity: solid ? 0 : 1, background: HEADER_SCRIM }}
+      />
+      <div className="relative max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between">
         <button
           onClick={() => { if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }}
           aria-label="Scroll to top"
@@ -117,13 +147,13 @@ const trustBadges = [
   { icon: LayoutGrid, label: "4 Ways to Collab" },
 ];
 
-function HeroSection({ c }: { c: ReturnType<typeof useBrandLandingContent> }) {
+function HeroSection({ c, showCta }: { c: ReturnType<typeof useBrandLandingContent>; showCta: boolean }) {
   const sub = c.get("brand.hero.subheading");
   const tagline = "Verified creators. Secure payments. Real results.";
   const cta = c.get("brand.hero.cta_btn");
 
   return (
-    <section className="pt-12 pb-8 lg:pt-20 lg:pb-10 text-center px-5">
+    <section className="pt-8 pb-8 lg:pt-32 lg:pb-10 text-center px-5">
       <div className="max-w-[1280px] mx-auto">
         {/* Heading */}
         <h1
@@ -154,14 +184,16 @@ function HeroSection({ c }: { c: ReturnType<typeof useBrandLandingContent> }) {
         </p>
 
         {/* CTA Button */}
-        <Link href="/signup-brand">
-          <button
-            className="w-auto px-7 py-2.5 lg:w-full lg:max-w-sm lg:py-4 text-white font-semibold rounded-xl transition-colors cursor-pointer mb-8 hover:opacity-90"
-            style={{ background: PINK, fontFamily: POPPINS, fontSize: "1rem" }}
-          >
-            {cta}
-          </button>
-        </Link>
+        {showCta && (
+          <Link href="/signup-brand">
+            <button
+              className="w-auto px-7 py-2.5 lg:w-full lg:max-w-sm lg:py-4 text-white font-semibold rounded-xl transition-colors cursor-pointer mb-8 hover:opacity-90"
+              style={{ background: PINK, fontFamily: POPPINS, fontSize: "1rem" }}
+            >
+              {cta}
+            </button>
+          </Link>
+        )}
 
         {/* Trust badges */}
         <div className="flex flex-nowrap items-center justify-center gap-2 lg:gap-6">
@@ -243,12 +275,24 @@ export default function BrandLandingPage() {
   const c = useBrandLandingContent();
   const landingContent = useLandingContent();
 
+  const banners = normalizeBanners(c.getJson("brand.hero.banners"));
+
   return (
     <div ref={containerRef} className="min-h-screen" style={{ background: BG }}>
       <BrandPageHeader />
-      <main>
+      {/* A sticky header still occupies its 4rem of flow, which would sit as a
+          band above the image. Cancel it so the banner bleeds to the top edge
+          and the header floats over it — but only when there IS a banner,
+          otherwise the hero copy would slide up underneath the header. */}
+      <main className={banners.length > 0 ? "-mt-16" : undefined}>
+        <HeroBannerCarousel
+          banners={banners}
+          ctaLabel={c.get("brand.hero.cta_btn")}
+          ctaLink="/signup-brand"
+        />
+
         <div className="fade-in-section">
-          <HeroSection c={c} />
+          <HeroSection c={c} showCta={banners.length === 0} />
         </div>
 
         <div className="fade-in-section">

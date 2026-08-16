@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "wouter";
 import { Save, Eye, Upload, ArrowLeft, Plus, Trash2, AlertCircle, Image } from "lucide-react";
 import { BRAND_DEFAULTS, BRAND_LANDING_UPDATE_CHANNEL, writeBrandLandingCache } from "@/hooks/useBrandLandingContent";
+import { prepareBannerImage } from "@/lib/bannerImage";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
@@ -20,8 +21,11 @@ interface StatCard { value: string; label: string; }
 interface CollabMode { num: string; title: string; desc: string; steps: string[]; }
 interface ComparisonRow { feature: string; old: string; collabry: string; }
 interface TeamMember { name: string; role: string; emoji?: string; color: string; image?: string; }
+interface HeroBanner { imageUrl: string; altText: string; blurData?: string; }
 
 const EDITOR_CACHE_KEY = "collabry_brand_editor_v1";
+const BANNERS_KEY = "brand.hero.banners";
+const MAX_BANNERS = 3;
 
 function buildDefaults(): Record<string, ContentItem> {
   const result: Record<string, ContentItem> = {};
@@ -54,6 +58,9 @@ export default function AdminBrandLandingEditor() {
   const [showPreview, setShowPreview] = useState(false);
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
+  const [bannerBusy, setBannerBusy] = useState(false);
+  const [bannerError, setBannerError] = useState<string | null>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
   const loadContent = useCallback(async () => {
     try {
@@ -88,6 +95,30 @@ export default function AdminBrandLandingEditor() {
   const collabModes: CollabMode[] = gj("brand.collab_modes.modes");
   const compRows: ComparisonRow[] = gj("brand.comparison.rows");
   const teamMembers: TeamMember[] = gj("brand.team.members");
+  const banners: HeroBanner[] = gj(BANNERS_KEY);
+
+  const addBanner = async (file: File) => {
+    setBannerError(null);
+    setBannerBusy(true);
+    try {
+      const prepared = await prepareBannerImage(file);
+      if ("error" in prepared) { setBannerError(prepared.error); return; }
+
+      const formData = new FormData();
+      formData.append("file", prepared.blob, "banner.webp");
+      const r = await fetch(`${BASE_URL}/api/uploads/image`, { method: "POST", body: formData });
+      if (!r.ok) { setBannerError("Upload failed — please try again"); return; }
+      const { objectPath } = (await r.json()) as { objectPath?: string };
+      if (!objectPath) { setBannerError("Upload failed — please try again"); return; }
+
+      updateJsonArray(BANNERS_KEY, [
+        ...banners,
+        { imageUrl: objectPath, altText: "", blurData: prepared.blurData },
+      ].slice(0, MAX_BANNERS));
+    } finally {
+      setBannerBusy(false);
+    }
+  };
 
   const saveAll = async (): Promise<boolean> => {
     setSaving(true);
@@ -209,6 +240,67 @@ export default function AdminBrandLandingEditor() {
               <FieldRow label="Trust Badge 2" value={g("brand.hero.badge2")} onChange={(v) => updateField("brand.hero.badge2", v)} />
               <FieldRow label="Trust Badge 3" value={g("brand.hero.badge3")} onChange={(v) => updateField("brand.hero.badge3", v)} />
             </div>
+
+            <h4 className="text-white/90 text-xs font-semibold uppercase tracking-wider mt-6 mb-1">Hero Banners</h4>
+            <p className="text-[#9CA3AF] text-xs mb-3">
+              Up to {MAX_BANNERS} square (1:1) images, max 5 MB each. Converted to WebP on upload.
+              With no banners the hero keeps its current text-only layout.
+            </p>
+
+            {banners.map((banner, i) => (
+              <div key={i} className="grid grid-cols-[64px_1fr_auto] gap-3 mb-3 items-center">
+                <img
+                  src={banner.imageUrl}
+                  alt=""
+                  className="w-16 h-16 rounded-lg object-cover border border-white/10"
+                />
+                <div>
+                  <label className="text-[#9CA3AF] text-xs font-medium mb-1.5 block">Alt text (banner {i + 1})</label>
+                  <input
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/70 focus:border-[#E14F69]/50 focus:outline-none"
+                    placeholder="Describe the image for screen readers"
+                    value={banner.altText ?? ""}
+                    onChange={(e) => {
+                      const b = [...banners];
+                      b[i] = { ...b[i], altText: e.target.value };
+                      updateJsonArray(BANNERS_KEY, b);
+                    }}
+                  />
+                </div>
+                <button
+                  onClick={() => updateJsonArray(BANNERS_KEY, banners.filter((_, idx) => idx !== i))}
+                  className="text-red-400 hover:text-red-300 p-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+
+            {bannerError && <p className="text-red-400 text-xs">{bannerError}</p>}
+
+            {banners.length < MAX_BANNERS && (
+              <>
+                <button
+                  onClick={() => bannerInputRef.current?.click()}
+                  disabled={bannerBusy}
+                  className="text-[#E14F69] text-sm flex items-center gap-1.5 mt-2 hover:text-[#d4156b] disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                  {bannerBusy ? "Uploading…" : `Add Banner (${banners.length}/${MAX_BANNERS})`}
+                </button>
+                <input
+                  ref={bannerInputRef}
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) addBanner(file);
+                    e.target.value = "";
+                  }}
+                />
+              </>
+            )}
           </SectionBlock>
 
           {/* Stats */}
