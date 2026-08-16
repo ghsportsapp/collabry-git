@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -28,6 +28,10 @@ export function normalizeBanners(value: unknown): HeroBanner[] {
    than the screen and pans sideways. Desktop: a full-width band cropped from
    the bottom (object-top), with the CTA overlaid on its lower area. */
 const BOX = "w-[66vh] h-[66vh] lg:w-full lg:h-[clamp(480px,72vh,760px)]";
+/* Slight push-in so the subject clears the transparent header overlaid on the
+   image's top area. Grows from `top center`, so the extra crop comes off the
+   bottom and the horizontal centering is preserved. */
+const ZOOM = 1.06;
 const ARROW =
   "absolute top-1/2 -translate-y-1/2 z-10 w-9 h-9 lg:w-11 lg:h-11 rounded-full flex items-center justify-center transition-colors hover:bg-black/70 cursor-pointer";
 
@@ -36,6 +40,19 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink }: Props
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const items = normalizeBanners(banners);
+
+  /* The mobile square is deliberately wider than the viewport, and a scroll
+     container starts parked at its left edge — which is what made the image
+     read as left-cropped. Park it mid-track instead. No-op on desktop, where
+     the track doesn't overflow and the distance is 0. */
+  const centerScroll = (behavior: ScrollBehavior) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ left: (el.scrollWidth - el.clientWidth) / 2, behavior });
+  };
+
+  useEffect(() => { centerScroll("auto"); }, [items.length]);
+
   if (items.length === 0) return null;
 
   const multiple = items.length > 1;
@@ -45,7 +62,7 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink }: Props
 
   const show = (index: number) => {
     setActive(index);
-    scrollRef.current?.scrollTo({ left: 0, behavior: "smooth" });
+    centerScroll("smooth");
   };
   const step = (delta: number) => show((current + delta + items.length) % items.length);
 
@@ -62,7 +79,7 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink }: Props
             {items.map((banner, i) => (
               <div
                 key={i}
-                className="absolute inset-0 transition-opacity duration-300"
+                className="absolute inset-0 overflow-hidden transition-opacity duration-300"
                 style={{
                   opacity: i === current ? 1 : 0,
                   pointerEvents: i === current ? "auto" : "none",
@@ -79,7 +96,8 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink }: Props
                   loading={i === 0 ? "eager" : "lazy"}
                   fetchPriority={i === 0 ? "high" : "auto"}
                   draggable={false}
-                  className="w-full h-full object-cover object-top select-none"
+                  className="w-full h-full object-cover object-[center_top] select-none"
+                  style={{ transform: `scale(${ZOOM})`, transformOrigin: "top center" }}
                 />
               </div>
             ))}

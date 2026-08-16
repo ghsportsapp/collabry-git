@@ -32,8 +32,15 @@ function useFadeIn() {
 }
 
 /* ── HEADER ── */
+/** Scroll depth at which the header stops floating over the hero image and
+ *  becomes a solid bar. Roughly the point where the image has left the top. */
+const HEADER_SOLID_AT = 80;
+const HEADER_SCRIM =
+  "linear-gradient(to bottom, rgba(10,10,15,0.72) 0%, rgba(10,10,15,0.38) 55%, rgba(10,10,15,0) 100%)";
+
 function CreatorPageHeader({ c }: { c: ReturnType<typeof useCreatorLandingContent> }) {
   const [open, setOpen] = useState(false);
+  const [solid, setSolid] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const logoText = c.get("creator.header.logo_text");
   const signupCreator = c.get("creator.header.signup_btn_creator");
@@ -45,9 +52,31 @@ function CreatorPageHeader({ c }: { c: ReturnType<typeof useCreatorLandingConten
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
 
+  useEffect(() => {
+    const onScroll = () => setSolid(window.scrollY > HEADER_SOLID_AT);
+    onScroll(); // a reload can restore a mid-page scroll position
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
-    <header className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-md border-b border-white/5">
-      <div className="max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between">
+    /* Over the hero image the bar is transparent and carries only a fading
+       legibility scrim; past HEADER_SOLID_AT it turns solid. The scrim is a
+       separate layer rather than a background swap so both states can
+       cross-fade (a gradient background-image cannot transition to a colour). */
+    <header
+      className="sticky top-0 z-50 transition-colors duration-300"
+      style={{
+        backgroundColor: solid ? BG : "transparent",
+        borderBottom: `1px solid ${solid ? "rgba(255,255,255,0.05)" : "transparent"}`,
+      }}
+    >
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none transition-opacity duration-300"
+        style={{ opacity: solid ? 0 : 1, background: HEADER_SCRIM }}
+      />
+      <div className="relative max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between">
         <button
           onClick={() => { if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }}
           aria-label="Scroll to top"
@@ -133,7 +162,7 @@ function HeroSection({ c, showCta }: { c: ReturnType<typeof useCreatorLandingCon
   const badges = [badge1, badge2, badge3];
 
   return (
-    <section className="pt-12 pb-8 lg:pt-20 lg:pb-10 text-center px-5">
+    <section className="pt-8 pb-8 lg:pt-32 lg:pb-10 text-center px-5">
       <div className="max-w-[1280px] mx-auto">
         <h1
           className="font-bold leading-tight mb-6 text-[1.6rem] lg:text-[3.25rem]"
@@ -261,7 +290,11 @@ export default function CreatorLandingPage() {
   return (
     <div ref={containerRef} className="min-h-screen" style={{ background: BG }}>
       <CreatorPageHeader c={c} />
-      <main>
+      {/* A sticky header still occupies its 4rem of flow, which would sit as a
+          band above the image. Cancel it so the banner bleeds to the top edge
+          and the header floats over it — but only when there IS a banner,
+          otherwise the hero copy would slide up underneath the header. */}
+      <main className={banners.length > 0 ? "-mt-16" : undefined}>
         <HeroBannerCarousel
           banners={banners}
           ctaLabel={c.get("creator.hero.cta_btn")}
