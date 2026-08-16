@@ -69,4 +69,8 @@ Thumbs.db
 # SQL dumps (pg_dump plain-text output)
 *.sql
 !**/migrations/**/*.sql
+
+# AiSensy campaign export from WhatsApp — every file embeds the live API key
+# in plaintext. Reference only; the key belongs in AISENSY_API_KEY.
+Collabry_WhatsApp_Campaign_Codes/
 resources provided

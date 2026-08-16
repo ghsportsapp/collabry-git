@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { pixelTrack } from "@/lib/pixel";
-import { trackEvent } from "@/lib/analytics";
+import { trackPurchase } from "@/lib/analytics";
 
 const POPPINS = "'Poppins', sans-serif";
 const PINK = "#F0187A";
@@ -150,17 +150,30 @@ export default function BrandPaymentReturn() {
   useEffect(() => {
     if (urlState.status !== "CHARGED") return;
     const value = urlState.amount ? parseFloat(urlState.amount) : NaN;
+    const hasValue = Number.isFinite(value);
     pixelTrack("Purchase", {
       currency: "INR",
-      ...(Number.isFinite(value) ? { value } : {}),
+      ...(hasValue ? { value } : {}),
       content_type: urlState.context,
     });
-    trackEvent("payment_success", {
+    // Deal payments can come back with an empty orderId, so fall back to the
+    // deal id — GA4 dedupes purchases on transaction_id and drops rows without one.
+    const transactionId =
+      urlState.orderId || (urlState.dealId ? `deal_${urlState.dealId}` : null);
+    const isDeal = urlState.context === "deal";
+    trackPurchase({
+      transactionId,
+      ...(hasValue ? { value } : {}),
       currency: "INR",
-      ...(Number.isFinite(value) ? { value } : {}),
       context: urlState.context,
-      order_id: urlState.orderId ?? null,
-      deal_id: urlState.dealId ?? null,
+      dealId: urlState.dealId,
+      items: [{
+        item_id: isDeal ? (urlState.dealId ?? "deal") : "credits",
+        item_name: isDeal ? "Campaign Deal" : "Collabry Credits",
+        item_category: urlState.context,
+        ...(hasValue ? { price: value } : {}),
+        quantity: 1,
+      }],
     });
   }, [urlState]);
 

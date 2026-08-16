@@ -573,6 +573,23 @@ router.post("/creator/deals/:id/not-received", requireCreator, async (req: Reque
     title: `Non-delivery reported on deal ${id.slice(0, 8)}`,
     body: `Creator reports the product never arrived. AWB: ${deal.awbNumber} via ${deal.courierName}. Shipped: ${deal.shipDate}.`,
   });
+  // Until now only admin heard about this — both parties were left in the
+  // dark on a deal that had just stalled. Templates 53/54 are the pairing
+  // brevoTemplates.ts documents for this event.
+  await createNotification({
+    userId: deal.creatorId, userType: "CREATOR", type: "NON_DELIVERY_REPORTED",
+    title: "Non-delivery reported",
+    body: "We've reported this to admin for review. You'll hear back once it's resolved.",
+    relatedEntityType: "Deal", relatedEntityId: id,
+    emailTemplateId: 53, emailSubject: "Non-delivery reported",
+  }).catch(() => {});
+  await createNotification({
+    userId: deal.brandId, userType: "BRAND", type: "NON_DELIVERY_REPORTED",
+    title: "Creator hasn't received the product",
+    body: `The creator reports the product never arrived (AWB ${deal.awbNumber} via ${deal.courierName}). Admin is reviewing.`,
+    relatedEntityType: "Deal", relatedEntityId: id,
+    emailTemplateId: 54, emailSubject: "Creator hasn't received the product",
+  }).catch(() => {});
   res.json({ ok: true });
 });
 
