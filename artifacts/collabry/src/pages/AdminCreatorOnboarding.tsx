@@ -12,6 +12,10 @@ function fmtCount(n: number): string {
 const POPPINS = "'Poppins', sans-serif";
 const inputClass = "w-full bg-transparent border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-[#E14F69] placeholder:text-white/70 transition-all";
 
+/** Session-scoped so the passphrase is never persisted to disk and is gone when
+ *  the tab closes — same lifetime as the admin session itself. */
+const EXPORT_SECRET_KEY = "collabry_admin_export_secret";
+
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-yellow-400/20 text-yellow-300", ACTIVE: "bg-green-500/20 text-green-400",
   REJECTED: "bg-red-500/20 text-red-400", SUSPENDED: "bg-orange-500/20 text-orange-400",
@@ -90,6 +94,12 @@ export default function AdminCreatorOnboarding() {
   const [ulStatus, setUlStatus] = useState("ALL");
   const [ulLoading, setUlLoading] = useState(false);
   const [statusCounts, setStatusCounts] = useState({ TOTAL: 0, ACTIVE: 0, REJECTED: 0, SUSPENDED: 0, BANNED: 0 });
+
+  // ── CSV export state ──
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [askSecret, setAskSecret] = useState(false);
+  const [secretInput, setSecretInput] = useState("");
 
   // ── Signup Config state ──
   const [configData, setConfigData] = useState<Record<string, any>>({});
@@ -278,6 +288,57 @@ export default function AdminCreatorOnboarding() {
     const r = await adminFetch("/api/admin/creators/counts");
     if (r.ok) setStatusCounts(await r.json());
   }, [adminFetch]);
+
+  // ── CSV export (ACTIVE creators only, always — never the current filter) ──
+  // The passphrase is typed by the admin rather than shipped in the bundle, and
+  // held only for this browser session so repeat exports don't re-prompt.
+  const runExport = useCallback(async (secret: string) => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const r = await adminFetch("/api/admin/creators/export", { headers: { "x-admin-secret": secret } });
+      if (r.status === 401) {
+        sessionStorage.removeItem(EXPORT_SECRET_KEY);
+        setAskSecret(true);
+        setExportError("Incorrect passphrase.");
+        return;
+      }
+      if (!r.ok) {
+        setExportError(r.status === 503
+          ? "Export isn't configured on the server (ADMIN_API_SECRET is unset)."
+          : "Export failed. Please try again.");
+        return;
+      }
+      sessionStorage.setItem(EXPORT_SECRET_KEY, secret);
+
+      // Take the filename from the server so the date logic lives in one place.
+      const suggested = /filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") ?? "")?.[1];
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = suggested ?? "collabry_active_creators.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      setAskSecret(false);
+      setSecretInput("");
+    } catch {
+      setExportError("Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  }, [adminFetch]);
+
+  const onDownloadCsv = useCallback(() => {
+    const cached = sessionStorage.getItem(EXPORT_SECRET_KEY);
+    if (cached) { runExport(cached); return; }
+    setExportError(null);
+    setSecretInput("");
+    setAskSecret(true);
+  }, [runExport]);
 
   useEffect(() => { if (mainTab === "applications") loadApplications(); }, [loadApplications, mainTab]);
   useEffect(() => { if (mainTab === "users-list") { loadUsersList(); loadStatusCounts(); } }, [loadUsersList, loadStatusCounts, mainTab]);
@@ -859,6 +920,39 @@ export default function AdminCreatorOnboarding() {
         </div>
       )}
 
+      {/* Export passphrase prompt */}
+      {askSecret && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.80)" }}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.10)" }}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-white font-semibold">Export Passphrase</h3>
+              <button onClick={() => { setAskSecret(false); setSecretInput(""); setExportError(null); }} className="text-white/70 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-white/70 text-sm mb-4">
+              The export contains creators' phone numbers and email addresses, so it needs the admin export passphrase.
+            </p>
+            <input
+              className={inputClass}
+              type="password"
+              autoFocus
+              placeholder="Passphrase"
+              value={secretInput}
+              onChange={e => { setSecretInput(e.target.value); setExportError(null); }}
+              onKeyDown={e => { if (e.key === "Enter" && secretInput.trim()) runExport(secretInput); }}
+            />
+            {exportError && <p className="text-red-400 text-xs mt-2">{exportError}</p>}
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => { setAskSecret(false); setSecretInput(""); setExportError(null); }}
+                className="flex-1 py-2.5 rounded-xl border border-white/15 text-white/80 text-sm">Cancel</button>
+              <button onClick={() => runExport(secretInput)} disabled={exporting || !secretInput.trim()}
+                className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50" style={{ background: "#E14F69" }}>
+                {exporting ? "Exporting..." : "Download CSV"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Page header */}
       <div className="px-6 pt-6 pb-0">
         <div className="flex items-center gap-2 mb-4">
@@ -940,9 +1034,18 @@ export default function AdminCreatorOnboarding() {
               })}
             </div>
             <div className="px-4 py-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/70" />
-                <input className={inputClass + " pl-9"} placeholder="Search by name, handle, or email..." value={ulSearch} onChange={e => { setUlSearch(e.target.value); setUlPage(1); }} />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/70" />
+                  <input className={inputClass + " pl-9"} placeholder="Search by name, handle, or email..." value={ulSearch} onChange={e => { setUlSearch(e.target.value); setUlPage(1); }} />
+                </div>
+                {/* Always exports ACTIVE creators, whichever filter pill is selected. */}
+                <button onClick={onDownloadCsv} disabled={exporting}
+                  title="Export all active creators as CSV"
+                  className="flex-shrink-0 text-xs px-3 py-2.5 rounded-lg font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  style={{ background: "#E14F69" }}>
+                  {exporting ? "Exporting..." : "Download CSV"}
+                </button>
               </div>
               <div className="flex flex-wrap gap-1 mt-2">
                 {["ALL","ACTIVE","REJECTED","SUSPENDED","BANNED"].map(s => (
@@ -951,6 +1054,7 @@ export default function AdminCreatorOnboarding() {
                     style={{ background: ulStatus === s ? "#E14F69" : "rgba(255,255,255,0.06)", color: ulStatus === s ? "white" : "rgba(255,255,255,0.70)" }}>{s}</button>
                 ))}
               </div>
+              {exportError && !askSecret && <p className="text-red-400 text-xs mt-1.5">{exportError}</p>}
             </div>
             <div className="flex-1 overflow-y-auto">
               {ulLoading ? <div className="text-white/70 text-xs text-center py-8">Loading...</div>

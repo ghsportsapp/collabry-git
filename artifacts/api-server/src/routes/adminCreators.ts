@@ -4,8 +4,28 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { getSupportEmail } from "../lib/supportEmail";
 import { requireAdmin } from "../middleware/requireAdmin";
+import { requireAdminSecret } from "../middleware/requireAdminSecret";
 
 const router: IRouter = Router();
+
+const EXPORT_COLUMNS = ["Name", "Instagram Username", "Followers", "Mobile", "Email"];
+
+/** Spreadsheets read a leading =, +, - or @ as the start of a formula, and these
+ *  values are creator-supplied — a display name of `=cmd|' /C calc'!A0` would
+ *  run on open. A leading apostrophe forces the cell to text; Excel and Sheets
+ *  consume it rather than showing it. */
+const FORMULA_TRIGGER = /^[=+\-@]/;
+
+/** RFC 4180 field. Quoting unconditionally (and doubling any internal quote)
+ *  means a comma, newline or quote inside a name or handle can't break the row
+ *  shape. A null/undefined field becomes an empty cell rather than "null". */
+function csvCell(value: unknown): string {
+  if (value === null || value === undefined) return `""`;
+  const raw = String(value);
+  // Neutralise before escaping, so the apostrophe lands inside the quotes.
+  const safe = FORMULA_TRIGGER.test(raw) ? `'${raw}` : raw;
+  return `"${safe.replace(/"/g, `""`)}"`;
+}
 
 // Status counts
 router.get("/admin/creators/counts", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
@@ -53,6 +73,42 @@ router.get("/admin/creators", requireAdmin, async (req: Request, res: Response):
     params
   );
   res.json({ creators: result.rows, total, page: parseInt(page) });
+});
+
+// Export ACTIVE creators as CSV.
+//
+// Must stay above "/admin/creators/:id" — Express matches in registration
+// order, so that route would otherwise swallow this one with id="export".
+//
+// Gated by requireAdminSecret rather than the no-op requireAdmin: this returns
+// every active creator's phone number and email in a single response.
+router.get("/admin/creators/export", requireAdminSecret, async (_req: Request, res: Response): Promise<void> => {
+  // Deliberately unpaginated, and independent of whichever status filter the
+  // Users List happens to be showing: the export is always every ACTIVE creator.
+  const result = await pool.query(
+    `SELECT c."fullName", c."instagramHandle", c."followerCount", c.phone, c.email
+     FROM "Creator" c
+     WHERE c.status = 'ACTIVE'
+     ORDER BY c."createdAt" DESC`
+  );
+
+  const lines = [
+    EXPORT_COLUMNS.map(csvCell).join(","),
+    ...result.rows.map((r: any) =>
+      [r.fullName, r.instagramHandle, r.followerCount, r.phone, r.email].map(csvCell).join(",")
+    ),
+  ];
+  // CRLF per RFC 4180, and a BOM so Excel reads the UTF-8 as UTF-8 instead of
+  // mojibake on non-ASCII names and handles.
+  const csv = `﻿${lines.join("\r\n")}\r\n`;
+
+  // Stamp the date in IST: the admin team is in India, and a UTC server would
+  // otherwise label anything exported before 05:30 local with yesterday.
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="collabry_active_creators_${today}.csv"`);
+  res.send(csv);
 });
 
 // Get single creator detail
