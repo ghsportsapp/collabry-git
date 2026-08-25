@@ -25,13 +25,12 @@ export function normalizeBanners(value: unknown): HeroBanner[] {
 }
 
 /* Mobile: a strict 1:1 square sized off viewport height, so it renders wider
-   than the screen and pans sideways. Desktop: a full-width band cropped from
-   the bottom (object-top), with the CTA overlaid on its lower area. */
-const BOX = "w-[66vh] h-[66vh] lg:w-full lg:h-[clamp(480px,72vh,760px)]";
-/* Slight push-in so the subject clears the transparent header overlaid on the
-   image's top area. Grows from `top center`, so the extra crop comes off the
-   bottom and the horizontal centering is preserved. */
-const ZOOM = 1.06;
+   than the screen and pans sideways. Desktop: a full-width band 600px tall in
+   which the square is shown whole (object-contain) and centred, so the banner's
+   lower content — faces, follower counts, rate badges — is never cropped. The
+   leftover width either side reads as deliberate pillarboxing because the box
+   is already painted BG. */
+const BOX = "w-[66vh] h-[66vh] lg:w-full lg:h-[600px]";
 const ARROW =
   "absolute top-1/2 -translate-y-1/2 z-10 w-9 h-9 lg:w-11 lg:h-11 rounded-full flex items-center justify-center transition-colors hover:bg-black/70 cursor-pointer";
 
@@ -79,13 +78,15 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink }: Props
             {items.map((banner, i) => (
               <div
                 key={i}
-                className="absolute inset-0 overflow-hidden transition-opacity duration-300"
+                /* Size/position of the blur-up placeholder live in classes, not
+                   inline style, so they can track the image's fit at each
+                   breakpoint — on desktop it must be contained and centred too,
+                   or the blur would bleed across the pillarbox bars. */
+                className="absolute inset-0 overflow-hidden transition-opacity duration-300 bg-cover bg-top lg:bg-contain lg:bg-center lg:bg-no-repeat"
                 style={{
                   opacity: i === current ? 1 : 0,
                   pointerEvents: i === current ? "auto" : "none",
                   backgroundImage: banner.blurData ? `url(${banner.blurData})` : undefined,
-                  backgroundSize: "cover",
-                  backgroundPosition: "top center",
                   backgroundColor: BG,
                 }}
               >
@@ -96,19 +97,16 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink }: Props
                   loading={i === 0 ? "eager" : "lazy"}
                   fetchPriority={i === 0 ? "high" : "auto"}
                   draggable={false}
-                  className="w-full h-full object-cover object-[center_top] select-none"
-                  style={{ transform: `scale(${ZOOM})`, transformOrigin: "top center" }}
+                  /* Mobile keeps the top-anchored crop and the 1.06 push-in that
+                     clears the transparent header. Desktop shows the whole
+                     square instead, so the zoom is dropped there — scaling a
+                     contained image past its box would re-crop it. */
+                  className="w-full h-full select-none object-cover object-[center_top] scale-[1.06] origin-top lg:object-contain lg:object-center lg:scale-100 lg:origin-center"
                 />
               </div>
             ))}
           </div>
         </div>
-
-        {/* Scrim keeps the overlaid CTA legible on desktop. */}
-        <div
-          className="hidden lg:block absolute inset-x-0 bottom-0 h-1/2 pointer-events-none"
-          style={{ background: `linear-gradient(to bottom, transparent, ${BG})` }}
-        />
 
         {multiple && (
           <>
@@ -132,8 +130,11 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink }: Props
         )}
       </div>
 
-      {/* One CTA node: stacked under the image on mobile, overlaid on it at lg+. */}
-      <div className="flex flex-col items-center gap-3 px-5 pt-4 lg:gap-4 lg:pt-0 lg:absolute lg:bottom-8 lg:inset-x-0 lg:z-10">
+      {/* One CTA node, stacked under the image at every width. It used to be
+          overlaid at lg+, which worked while the desktop image was cropped to a
+          top strip and its lower half was empty gradient; against the full
+          square it covered the banner's own content. */}
+      <div className="flex flex-col items-center gap-3 px-5 pt-4 lg:gap-4">
         {multiple && (
           <div className="flex items-center justify-center gap-2">
             {items.map((_, i) => (
