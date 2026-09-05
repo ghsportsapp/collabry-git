@@ -8,7 +8,10 @@ import { requireAdminSecret } from "../middleware/requireAdminSecret";
 
 const router: IRouter = Router();
 
-const EXPORT_COLUMNS = ["Name", "Instagram Username", "Followers", "Mobile", "Email"];
+const EXPORT_COLUMNS = [
+  "Name", "Instagram Username", "Followers", "Mobile", "Email",
+  "Reel Price", "Story Price", "Post Price", "State",
+];
 
 /** Spreadsheets read a leading =, +, - or @ as the start of a formula, and these
  *  values are creator-supplied — a display name of `=cmd|' /C calc'!A0` would
@@ -25,6 +28,24 @@ function csvCell(value: unknown): string {
   // Neutralise before escaping, so the apostrophe lands inside the quotes.
   const safe = FORMULA_TRIGGER.test(raw) ? `'${raw}` : raw;
   return `"${safe.replace(/"/g, `""`)}"`;
+}
+
+/** pg returns `numeric` as a string carrying the column's scale ("2000.00"),
+ *  so normalise through a number to drop trailing zeros. */
+function priceBound(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? String(n) : String(value);
+}
+
+/** One cell per medium: "2000 – 4000", or whichever single bound exists, or
+ *  empty. The schema has every price column non-null, so the partial and empty
+ *  cases are defensive — they cost nothing and keep a row intact either way. */
+function priceRange(min: unknown, max: unknown): string | null {
+  const lo = priceBound(min);
+  const hi = priceBound(max);
+  if (lo !== null && hi !== null) return `${lo} – ${hi}`;
+  return lo ?? hi;
 }
 
 // Status counts
@@ -86,7 +107,11 @@ router.get("/admin/creators/export", requireAdminSecret, async (_req: Request, r
   // Deliberately unpaginated, and independent of whichever status filter the
   // Users List happens to be showing: the export is always every ACTIVE creator.
   const result = await pool.query(
-    `SELECT c."fullName", c."instagramHandle", c."followerCount", c.phone, c.email
+    `SELECT c."fullName", c."instagramHandle", c."followerCount", c.phone, c.email,
+            c."reelPriceMin", c."reelPriceMax",
+            c."storyPriceMin", c."storyPriceMax",
+            c."postPriceMin", c."postPriceMax",
+            c.state
      FROM "Creator" c
      WHERE c.status = 'ACTIVE'
      ORDER BY c."createdAt" DESC`
@@ -94,8 +119,16 @@ router.get("/admin/creators/export", requireAdminSecret, async (_req: Request, r
 
   const lines = [
     EXPORT_COLUMNS.map(csvCell).join(","),
+    // Every cell goes through csvCell, so the formula guard and quoting cover
+    // the price and state columns too.
     ...result.rows.map((r: any) =>
-      [r.fullName, r.instagramHandle, r.followerCount, r.phone, r.email].map(csvCell).join(",")
+      [
+        r.fullName, r.instagramHandle, r.followerCount, r.phone, r.email,
+        priceRange(r.reelPriceMin, r.reelPriceMax),
+        priceRange(r.storyPriceMin, r.storyPriceMax),
+        priceRange(r.postPriceMin, r.postPriceMax),
+        r.state,
+      ].map(csvCell).join(",")
     ),
   ];
   // CRLF per RFC 4180, and a BOM so Excel reads the UTF-8 as UTF-8 instead of
