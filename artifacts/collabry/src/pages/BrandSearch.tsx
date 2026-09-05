@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import {
   Users, ChevronDown, Check, X, Search as SearchIcon,
@@ -61,17 +61,53 @@ function formatFollowers(n: number): string {
 }
 function toggle<T>(arr: T[], v: T): T[] { return arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]; }
 
+/* Opening a creator profile is a route change, so this page unmounts and loses
+   everything. Park the search in sessionStorage on the way out and seed state
+   back from it on the way in, so "Back to Search" lands the brand on the same
+   creator instead of a reset list. Session-scoped on purpose: it should not
+   outlive the tab. */
+const SEARCH_CACHE_KEY = "collabry_brand_search_v1";
+
+interface SearchCache {
+  filters: Filters;
+  creators: CreatorPartial[];
+  page: number;
+  total: number;
+  totalPages: number;
+  scrollY: number;
+  /** Only set when the brand left for a creator profile. A deliberate fresh
+   *  visit to Search restores the filters but must not yank them down the page. */
+  restoreScroll: boolean;
+}
+
+function readSearchCache(): SearchCache | null {
+  try {
+    const raw = sessionStorage.getItem(SEARCH_CACHE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw) as SearchCache;
+    // Guard against a stale shape written by an earlier deploy.
+    return Array.isArray(c?.creators) && c?.filters ? c : null;
+  } catch { return null; }
+}
+
+function writeSearchCache(c: SearchCache) {
+  try { sessionStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify(c)); } catch { /* quota — non-fatal */ }
+}
+
 export default function BrandSearch() {
   const { brandId, apiFetch, loading: authLoading } = useBrandAuth();
   const [, navigate] = useLocation();
   const { total: credits, setTotal: setCreditsTotal } = useBrandCredits();
+  // Read once, before first paint, so the restored list is already on screen
+  // when the scroll position is reapplied below.
+  const [cached] = useState(readSearchCache);
   const [opts, setOpts] = useState<FilterOptions | null>(null);
-  const [creators, setCreators] = useState<CreatorPartial[]>([]);
+  const [creators, setCreators] = useState<CreatorPartial[]>(cached?.creators ?? []);
   const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [page, setPage] = useState(cached?.page ?? 1);
+  const [totalPages, setTotalPages] = useState(cached?.totalPages ?? 1);
+  const [total, setTotal] = useState(cached?.total ?? 0);
+  const [filters, setFilters] = useState<Filters>(cached?.filters ?? EMPTY_FILTERS);
   const [openPill, setOpenPill] = useState<string | null>(null);
   const [unlockModal, setUnlockModal] = useState<CreatorPartial | null>(null);
   const [unlocking, setUnlocking] = useState(false);
@@ -113,6 +149,95 @@ export default function BrandSearch() {
       .finally(() => { if (myReq === reqId.current) setLoading(false); });
   }, [brandId, buildQuery, apiFetch]);
 
+  /* ── Search state persistence (survives the trip to a creator profile) ── */
+
+  // The unmount cleanup closes over its first render, so mirror live values.
+  const latest = useRef({ filters, creators, page, total, totalPages });
+  latest.current = { filters, creators, page, total, totalPages };
+
+  const persist = useCallback((scrollY: number, restoreScroll: boolean) => {
+    writeSearchCache({ ...latest.current, scrollY, restoreScroll });
+  }, []);
+
+  const leavingForProfile = useRef(false);
+  const openProfile = useCallback((id: string) => {
+    /* Snapshot the offset here, synchronously, rather than on unmount: the
+       app-wide <ScrollToTop> resets window.scrollY in a layout effect on every
+       location change, so by the time this page tears down the offset is 0. */
+    persist(window.scrollY, true);
+    leavingForProfile.current = true;
+    navigate(`/home-brand/search/creator/${id}`);
+  }, [navigate, persist]);
+
+  useEffect(() => () => {
+    // Leaving anywhere else: keep the filters/list for the session, but this is
+    // not a return trip, so no scroll offset. (openProfile already wrote one.)
+    if (leavingForProfile.current) return;
+    persist(0, false);
+  }, [persist]);
+
+  /* Reapply the saved offset. Mount-only on purpose: this polls for the page to
+     be ready rather than depending on auth/list state, because a dependency
+     changing mid-restore would run this effect's cleanup and cancel the
+     in-flight loop. */
+  useLayoutEffect(() => {
+    if (!cached?.restoreScroll) return;
+    const target = cached.scrollY;
+    const deadline = performance.now() + 3000;
+    let cancelled = false;
+
+    const done = () => writeSearchCache({ ...cached, restoreScroll: false });
+
+    let lastHeight = -1;
+    let stableFrames = 0;
+    const tick = () => {
+      if (cancelled) return;
+      const height = document.documentElement.scrollHeight;
+      /* Only scroll once the document can actually hold the offset. This page
+         renders null until auth resolves and its route chunk is lazy, so an
+         early attempt would clamp to a near-zero maximum and strand the brand
+         part-way up the list. Instant because index.css sets
+         `html { scroll-behavior: smooth }`, which "auto" would defer to. */
+      if (height - window.innerHeight >= target) {
+        window.scrollTo({ top: target, behavior: "instant" });
+      }
+      /* Hold it there until the layout stops moving. Cards render an image row
+         until filter-options arrives and tells us images are off, and that
+         reflow shrinks the document — which lets scroll anchoring drag the
+         offset back up if we've already stopped watching. */
+      const onTarget = Math.abs(window.scrollY - target) <= 1;
+      stableFrames = height === lastHeight && onTarget ? stableFrames + 1 : 0;
+      lastHeight = height;
+
+      if (stableFrames < 8 && performance.now() < deadline) requestAnimationFrame(tick);
+      else done(); // land, or give up rather than leave the flag armed
+    };
+    tick();
+
+    // Never fight a brand who starts scrolling before we've finished.
+    const stop = () => { cancelled = true; done(); };
+    window.addEventListener("wheel", stop, { passive: true, once: true });
+    window.addEventListener("touchstart", stop, { passive: true, once: true });
+    return () => {
+      cancelled = true;
+      window.removeEventListener("wheel", stop);
+      window.removeEventListener("touchstart", stop);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* A real page change starts at the first creator. Seeded with the initial
+     page so neither mount nor a restored page 3 counts as a change — that path
+     is handled by the scroll restore above. */
+  const prevPage = useRef(page);
+  useEffect(() => {
+    if (prevPage.current === page) return;
+    prevPage.current = page;
+    // Instant for the same reason as the restore, and so the first creator is
+    // on screen immediately rather than after a long animation from the bottom.
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [page]);
+
   const activeFilterCount = useMemo(() =>
     filters.slabIds.length + filters.categoryIds.length + filters.creatorAges.length +
     filters.creatorGenders.length +
@@ -135,7 +260,7 @@ export default function BrandSearch() {
         setCeleb({ show: true, username: d.instagramHandle ?? null, fullName: d.fullName ?? target.fullName ?? null });
         setTimeout(() => {
           setCeleb(s => ({ ...s, show: false }));
-          navigate(`/home-brand/search/creator/${id}`);
+          openProfile(id);
         }, 2000);
       } else {
         const d = await r.json();
@@ -366,7 +491,7 @@ export default function BrandSearch() {
                   credits={credits ?? 0}
                   imagesEnabled={opts?.creatorImagesEnabled !== false}
                   onUnlock={() => { setUnlockModal(c); setUnlockError(null); }}
-                  onView={() => navigate(`/home-brand/search/creator/${c.id}`)}
+                  onView={() => openProfile(c.id)}
                 />
               ))}
             </div>
