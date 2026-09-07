@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
+import { clearMatchmakingCache } from "@/lib/matchmakingCache";
 
 const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
 
@@ -201,6 +202,9 @@ export default function BrandMatchmaking() {
       const data = await r.json();
       sessionStorage.setItem("mm_results", JSON.stringify({ results: data.results, briefId: data.briefId, totalCreators: data.totalCreators }));
       sessionStorage.setItem("mm_brief", JSON.stringify({ brief, briefId: data.briefId, saved: saveAsBrief }));
+      // A new run is a new result set: drop any page/filter/offset saved against
+      // the previous one so this opens clean at page 1, top of the list.
+      clearMatchmakingCache();
       navigate("/home-brand/matchmaking/results");
     } catch (err: any) { setError(err?.message ?? "Network error."); }
     finally { setRunning(false); }

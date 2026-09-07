@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   ArrowLeft, Bookmark, Lock, ChevronDown, X, Check,
@@ -8,6 +8,10 @@ import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
 import UnlockCelebration from "@/components/UnlockCelebration";
+import {
+  type FilterState, EMPTY_FILTER, MATCHMAKING_PAGE_SIZE as PAGE_SIZE,
+  readMatchmakingCache, writeMatchmakingCache, clearMatchmakingCache,
+} from "@/lib/matchmakingCache";
 
 const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
 const CARD_BG = "#2D0D1F";
@@ -50,8 +54,6 @@ function fmtSlabLabel(s: Slab) {
 
 // ─── Filter Panel ─────────────────────────────────────────────────────────────
 
-interface FilterState { gender: string; ages: string[]; cats: string[]; minScore: number; slabId: string | null; }
-const EMPTY_FILTER: FilterState = { gender: "any", ages: [], cats: [], minScore: 0, slabId: null };
 
 interface FilterPanelProps {
   filterState: FilterState;
@@ -426,7 +428,12 @@ export default function BrandMatchmakingResults() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [genderOptions, setGenderOptions] = useState<string[]>([]);
   const [ageGroupOptions, setAgeGroupOptions] = useState<string[]>([]);
-  const [filterState, setFilterState] = useState<FilterState>(EMPTY_FILTER);
+  /* Read once, before first paint. Only a return trip from a creator profile
+     restores; a fresh arrival or a new brief starts clean at page 1. */
+  const [cached] = useState(readMatchmakingCache);
+  const restoring = cached?.returning === true;
+  const [filterState, setFilterState] = useState<FilterState>(restoring ? cached.filterState : EMPTY_FILTER);
+  const [page, setPage] = useState(restoring ? cached.page : 1);
   const [showMobileFilter, setShowMobileFilter] = useState(false);
   const [unlockModal, setUnlockModal] = useState<ScoredCreator | null>(null);
   const [unlocking, setUnlocking] = useState(false);
@@ -472,6 +479,134 @@ export default function BrandMatchmakingResults() {
       }).catch(() => {});
   }, [brandId, authLoading, navigate]);
 
+  /* Filtering is unchanged — only hoisted above the early returns below, so
+     every hook in this component runs unconditionally on each render. */
+  const filtered = useMemo(() => {
+    const selectedSlab = filterState.slabId ? slabs.find(s => s.id === filterState.slabId) ?? null : null;
+    return (allResults ?? []).filter(c => {
+      if (selectedSlab) {
+        const ok = c.followerCount >= selectedSlab.minFollowers;
+        const inRange = selectedSlab.maxFollowers ? ok && c.followerCount <= selectedSlab.maxFollowers : ok;
+        if (!inRange) return false;
+      }
+      if (filterState.minScore > 0 && c.totalScore < filterState.minScore) return false;
+      if (filterState.gender !== "any") {
+        const f = c.audienceGenderFemale ?? 50;
+        if (filterState.gender === "female" && f < 50) return false;
+        if (filterState.gender === "male" && f >= 50) return false;
+      }
+      if (filterState.ages.length > 0) {
+        if (!filterState.ages.includes(c.audienceAge ?? "")) return false;
+      }
+      if (filterState.cats.length > 0) {
+        if (!c.categories.some(cat => filterState.cats.includes(cat.id))) return false;
+      }
+      return true;
+    });
+  }, [allResults, filterState, slabs]);
+
+  /* ── Pagination (client-side: the whole ranked set is already in hand) ── */
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  /* Clamp rather than reset. A restored page can outlive the list it was saved
+     against, and tightening a filter can shrink the list under the current
+     page — both should land on the last real page, not an empty one. */
+  const safePage = Math.min(page, totalPages);
+  const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  /* Changing a filter re-ranks the list, so start again at the first creator. */
+  const applyFilterState = useCallback<React.Dispatch<React.SetStateAction<FilterState>>>(value => {
+    setFilterState(value);
+    setPage(1);
+  }, []);
+
+  /* ── State persistence (survives the trip to a creator profile) ── */
+
+  // The unmount cleanup closes over its first render, so mirror live values.
+  const latest = useRef({ filterState, page: safePage });
+  latest.current = { filterState, page: safePage };
+
+  const persist = useCallback((scrollY: number, returning: boolean) => {
+    writeMatchmakingCache({ ...latest.current, scrollY, returning });
+  }, []);
+
+  const leavingForProfile = useRef(false);
+  const openProfile = useCallback((creatorId: string) => {
+    /* Snapshot the offset here, synchronously, rather than on unmount: the
+       app-wide <ScrollToTop> resets window.scrollY in a layout effect on every
+       location change, so by the time this page tears down the offset is 0. */
+    persist(window.scrollY, true);
+    leavingForProfile.current = true;
+    navigate(`/home-brand/matchmaking/creator/${creatorId}`);
+  }, [navigate, persist]);
+
+  useEffect(() => () => {
+    // Left for anywhere but a profile — drop it, so the next arrival is clean.
+    if (leavingForProfile.current) return;
+    clearMatchmakingCache();
+  }, []);
+
+  /* Reapply the saved offset. Mount-only on purpose: this polls for the page to
+     be ready rather than depending on the results state, because a dependency
+     changing mid-restore would run this effect's cleanup and cancel the
+     in-flight loop. Mirrors BrandSearch.tsx. */
+  useLayoutEffect(() => {
+    if (!cached?.returning) {
+      // Inert leftover (the tab was closed or hard-navigated away mid-session).
+      // It restores nothing, but drop it so no stale state lingers at all.
+      if (cached) clearMatchmakingCache();
+      return;
+    }
+    const target = cached.scrollY;
+    const deadline = performance.now() + 3000;
+    let cancelled = false;
+
+    const done = () => writeMatchmakingCache({ ...cached, returning: false });
+
+    let lastHeight = -1;
+    let stableFrames = 0;
+    const tick = () => {
+      if (cancelled) return;
+      const height = document.documentElement.scrollHeight;
+      /* Only scroll once the document can actually hold the offset. Results are
+         read out of sessionStorage in an effect and this route chunk is lazy,
+         so an early attempt would clamp to a near-zero maximum and strand the
+         brand part-way up the list. Instant because index.css sets
+         `html { scroll-behavior: smooth }`, which "auto" would defer to. */
+      if (height - window.innerHeight >= target) {
+        window.scrollTo({ top: target, behavior: "instant" });
+      }
+      // Hold it there until the layout stops moving.
+      const onTarget = Math.abs(window.scrollY - target) <= 1;
+      stableFrames = height === lastHeight && onTarget ? stableFrames + 1 : 0;
+      lastHeight = height;
+
+      if (stableFrames < 8 && performance.now() < deadline) requestAnimationFrame(tick);
+      else done(); // land, or give up rather than leave the flag armed
+    };
+    tick();
+
+    // Never fight a brand who starts scrolling before we've finished.
+    const stop = () => { cancelled = true; done(); };
+    window.addEventListener("wheel", stop, { passive: true, once: true });
+    window.addEventListener("touchstart", stop, { passive: true, once: true });
+    return () => {
+      cancelled = true;
+      window.removeEventListener("wheel", stop);
+      window.removeEventListener("touchstart", stop);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* A real page change starts at the first creator. Seeded with the initial
+     page so neither mount nor a restored page 3 counts as a change — that path
+     is handled by the scroll restore above. */
+  const prevPage = useRef(page);
+  useEffect(() => {
+    if (prevPage.current === page) return;
+    prevPage.current = page;
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [page]);
+
   if (authLoading || !brandId) return null;
 
   if (briefExpired) {
@@ -490,30 +625,6 @@ export default function BrandMatchmakingResults() {
     );
   }
 
-  // Apply filters
-  const selectedSlab = filterState.slabId ? slabs.find(s => s.id === filterState.slabId) ?? null : null;
-
-  const filtered = (allResults ?? []).filter(c => {
-    if (selectedSlab) {
-      const ok = c.followerCount >= selectedSlab.minFollowers;
-      const inRange = selectedSlab.maxFollowers ? ok && c.followerCount <= selectedSlab.maxFollowers : ok;
-      if (!inRange) return false;
-    }
-    if (filterState.minScore > 0 && c.totalScore < filterState.minScore) return false;
-    if (filterState.gender !== "any") {
-      const f = c.audienceGenderFemale ?? 50;
-      if (filterState.gender === "female" && f < 50) return false;
-      if (filterState.gender === "male" && f >= 50) return false;
-    }
-    if (filterState.ages.length > 0) {
-      if (!filterState.ages.includes(c.audienceAge ?? "")) return false;
-    }
-    if (filterState.cats.length > 0) {
-      if (!c.categories.some(cat => filterState.cats.includes(cat.id))) return false;
-    }
-    return true;
-  });
-
   async function handleUnlock() {
     if (!unlockModal) return;
     setUnlocking(true); setUnlockError(null);
@@ -527,7 +638,7 @@ export default function BrandMatchmakingResults() {
       setUnlockModal(null);
       setCelebration(targetId);
       setCelebUser({ username: d.instagramHandle ?? null, fullName: d.fullName ?? null });
-      setTimeout(() => { setCelebration(null); navigate(`/home-brand/matchmaking/creator/${targetId}`); }, 2000);
+      setTimeout(() => { setCelebration(null); openProfile(targetId); }, 2000);
     } catch { setUnlockError("Network error. Please try again."); }
     finally { setUnlocking(false); }
   }
@@ -543,7 +654,7 @@ export default function BrandMatchmakingResults() {
   }
 
   const filterPanelProps: FilterPanelProps = {
-    filterState, setFilterState, categories, slabs, activeFilters, genderOptions, ageGroupOptions,
+    filterState, setFilterState: applyFilterState, categories, slabs, activeFilters, genderOptions, ageGroupOptions,
   };
 
   return (
@@ -643,16 +754,57 @@ export default function BrandMatchmakingResults() {
                   </button>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {filtered.map(c => (
-                    <MatchCard
-                      key={c.creatorId}
-                      c={c}
-                      onUnlock={() => setUnlockModal(c)}
-                      onView={() => navigate(`/home-brand/matchmaking/creator/${c.creatorId}`)}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div className="space-y-4">
+                    {pageItems.map(c => (
+                      <MatchCard
+                        key={c.creatorId}
+                        c={c}
+                        onUnlock={() => setUnlockModal(c)}
+                        onView={() => openProfile(c.creatorId)}
+                      />
+                    ))}
+                  </div>
+
+                  {/* ── Pagination (same controls as the search page) ── */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-3 mt-8">
+                      <button
+                        onClick={() => setPage(Math.max(1, safePage - 1))}
+                        disabled={safePage <= 1}
+                        className="text-xs rounded-full px-5 py-2"
+                        style={{
+                          border: "1px solid rgba(255,255,255,0.15)",
+                          background: "none",
+                          color: "rgba(255,255,255,0.90)",
+                          fontFamily: POPPINS,
+                          opacity: safePage <= 1 ? 0.4 : 1,
+                          cursor: safePage <= 1 ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        ← Prev
+                      </button>
+                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.70)", fontFamily: POPPINS }}>
+                        {safePage} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setPage(Math.min(totalPages, safePage + 1))}
+                        disabled={safePage >= totalPages}
+                        className="text-xs font-semibold rounded-full px-5 py-2"
+                        style={{
+                          border: "none",
+                          background: PINK,
+                          color: "#fff",
+                          fontFamily: POPPINS,
+                          opacity: safePage >= totalPages ? 0.4 : 1,
+                          cursor: safePage >= totalPages ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
