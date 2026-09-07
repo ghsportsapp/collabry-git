@@ -653,21 +653,75 @@ router.get("/matchmaking/brief-options", async (_req: Request, res: Response): P
   }
 });
 
-router.post("/brand/matchmaking/run", requireBrand, async (req: Request, res: Response): Promise<void> => {
-  const brandId = (req as any).brandId as string;
-  const {
-    productCategory, productSubcategory, campaignGoal,
-    targetGender, targetAge, targetLocation, targetCreatorGender = "",
-    saveAsBrief = false, existingBriefId,
-  } = req.body;
+/** Result-side filters. Applied to the ranked list on the server so the total
+ *  and page count describe the filtered set — paging a client-filtered list
+ *  would report the wrong number of pages and short pages. */
+interface ResultFilters {
+  gender?: string;
+  ages?: string[];
+  cats?: string[];
+  minScore?: number;
+  slabId?: string | null;
+}
 
-  if (!campaignGoal || !targetGender || !targetAge || !targetLocation) {
-    res.status(400).json({ error: "Campaign Goal, Target Gender, Target Age and Target Location are required" }); return;
+/** Matches the brand search page. */
+const MM_PAGE_LIMIT = 20;
+
+/**
+ * Ranks every eligible creator against a brief, then returns one page of it.
+ *
+ * Scoring runs in Node — weights, category adjacency and platform config are
+ * combined in JS — so SQL cannot LIMIT/OFFSET the ranked order. The full set is
+ * scored and sorted on every call and the page is sliced from that, which is
+ * what keeps page 2 the next-best 20 rather than a re-scored random slice.
+ *
+ * `readOnly` is the page-turn path: it loads an existing brief instead of
+ * writing one, so turning a page never creates a duplicate brief or bumps
+ * lastRunAt.
+ */
+async function runMatchmaking(req: Request, res: Response, readOnly: boolean): Promise<void> {
+  const brandId = (req as any).brandId as string;
+  const page = Math.max(1, parseInt(String(req.body?.page ?? "1")) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(String(req.body?.limit ?? MM_PAGE_LIMIT)) || MM_PAGE_LIMIT));
+  const rf: ResultFilters = req.body?.filters ?? {};
+  const { saveAsBrief = false, existingBriefId } = req.body;
+
+  let productCategory: string | null = null;
+  let productSubcategory: string | null = null;
+  let campaignGoal: string = "";
+  let targetGender: string = "";
+  let targetAge: string = "";
+  let targetLocation: string = "";
+  let targetCreatorGender: string = "";
+
+  if (!readOnly) {
+    ({ productCategory = null, productSubcategory = null, campaignGoal, targetGender, targetAge, targetLocation, targetCreatorGender = "" } = req.body);
+    if (!campaignGoal || !targetGender || !targetAge || !targetLocation) {
+      res.status(400).json({ error: "Campaign Goal, Target Gender, Target Age and Target Location are required" }); return;
+    }
   }
 
   try {
     let briefId: string;
-    if (existingBriefId) {
+    if (readOnly) {
+      // Page turn: the brief is the stored one, never whatever the client sent.
+      if (!existingBriefId) { res.status(400).json({ error: "existingBriefId is required" }); return; }
+      const br = await pool.query(
+        `SELECT id,"productCategory","productSubcategory","campaignGoal","targetGender","targetAge","targetLocation","targetCreatorGender"
+         FROM "MatchmakingBrief" WHERE id=$1 AND "brandId"=$2`,
+        [existingBriefId, brandId]
+      );
+      if (br.rows.length === 0) { res.status(404).json({ error: "Brief not found" }); return; }
+      const b = br.rows[0];
+      productCategory = b.productCategory ?? null;
+      productSubcategory = b.productSubcategory ?? null;
+      campaignGoal = b.campaignGoal ?? "";
+      targetGender = b.targetGender ?? "";
+      targetAge = b.targetAge ?? "";
+      targetLocation = b.targetLocation ?? "";
+      targetCreatorGender = b.targetCreatorGender ?? "";
+      briefId = b.id as string;
+    } else if (existingBriefId) {
       await pool.query(
         `UPDATE "MatchmakingBrief" SET "productCategory"=$1,"productSubcategory"=$2,"campaignGoal"=$3,"priceTier"=$4,"purchaseType"=$5,"customerType"=$6,"targetGender"=$7,"targetAge"=$8,"targetLocation"=$9,"targetCreatorGender"=$10,"lastRunAt"=NOW(),"isSaved"=CASE WHEN $11 THEN true ELSE "isSaved" END WHERE id=$12 AND "brandId"=$13`,
         [productCategory ?? null, productSubcategory ?? null, campaignGoal, "", "", "", targetGender, targetAge, targetLocation, targetCreatorGender, saveAsBrief, existingBriefId, brandId]
@@ -738,8 +792,10 @@ router.post("/brand/matchmaking/run", requireBrand, async (req: Request, res: Re
        LEFT JOIN "CreatorCategory" cc ON cc."creatorId"=c.id
        LEFT JOIN "Category" cat ON cat.id=cc."categoryId"
        WHERE c.status='ACTIVE' AND c."excludedFromMatchmaking"=false
-       GROUP BY c.id
-       LIMIT 1000`
+       GROUP BY c.id`
+      // No LIMIT: the whole eligible set has to be scored for the ranking — and
+      // for the page count — to be correct. A cap here silently dropped every
+      // creator past the cut-off from the results entirely.
     );
 
     interface BreakdownItem { param: string; label: string; pts: number; maxPts: number; reason: string; }
@@ -891,7 +947,13 @@ router.post("/brand/matchmaking/run", requireBrand, async (req: Request, res: Re
       if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
       if (b.completionRate !== a.completionRate) return b.completionRate - a.completionRate;
       if (b.followerCount !== a.followerCount) return b.followerCount - a.followerCount;
-      return byCreatedAtAsc(a.createdAt, b.createdAt);
+      const byDate = byCreatedAtAsc(a.createdAt, b.createdAt);
+      if (byDate !== 0) return byDate;
+      /* Final, fully deterministic tiebreak. The creator query has no ORDER BY,
+         so two creators equal on every ranked field could come back in a
+         different order on each call — which, once the list is paged, means one
+         of them appearing on two pages or on none. */
+      return a.creatorId < b.creatorId ? -1 : a.creatorId > b.creatorId ? 1 : 0;
     });
 
     // Assign ranks
@@ -901,12 +963,59 @@ router.post("/brand/matchmaking/run", requireBrand, async (req: Request, res: Re
       scored[i].rank = rank;
     }
 
-    const results = scored.map(({ completionRate: _, createdAt: __, ...rest }) => rest);
-    res.json({ results, totalCreators: results.length, briefId });
+    /* Result-side filters run after ranking, so `rank` still describes each
+       creator's place in the full ranked list — the same numbers brands saw
+       when this filtering happened in the browser. */
+    let visible = scored;
+    if (rf.slabId) {
+      const slabRes = await pool.query(
+        `SELECT "minFollowers","maxFollowers" FROM "FollowerSlab" WHERE id=$1`, [rf.slabId]
+      );
+      const slab = slabRes.rows[0];
+      if (slab) {
+        const minF = slab.minFollowers as number;
+        const maxF = slab.maxFollowers as number | null;
+        visible = visible.filter(c => c.followerCount >= minF && (maxF === null || c.followerCount <= maxF));
+      }
+    }
+    if (typeof rf.minScore === "number" && rf.minScore > 0) {
+      visible = visible.filter(c => c.totalScore >= rf.minScore!);
+    }
+    if (rf.gender && rf.gender !== "any") {
+      visible = visible.filter(c => {
+        const f = c.audienceGenderFemale ?? 50;
+        if (rf.gender === "female") return f >= 50;
+        if (rf.gender === "male") return f < 50;
+        return true;
+      });
+    }
+    if (rf.ages && rf.ages.length > 0) {
+      visible = visible.filter(c => rf.ages!.includes(c.audienceAge ?? ""));
+    }
+    if (rf.cats && rf.cats.length > 0) {
+      visible = visible.filter(c => c.categories.some(cat => rf.cats!.includes(cat.id)));
+    }
+
+    const total = visible.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    // Clamp: a cached page can outlive the list it was saved against.
+    const safePage = Math.min(page, totalPages);
+    const results = visible
+      .slice((safePage - 1) * limit, safePage * limit)
+      .map(({ completionRate: _, createdAt: __, ...rest }) => rest);
+
+    res.json({ results, total, totalCreators: total, page: safePage, totalPages, briefId });
   } catch (e: any) {
     if (!res.headersSent) res.status(500).json({ error: e?.message ?? "Server error. Please try again." });
   }
-});
+}
+
+// Runs a brief (creating or updating it) and returns the first page of matches.
+router.post("/brand/matchmaking/run", requireBrand, (req: Request, res: Response) => runMatchmaking(req, res, false));
+
+// Page turn / filter change against an already-saved brief. Read-only: no brief
+// is written, so paging can't duplicate briefs or move lastRunAt.
+router.post("/brand/matchmaking/results", requireBrand, (req: Request, res: Response) => runMatchmaking(req, res, true));
 
 // ─── ADMIN: Match Preview ────────────────────────────────────────────────────
 

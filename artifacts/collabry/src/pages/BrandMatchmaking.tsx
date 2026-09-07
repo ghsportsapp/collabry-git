@@ -200,7 +200,10 @@ export default function BrandMatchmaking() {
         setError(msg); return;
       }
       const data = await r.json();
-      sessionStorage.setItem("mm_results", JSON.stringify({ results: data.results, briefId: data.briefId, totalCreators: data.totalCreators }));
+      /* Only the brief id crosses over now. The results page fetches its own
+         page from the server, so the whole ranked list no longer has to be
+         serialised through sessionStorage. */
+      sessionStorage.setItem("mm_results", JSON.stringify({ briefId: data.briefId, totalCreators: data.total ?? data.totalCreators }));
       sessionStorage.setItem("mm_brief", JSON.stringify({ brief, briefId: data.briefId, saved: saveAsBrief }));
       // A new run is a new result set: drop any page/filter/offset saved against
       // the previous one so this opens clean at page 1, top of the list.

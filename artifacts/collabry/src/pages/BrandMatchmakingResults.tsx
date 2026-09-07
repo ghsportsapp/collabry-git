@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   ArrowLeft, Bookmark, Lock, ChevronDown, X, Check,
@@ -419,7 +419,11 @@ export default function BrandMatchmakingResults() {
   const { brandId, apiFetch, loading: authLoading } = useBrandAuth();
   const [, navigate] = useLocation();
 
-  const [allResults, setAllResults] = useState<ScoredCreator[] | null>(null);
+  /* Just the current page, plus the server's totals for the filtered set. */
+  const [pageResults, setPageResults] = useState<ScoredCreator[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
   const [briefId, setBriefId] = useState<string | null>(null);
   const [briefExpired, setBriefExpired] = useState(false);
   const [slabs, setSlabs] = useState<Slab[]>([]);
@@ -447,12 +451,14 @@ export default function BrandMatchmakingResults() {
   }, [brandId, authLoading, navigate]);
 
   useEffect(() => {
+    /* Only the brief id is carried across now — the ranked list lives on the
+       server and arrives one page at a time. */
     const stored = sessionStorage.getItem("mm_results");
     if (!stored) { setBriefExpired(true); return; }
     try {
       const parsed = JSON.parse(stored);
-      setAllResults(parsed.results ?? []);
-      setBriefId(parsed.briefId ?? null);
+      if (!parsed?.briefId) { setBriefExpired(true); return; }
+      setBriefId(parsed.briefId);
     } catch { setBriefExpired(true); }
 
     fetch(`${BASE_URL}/api/slabs`).then(r => r.ok ? r.json() : []).then(setSlabs).catch(() => {});
@@ -479,39 +485,39 @@ export default function BrandMatchmakingResults() {
       }).catch(() => {});
   }, [brandId, authLoading, navigate]);
 
-  /* Filtering is unchanged — only hoisted above the early returns below, so
-     every hook in this component runs unconditionally on each render. */
-  const filtered = useMemo(() => {
-    const selectedSlab = filterState.slabId ? slabs.find(s => s.id === filterState.slabId) ?? null : null;
-    return (allResults ?? []).filter(c => {
-      if (selectedSlab) {
-        const ok = c.followerCount >= selectedSlab.minFollowers;
-        const inRange = selectedSlab.maxFollowers ? ok && c.followerCount <= selectedSlab.maxFollowers : ok;
-        if (!inRange) return false;
-      }
-      if (filterState.minScore > 0 && c.totalScore < filterState.minScore) return false;
-      if (filterState.gender !== "any") {
-        const f = c.audienceGenderFemale ?? 50;
-        if (filterState.gender === "female" && f < 50) return false;
-        if (filterState.gender === "male" && f >= 50) return false;
-      }
-      if (filterState.ages.length > 0) {
-        if (!filterState.ages.includes(c.audienceAge ?? "")) return false;
-      }
-      if (filterState.cats.length > 0) {
-        if (!c.categories.some(cat => filterState.cats.includes(cat.id))) return false;
-      }
-      return true;
-    });
-  }, [allResults, filterState, slabs]);
-
-  /* ── Pagination (client-side: the whole ranked set is already in hand) ── */
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  /* Clamp rather than reset. A restored page can outlive the list it was saved
-     against, and tightening a filter can shrink the list under the current
-     page — both should land on the last real page, not an empty one. */
-  const safePage = Math.min(page, totalPages);
-  const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  /* ── Server-side pagination ────────────────────────────────────────────────
+     The ranked list stays on the server: it scores every eligible creator, then
+     hands back one page plus the real total. Filters go with the request so the
+     total and page count describe the filtered set. Mirrors how BrandSearch
+     fetches page/limit from /brand/search/creators-all. */
+  const reqId = useRef(0);
+  useEffect(() => {
+    if (!briefId) return;
+    const myReq = ++reqId.current;
+    setLoading(true);
+    apiFetch("/api/brand/matchmaking/results", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        existingBriefId: briefId,
+        page,
+        limit: PAGE_SIZE,
+        filters: filterState,
+      }),
+    })
+      .then(async r => {
+        if (myReq !== reqId.current) return; // a newer request already won
+        if (!r.ok) { setPageResults([]); setTotal(0); setTotalPages(1); return; }
+        const d = await r.json();
+        setPageResults(d.results ?? []);
+        setTotal(d.total ?? 0);
+        setTotalPages(Math.max(1, d.totalPages ?? 1));
+        // The server clamps a page that outran the (possibly filtered) list.
+        if (typeof d.page === "number" && d.page !== page) setPage(d.page);
+      })
+      .catch(() => { if (myReq === reqId.current) { setPageResults([]); } })
+      .finally(() => { if (myReq === reqId.current) setLoading(false); });
+  }, [briefId, page, filterState, apiFetch]);
 
   /* Changing a filter re-ranks the list, so start again at the first creator. */
   const applyFilterState = useCallback<React.Dispatch<React.SetStateAction<FilterState>>>(value => {
@@ -522,8 +528,8 @@ export default function BrandMatchmakingResults() {
   /* ── State persistence (survives the trip to a creator profile) ── */
 
   // The unmount cleanup closes over its first render, so mirror live values.
-  const latest = useRef({ filterState, page: safePage });
-  latest.current = { filterState, page: safePage };
+  const latest = useRef({ filterState, page });
+  latest.current = { filterState, page };
 
   const persist = useCallback((scrollY: number, returning: boolean) => {
     writeMatchmakingCache({ ...latest.current, scrollY, returning });
@@ -632,7 +638,7 @@ export default function BrandMatchmakingResults() {
       const r = await apiFetch(`/api/brand/creators/${unlockModal.creatorId}/unlock`, { method: "POST" });
       if (!r.ok) { const e = await r.json(); setUnlockError(e.message ?? e.error ?? "Failed"); return; }
       const d = await r.json().catch(() => ({}));
-      setAllResults(prev => prev ? prev.map(c => c.creatorId === unlockModal.creatorId ? { ...c, isUnlocked: true } : c) : prev);
+      setPageResults(prev => prev.map(c => c.creatorId === unlockModal.creatorId ? { ...c, isUnlocked: true } : c));
       setCredits(prev => prev ? { ...prev, total: prev.total - 1 } : prev);
       const targetId = unlockModal.creatorId;
       setUnlockModal(null);
@@ -733,12 +739,12 @@ export default function BrandMatchmakingResults() {
               {/* ── Results count ── */}
               <p className="text-white font-semibold text-base mb-5" style={{ fontFamily: POPPINS }}>
                 Showing top{" "}
-                <span style={{ color: PINK }}>{filtered.length}</span>{" "}
-                creator{filtered.length !== 1 ? "s" : ""} for you.
+                <span style={{ color: PINK }}>{total}</span>{" "}
+                creator{total !== 1 ? "s" : ""} for you.
               </p>
 
               {/* ── Creator cards ── */}
-              {filtered.length === 0 ? (
+              {!loading && total === 0 ? (
                 <div className="flex flex-col items-center justify-center text-center py-20 gap-3">
                   <p className="text-white font-semibold" style={{ fontFamily: POPPINS, fontSize: 16 }}>No creators match your brief.</p>
                   <p className="text-white/65" style={{ fontFamily: POPPINS, fontSize: 13, maxWidth: 320, lineHeight: 1.6 }}>
@@ -756,7 +762,7 @@ export default function BrandMatchmakingResults() {
               ) : (
                 <>
                   <div className="space-y-4">
-                    {pageItems.map(c => (
+                    {pageResults.map(c => (
                       <MatchCard
                         key={c.creatorId}
                         c={c}
@@ -770,34 +776,34 @@ export default function BrandMatchmakingResults() {
                   {totalPages > 1 && (
                     <div className="flex items-center justify-center gap-3 mt-8">
                       <button
-                        onClick={() => setPage(Math.max(1, safePage - 1))}
-                        disabled={safePage <= 1}
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page <= 1 || loading}
                         className="text-xs rounded-full px-5 py-2"
                         style={{
                           border: "1px solid rgba(255,255,255,0.15)",
                           background: "none",
                           color: "rgba(255,255,255,0.90)",
                           fontFamily: POPPINS,
-                          opacity: safePage <= 1 ? 0.4 : 1,
-                          cursor: safePage <= 1 ? "not-allowed" : "pointer",
+                          opacity: page <= 1 ? 0.4 : 1,
+                          cursor: page <= 1 ? "not-allowed" : "pointer",
                         }}
                       >
                         ← Prev
                       </button>
                       <span className="text-xs" style={{ color: "rgba(255,255,255,0.70)", fontFamily: POPPINS }}>
-                        {safePage} / {totalPages}
+                        {page} / {totalPages}
                       </span>
                       <button
-                        onClick={() => setPage(Math.min(totalPages, safePage + 1))}
-                        disabled={safePage >= totalPages}
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                        disabled={page >= totalPages || loading}
                         className="text-xs font-semibold rounded-full px-5 py-2"
                         style={{
                           border: "none",
                           background: PINK,
                           color: "#fff",
                           fontFamily: POPPINS,
-                          opacity: safePage >= totalPages ? 0.4 : 1,
-                          cursor: safePage >= totalPages ? "not-allowed" : "pointer",
+                          opacity: page >= totalPages ? 0.4 : 1,
+                          cursor: page >= totalPages ? "not-allowed" : "pointer",
                         }}
                       >
                         Next →
