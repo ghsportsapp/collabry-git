@@ -76,6 +76,29 @@ export async function initMatchmakingTables(): Promise<void> {
 
 // ─── HELPERS ───────────────────────────────────────────────────────────────────
 
+/** `pg` maps timestamp columns to JS `Date`, not to strings, so a createdAt read
+ *  straight off a row has no string methods. Normalise to epoch millis for
+ *  comparison and accept the shapes a row can actually carry. Anything missing
+ *  or unparseable sorts last rather than jumping the queue. */
+function createdAtMs(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? Infinity : parsed;
+  }
+  return Infinity;
+}
+
+/** Oldest first, total and NaN-free (Infinity - Infinity would be NaN, which
+ *  silently corrupts a sort). */
+function byCreatedAtAsc(a: unknown, b: unknown): number {
+  const at = createdAtMs(a);
+  const bt = createdAtMs(b);
+  if (at === bt) return 0;
+  return at < bt ? -1 : 1;
+}
+
 function ageBracket(age: string | null): number {
   if (!age) return -1;
   const n = parseInt(age.replace(/[^0-9].*/u, ""));
@@ -731,7 +754,9 @@ router.post("/brand/matchmaking/run", requireBrand, async (req: Request, res: Re
       averageRating: number | null; ratingCount: number;
       isUnlocked: boolean; categories: Array<{ id: string; name: string }>;
       profilePhotoUrl: string | null; images: string[];
-      completionRate: number; createdAt: string | null;
+      // Declared as `string` before, which is what let `.localeCompare()` past
+      // the typechecker — the row actually hands back a Date.
+      completionRate: number; createdAt: Date | string | null;
       creatorAge: number | null;
       scoreBreakdown: BreakdownItem[];
     }
@@ -866,7 +891,7 @@ router.post("/brand/matchmaking/run", requireBrand, async (req: Request, res: Re
       if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
       if (b.completionRate !== a.completionRate) return b.completionRate - a.completionRate;
       if (b.followerCount !== a.followerCount) return b.followerCount - a.followerCount;
-      return (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+      return byCreatedAtAsc(a.createdAt, b.createdAt);
     });
 
     // Assign ranks
