@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --max-old-space-size=3072 /c/Users/navne/collabry-git/node_modules/typescript/lib/tsc.js -p tsconfig.json --noEmit > /tmp/ts2.txt 2>&1; echo \"EXIT=$?\"; grep -cE \"error TS\" /tmp/ts2.txt; grep -E \"error TS\" /tmp/ts2.txt | head -20)",
+      "Bash(timeout 90 bash -c 'until curl -sf http://127.0.0.1:5173/ -o /dev/null 2>/dev/null; do sleep 1; done')",
+      "Bash(echo \"poll=$?\")",
+      "Read(//c/Users/navne/AppData/Local/Temp/claude/c--Users-navne-collabry-git/8653f798-73f5-463f-af37-e8118e6fdf35/scratchpad/**)",
+      "Bash(node phase34.mjs)",
+      "Bash(python -)",
+      "Bash(sed -e 's#/home-brand/campaigns/camp1#/home-brand/barter/camp1#' -e 's#/brand/campaigns/\\\\[^/\\\\]+\\\\$#/brand/barter/[^/]+$#' diag34.mjs)",
+      "Bash(node diagb.mjs)",
+      "Bash(netstat -ano)",
+      "Bash(awk '{print $5}')",
+      "Bash(read p *)",
+      "Bash(powershell -NoProfile -Command 'Stop-Process -Id __TRACKED_VAR__ -Force -ErrorAction SilentlyContinue')",
+      "Bash(grep -n \"LIMIT \\\\$\\\\|COUNT\\(\\\\*\\)::int as c FROM \\\\\"CampaignApplication\\\\\"\\\\|COUNT\\(\\\\*\\)::int as c FROM \\\\\"BarterApplication\\\\\"\\\\|pagedApplicants\\(\" artifacts/api-server/src/routes/campaigns.ts)"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
+    ]
+  }
+}

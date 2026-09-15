@@ -3,6 +3,41 @@ import crypto from "crypto";
 import { pool } from "@workspace/db";
 import { requireAdmin } from "../middleware/requireAdmin";
 import { requireBrand } from "../middleware/requireBrand";
+import { buildCreatorFilters } from "../lib/creatorFilters";
+
+/** Applicant lists page at 50, like the rest of the brand surfaces. */
+const APPLICANTS_PAGE_SIZE = 50;
+
+/* Ceiling for clients that predate paging. They expect every row, so the query
+   still has to be effectively unbounded for them — but not literally unbounded,
+   since this path exists only for the deploy window. */
+const LEGACY_UNPAGED_LIMIT = 10000;
+
+/**
+ * A client that sends `page` gets the paged object; one that doesn't gets the
+ * bare array it has always got, unpaged.
+ *
+ * This is what makes the two halves independently deployable. A browser running
+ * a pre-paging bundle — and the service worker precaches JS, so those survive a
+ * deploy by minutes or hours — would otherwise receive an object where it does
+ * `apps.map(...)`, and the campaign page would throw.
+ */
+function readPaging(req: Request): { page: number; limit: number; offset: number; wantsPaging: boolean } {
+  const wantsPaging = req.query["page"] !== undefined;
+  if (!wantsPaging) return { page: 1, limit: LEGACY_UNPAGED_LIMIT, offset: 0, wantsPaging };
+  const page = Math.max(1, parseInt(String(req.query["page"]), 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(String(req.query["limit"] ?? APPLICANTS_PAGE_SIZE), 10) || APPLICANTS_PAGE_SIZE));
+  return { page, limit, offset: (page - 1) * limit, wantsPaging };
+}
+
+/** Shape every applicant list shares, so the client pages them identically. */
+function pagedApplicants(
+  rows: unknown[], total: number, page: number, limit: number, wantsPaging: boolean,
+): unknown {
+  if (!wantsPaging) return rows;
+  return { applications: rows, total, page, totalPages: Math.max(1, Math.ceil(total / limit)) };
+}
+
 import { requireCreator } from "../middleware/requireCreator";
 import { broadcastToAllCreators } from "../lib/sseManager";
 import { createPopup } from "../lib/popups";
@@ -485,6 +520,7 @@ router.get("/brand/campaigns/:id/applications", requireBrand, async (req: Reques
   const { status = "PENDING" } = req.query;
   const camp = await pool.query(`SELECT id FROM "Campaign" WHERE id=$1 AND "brandId"=$2`, [req.params["id"], brandId]);
   if (!camp.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  const { page, limit, offset, wantsPaging } = readPaging(req);
   if (status === "SELECTED") {
     const apps = await pool.query(
       `SELECT ca.id, ca.status, ca."appliedAt", ca."selectedAt", ca."confirmationDeadline",
@@ -499,13 +535,26 @@ router.get("/brand/campaigns/:id/applications", requireBrand, async (req: Reques
        LEFT JOIN "Category" cat ON cat.id=cc."categoryId"
        LEFT JOIN "Deal" d ON d.id=ca."dealId"
        WHERE ca."campaignId"=$1 AND ca.status IN ('SELECTED','CONFIRMED')
-       GROUP BY ca.id, cr.id, d.id ORDER BY ca."selectedAt"`,
+       GROUP BY ca.id, cr.id, d.id ORDER BY ca."selectedAt"
+       LIMIT $2 OFFSET $3`,
+      [req.params["id"], limit, offset]
+    );
+    const total = await pool.query(
+      `SELECT COUNT(*)::int as c FROM "CampaignApplication" ca
+       WHERE ca."campaignId"=$1 AND ca.status IN ('SELECTED','CONFIRMED')`,
       [req.params["id"]]
     );
-    res.json(apps.rows);
+    res.json(pagedApplicants(apps.rows, total.rows[0].c, page, limit, wantsPaging));
     return;
   }
   if (status === "SHORTLISTED") {
+    /* Filters run in SQL over the whole shortlist, not the rendered page.
+       Built twice because the two queries bind a different number of params
+       before the filters: the list binds id + brandId, the count only id. */
+    const { conditions, params: filterParams } = await buildCreatorFilters(req.query as any, "cr", 2);
+    const filterSql = conditions.length ? ` AND ${conditions.join(" AND ")}` : "";
+    const countF = await buildCreatorFilters(req.query as any, "cr", 1);
+    const countFilterSql = countF.conditions.length ? ` AND ${countF.conditions.join(" AND ")}` : "";
     const apps = await pool.query(
       `SELECT ca.id, ca.status, ca."appliedAt", ca."shortlistedAt", ca."unlockedAt",
               cr.id as "creatorId", cr."fullName", cr."instagramHandle", cr."profilePhotoUrl",
@@ -517,7 +566,7 @@ router.get("/brand/campaigns/:id/applications", requireBrand, async (req: Reques
               cr."gender" as "creatorGender", cr."contentType", cr."images" as "portfolioImages",
               EXTRACT(YEAR FROM AGE(cr."dateOfBirth"))::int as "creatorAge",
               cr.state as "creatorState",
-              COALESCE(json_agg(DISTINCT jsonb_build_object('name',cat.name)) FILTER (WHERE cat.id IS NOT NULL),'[]') as categories,
+              COALESCE(json_agg(DISTINCT jsonb_build_object('id',cat.id,'name',cat.name)) FILTER (WHERE cat.id IS NOT NULL),'[]') as categories,
               COALESCE(json_agg(DISTINCT jsonb_build_object('id',cp.id,'videoUrl',cp."videoUrl")) FILTER (WHERE cp.id IS NOT NULL),'[]') as portfolio,
               (bur."creatorId" IS NOT NULL) as "globallyUnlocked"
        FROM "CampaignApplication" ca
@@ -526,9 +575,16 @@ router.get("/brand/campaigns/:id/applications", requireBrand, async (req: Reques
        LEFT JOIN "Category" cat ON cat.id=cc."categoryId"
        LEFT JOIN "CreatorPortfolio" cp ON cp."creatorId"=cr.id
        LEFT JOIN "BrandUnlockRecord" bur ON bur."brandId"=$2 AND bur."creatorId"=cr.id
-       WHERE ca."campaignId"=$1 AND ca.status='SHORTLISTED'
-       GROUP BY ca.id,cr.id,bur."creatorId" ORDER BY ca."shortlistedAt"`,
-      [req.params["id"], brandId]
+       WHERE ca."campaignId"=$1 AND ca.status='SHORTLISTED'${filterSql}
+       GROUP BY ca.id,cr.id,bur."creatorId" ORDER BY ca."shortlistedAt"
+       LIMIT $${2 + filterParams.length + 1} OFFSET $${2 + filterParams.length + 2}`,
+      [req.params["id"], brandId, ...filterParams, limit, offset]
+    );
+    const totalRes = await pool.query(
+      `SELECT COUNT(*)::int as c FROM "CampaignApplication" ca
+       JOIN "Creator" cr ON cr.id=ca."creatorId"
+       WHERE ca."campaignId"=$1 AND ca.status='SHORTLISTED'${countFilterSql}`,
+      [req.params["id"], ...countF.params]
     );
     // Hide identifying info until unlocked (via this campaign OR a previous global unlock)
     const masked = apps.rows.map((a: any) => {
@@ -537,6 +593,11 @@ router.get("/brand/campaigns/:id/applications", requireBrand, async (req: Reques
       return {
         id: a.id, status: a.status, appliedAt: a.appliedAt, shortlistedAt: a.shortlistedAt,
         isUnlocked: false,
+        // Photo is not identifying enough to gate — search shows it too. Name
+        // and handle are the fields the unlock actually buys, and they are
+        // simply absent from this object.
+        profilePhotoUrl: a.profilePhotoUrl,
+        creatorId: a.creatorId,
         followerCount: a.followerCount,
         audienceGenderFemale: a.audienceGenderFemale, audienceGenderMale: a.audienceGenderMale,
         audienceAge: a.audienceAge, audienceLocation: a.audienceLocation,
@@ -552,10 +613,12 @@ router.get("/brand/campaigns/:id/applications", requireBrand, async (req: Reques
         creatorState: a.creatorState,
       };
     });
-    res.json(masked);
+    res.json(pagedApplicants(masked, totalRes.rows[0].c, page, limit, wantsPaging));
     return;
   }
   // PENDING — partial data only
+  const { conditions: pendConds, params: pendParams } = await buildCreatorFilters(req.query as any, "cr", 1);
+  const pendFilterSql = pendConds.length ? ` AND ${pendConds.join(" AND ")}` : "";
   const apps = await pool.query(
     `SELECT ca.id, ca.status, ca."appliedAt",
             cr."followerCount",
@@ -565,18 +628,25 @@ router.get("/brand/campaigns/:id/applications", requireBrand, async (req: Reques
             cr."postPriceMin", cr."postPriceMax", cr."averageRating", cr."ratingCount",
             cr."gender" as "creatorGender", cr."contentType", cr."images" as "portfolioImages",
             EXTRACT(YEAR FROM AGE(cr."dateOfBirth"))::int as "creatorAge",
-            cr.state as "creatorState",
-            COALESCE(json_agg(DISTINCT jsonb_build_object('name',cat.name)) FILTER (WHERE cat.id IS NOT NULL),'[]') as categories
+            cr.state as "creatorState", cr."profilePhotoUrl",
+            COALESCE(json_agg(DISTINCT jsonb_build_object('id',cat.id,'name',cat.name)) FILTER (WHERE cat.id IS NOT NULL),'[]') as categories
      FROM "CampaignApplication" ca
      JOIN "Creator" cr ON cr.id=ca."creatorId"
      LEFT JOIN "CreatorCategory" cc ON cc."creatorId"=cr.id
      LEFT JOIN "Category" cat ON cat.id=cc."categoryId"
-     WHERE ca."campaignId"=$1 AND ca.status='PENDING'
-     GROUP BY ca.id,cr."followerCount",cr."audienceGenderFemale",cr."audienceGenderMale",cr."audienceAge",cr."audienceLocation",cr."campaignGoal",cr."reelPriceMin",cr."reelPriceMax",cr."storyPriceMin",cr."storyPriceMax",cr."postPriceMin",cr."postPriceMax",cr."averageRating",cr."ratingCount",cr."gender",cr."contentType",cr."images",cr."dateOfBirth",cr.state
-     ORDER BY ca."appliedAt"`,
-    [req.params["id"]]
+     WHERE ca."campaignId"=$1 AND ca.status='PENDING'${pendFilterSql}
+     GROUP BY ca.id,cr.id
+     ORDER BY ca."appliedAt"
+     LIMIT $${1 + pendParams.length + 1} OFFSET $${1 + pendParams.length + 2}`,
+    [req.params["id"], ...pendParams, limit, offset]
   );
-  res.json(apps.rows);
+  const pendTotal = await pool.query(
+    `SELECT COUNT(*)::int as c FROM "CampaignApplication" ca
+     JOIN "Creator" cr ON cr.id=ca."creatorId"
+     WHERE ca."campaignId"=$1 AND ca.status='PENDING'${pendFilterSql}`,
+    [req.params["id"], ...pendParams]
+  );
+  res.json(pagedApplicants(apps.rows, pendTotal.rows[0].c, page, limit, wantsPaging));
 });
 
 // Unlock a shortlisted creator's identity for 1 credit
@@ -983,10 +1053,16 @@ router.get("/brand/barter/:id/applications", requireBrand, async (req: Request, 
   const { status = "PENDING" } = req.query;
   const barter = await pool.query(`SELECT id FROM "BarterCampaign" WHERE id=$1 AND "brandId"=$2`, [req.params["id"], brandId]);
   if (!barter.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  const { page, limit, offset, wantsPaging } = readPaging(req);
   if (status === "SHORTLISTED" || status === "SELECTED") {
+    /* Filters apply to Shortlisted only — Selected is never filtered. */
+    const { conditions, params: filterParams } = status === "SHORTLISTED"
+      ? await buildCreatorFilters(req.query as any, "cr", 2)
+      : { conditions: [] as string[], params: [] as unknown[] };
+    const filterSql = conditions.length ? ` AND ${conditions.join(" AND ")}` : "";
     const whereClause = status === "SELECTED"
       ? `ba."barterId"=$1 AND ba.status IN ('SELECTED','CONFIRMED')`
-      : `ba."barterId"=$1 AND ba.status='SHORTLISTED'`;
+      : `ba."barterId"=$1 AND ba.status='SHORTLISTED'${filterSql}`;
     const apps = await pool.query(
       `SELECT ba.id, ba.status, ba."appliedAt", ba."shortlistedAt", ba."selectedAt", ba."dealId",
               ba."unlockedAt", ba."confirmationDeadline", ba."confirmedAt", ba."declinedAt", ba."expiredAt",
@@ -996,7 +1072,8 @@ router.get("/brand/barter/:id/applications", requireBrand, async (req: Request, 
               cr."postPriceMin", cr."postPriceMax", cr."averageRating", cr."ratingCount",
               cr."gender" as "creatorGender", cr."contentType", cr."images" as "portfolioImages",
               EXTRACT(YEAR FROM AGE(cr."dateOfBirth"))::int as "creatorAge",
-              COALESCE(json_agg(DISTINCT jsonb_build_object('name',cat.name)) FILTER (WHERE cat.id IS NOT NULL),'[]') as categories,
+              cr.state as "creatorState",
+              COALESCE(json_agg(DISTINCT jsonb_build_object('id',cat.id,'name',cat.name)) FILTER (WHERE cat.id IS NOT NULL),'[]') as categories,
               (bur."creatorId" IS NOT NULL) as "globallyUnlocked"
        FROM "BarterApplication" ba
        JOIN "Creator" cr ON cr.id=ba."creatorId"
@@ -1004,36 +1081,64 @@ router.get("/brand/barter/:id/applications", requireBrand, async (req: Request, 
        LEFT JOIN "Category" cat ON cat.id=cc."categoryId"
        LEFT JOIN "BrandUnlockRecord" bur ON bur."brandId"=$2 AND bur."creatorId"=cr.id
        WHERE ${whereClause}
-       GROUP BY ba.id,cr.id,bur."creatorId" ORDER BY ba."appliedAt"`,
-      [req.params["id"], brandId]
+       GROUP BY ba.id,cr.id,bur."creatorId" ORDER BY ba."appliedAt"
+       LIMIT $${2 + filterParams.length + 1} OFFSET $${2 + filterParams.length + 2}`,
+      [req.params["id"], brandId, ...filterParams, limit, offset]
+    );
+    const countF = status === "SHORTLISTED"
+      ? await buildCreatorFilters(req.query as any, "cr", 1)
+      : { conditions: [] as string[], params: [] as unknown[] };
+    const countWhere = status === "SELECTED"
+      ? `ba."barterId"=$1 AND ba.status IN ('SELECTED','CONFIRMED')`
+      : `ba."barterId"=$1 AND ba.status='SHORTLISTED'${countF.conditions.length ? ` AND ${countF.conditions.join(" AND ")}` : ""}`;
+    const totalRes = await pool.query(
+      `SELECT COUNT(*)::int as c FROM "BarterApplication" ba
+       JOIN "Creator" cr ON cr.id=ba."creatorId"
+       WHERE ${countWhere}`,
+      [req.params["id"], ...countF.params]
     );
     const masked = apps.rows.map((r: any) => {
       const isUnlocked = !!r.unlockedAt || !!r.globallyUnlocked || r.status === "SELECTED";
       if (status === "SHORTLISTED" && !isUnlocked) {
-        return { ...r, fullName: null, instagramHandle: null, profilePhotoUrl: null, isUnlocked: false };
+        // Photo stays: the card shows it, the same way search does. Only the
+        // name and handle are withheld until the 1-credit unlock.
+        return { ...r, fullName: null, instagramHandle: null, isUnlocked: false };
       }
       return { ...r, isUnlocked };
     });
-    res.json(masked);
+    res.json(pagedApplicants(masked, totalRes.rows[0].c, page, limit, wantsPaging));
     return;
   }
   // PENDING — partial
+  const { conditions: pendConds, params: pendParams } = await buildCreatorFilters(req.query as any, "cr", 1);
+  const pendFilterSql = pendConds.length ? ` AND ${pendConds.join(" AND ")}` : "";
   const apps = await pool.query(
-    `SELECT ba.id, ba.status, ba."appliedAt",
+    /* `profilePhotoUrl`, `images` and `state` were absent here, which is why
+       barter Applications rendered no photo and no content strip while the paid
+       equivalent did. Identity (name/handle) stays out — the card masks it. */
+    `SELECT ba.id, ba.status, ba."appliedAt", ba."creatorId",
             cr."followerCount",cr."audienceGenderFemale",cr."audienceGenderMale",cr."audienceAge",cr."audienceLocation",
             cr."reelPriceMin",cr."reelPriceMax",cr."storyPriceMin",cr."storyPriceMax",cr."postPriceMin",cr."postPriceMax",
             cr."averageRating",cr."ratingCount",cr."gender" as "creatorGender",cr."contentType",EXTRACT(YEAR FROM AGE(cr."dateOfBirth"))::int as "creatorAge",
-            COALESCE(json_agg(DISTINCT jsonb_build_object('name',cat.name)) FILTER (WHERE cat.id IS NOT NULL),'[]') as categories
+            cr."profilePhotoUrl", cr."images" as "portfolioImages", cr.state as "creatorState",
+            COALESCE(json_agg(DISTINCT jsonb_build_object('id',cat.id,'name',cat.name)) FILTER (WHERE cat.id IS NOT NULL),'[]') as categories
      FROM "BarterApplication" ba
      JOIN "Creator" cr ON cr.id=ba."creatorId"
      LEFT JOIN "CreatorCategory" cc ON cc."creatorId"=cr.id
      LEFT JOIN "Category" cat ON cat.id=cc."categoryId"
-     WHERE ba."barterId"=$1 AND ba.status='PENDING'
-     GROUP BY ba.id,cr."followerCount",cr."audienceGenderFemale",cr."audienceGenderMale",cr."audienceAge",cr."audienceLocation",cr."reelPriceMin",cr."reelPriceMax",cr."storyPriceMin",cr."storyPriceMax",cr."postPriceMin",cr."postPriceMax",cr."averageRating",cr."ratingCount",cr."gender",cr."contentType",cr."dateOfBirth"
-     ORDER BY ba."appliedAt"`,
-    [req.params["id"]]
+     WHERE ba."barterId"=$1 AND ba.status='PENDING'${pendFilterSql}
+     GROUP BY ba.id,cr.id
+     ORDER BY ba."appliedAt"
+     LIMIT $${1 + pendParams.length + 1} OFFSET $${1 + pendParams.length + 2}`,
+    [req.params["id"], ...pendParams, limit, offset]
   );
-  res.json(apps.rows);
+  const pendTotal = await pool.query(
+    `SELECT COUNT(*)::int as c FROM "BarterApplication" ba
+     JOIN "Creator" cr ON cr.id=ba."creatorId"
+     WHERE ba."barterId"=$1 AND ba.status='PENDING'${pendFilterSql}`,
+    [req.params["id"], ...pendParams]
+  );
+  res.json(pagedApplicants(apps.rows, pendTotal.rows[0].c, page, limit, wantsPaging));
 });
 
 router.post("/brand/barter/:id/applications/:appId/shortlist", requireBrand, async (req: Request, res: Response): Promise<void> => {

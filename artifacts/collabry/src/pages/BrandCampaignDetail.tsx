@@ -11,6 +11,11 @@ import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { openRazorpayCheckout } from "@/lib/razorpay";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
+import ApplicantCard from "@/components/ApplicantCard";
+import CreatorFilterBar, { type FilterOptions } from "@/components/CreatorFilterBar";
+import { useCampaignApplicants } from "@/hooks/useCampaignApplicants";
+import { readReturnTab } from "@/lib/campaignApplicantsCache";
+import PaginationBar from "@/components/PaginationBar";
 import UnlockCelebration from "@/components/UnlockCelebration";
 
 const TABS = ["Applications", "Shortlisted", "Selected"];
@@ -147,18 +152,18 @@ function AnonymousCard({ app, onShortlist }: { app: any; onShortlist: (id: strin
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   return (
-    <div className="rounded-2xl p-4 mb-3" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
-      <CreatorMetaRow app={app} showIdentity={false} />
-      <CreatorTagsRow app={app} />
-      <PortfolioStrip images={app.portfolioImages} locked={false} />
-      <button
-        onClick={async () => { setLoading(true); const ok = await onShortlist(app.id); setLoading(false); if (ok) setDone(true); }}
-        disabled={loading || done}
-        className="w-full mt-3 py-2.5 rounded-xl text-white font-semibold text-sm transition-all"
-        style={{ background: done ? "#10B981" : loading ? `${PINK}80` : PINK, fontFamily: POPPINS }}>
-        {done ? "Shortlisted ✓" : loading ? "Shortlisting…" : "Shortlist (Free)"}
-      </button>
-    </div>
+    <ApplicantCard
+      app={app}
+      footer={
+        <button
+          onClick={async () => { setLoading(true); const ok = await onShortlist(app.id); setLoading(false); if (ok) setDone(true); }}
+          disabled={loading || done}
+          className="w-full py-2.5 rounded-xl text-white font-semibold text-sm transition-all"
+          style={{ background: done ? "#10B981" : loading ? `${PINK}80` : PINK, fontFamily: POPPINS }}>
+          {done ? "Shortlisted ✓" : loading ? "Shortlisting…" : "Shortlist (Free)"}
+        </button>
+      }
+    />
   );
 }
 
@@ -170,53 +175,38 @@ function ShortlistedCard({ app, onRequestUnlock, onSelectClick, onViewProfile }:
 }) {
   const isLocked = !app.isUnlocked;
 
+  /* Identity is never on the card — the shared card masks name and handle at
+     every stage, exactly like search. The existing 1-credit unlock is what
+     reveals them, on the full profile. */
   return (
-    <div className="rounded-2xl p-4 mb-3 transition-all"
-      style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
-
-      {/* Identity row when unlocked */}
-      {!isLocked && (
-        <div className="flex items-center gap-2.5 mb-3">
-          {app.profilePhotoUrl
-            ? <img src={app.profilePhotoUrl} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
-            : <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-sm"
-                style={{ background: `${PINK}25`, color: PINK }}>{app.fullName?.[0] ?? "?"}</div>}
-          <div className="min-w-0">
-            <p className="text-white font-semibold text-sm truncate" style={{ fontFamily: POPPINS }}>{app.fullName}</p>
-            <p className="text-white/70 text-xs" style={{ fontFamily: POPPINS }}>@{app.instagramHandle}</p>
-          </div>
+    <ApplicantCard
+      app={app}
+      footer={
+        <div className="flex gap-2">
+          {isLocked ? (
+            <button onClick={() => onRequestUnlock(app)}
+              className="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2"
+              style={{ background: PINK, fontFamily: POPPINS }}>
+              <Sparkles className="w-3.5 h-3.5" />
+              Unlock Full Profile – 1 Credit
+            </button>
+          ) : (
+            <>
+              <button onClick={() => onViewProfile(app.creatorId, app.id)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+                style={{ background: "transparent", border: `1px solid ${PINK}`, color: PINK, fontFamily: POPPINS }}>
+                Profile Unlocked — View Full Profile
+              </button>
+              <button onClick={() => onSelectClick(app)}
+                className="px-4 py-2.5 rounded-xl text-white text-sm font-semibold flex-shrink-0"
+                style={{ background: "#10B981", fontFamily: POPPINS }}>
+                Select
+              </button>
+            </>
+          )}
         </div>
-      )}
-
-      <CreatorMetaRow app={app} showIdentity={!isLocked} />
-      <CreatorTagsRow app={app} />
-      <PortfolioStrip images={app.portfolioImages} locked={false} />
-
-      {/* CTA */}
-      <div className="flex gap-2 mt-3">
-        {isLocked ? (
-          <button onClick={() => onRequestUnlock(app)}
-            className="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2"
-            style={{ background: PINK, fontFamily: POPPINS }}>
-            <Sparkles className="w-3.5 h-3.5" />
-            Unlock Full Profile – 1 Credit
-          </button>
-        ) : (
-          <>
-            <button onClick={() => onViewProfile(app.creatorId, app.id)}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-              style={{ background: "transparent", border: `1px solid ${PINK}`, color: PINK, fontFamily: POPPINS }}>
-              Profile Unlocked — View Full Profile
-            </button>
-            <button onClick={() => onSelectClick(app)}
-              className="px-4 py-2.5 rounded-xl text-white text-sm font-semibold flex-shrink-0"
-              style={{ background: "#10B981", fontFamily: POPPINS }}>
-              Select
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+      }
+    />
   );
 }
 
@@ -625,9 +615,18 @@ export default function BrandCampaignDetail() {
   const [, navigate] = useLocation();
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
-  const [tab, setTab] = useState(0);
+  /* Reopen the tab the brand left from, otherwise the per-tab snapshot
+     wouldn't match and the filter/page/scroll restore would be skipped. */
+  const [tab, setTab] = useState(() => readReturnTab("paid", params?.id ?? "") ?? 0);
   const [campaign, setCampaign] = useState<any>(null);
-  const [apps, setApps] = useState<any[] | null>(null);
+  const [filterOpts, setFilterOpts] = useState<FilterOptions | null>(null);
+  /* Server-side paging (50/page) plus filter/page/scroll restore on return from
+     a creator profile. Filters apply across the whole applicant set, not the
+     rendered page; Selected is never filtered. */
+  const {
+    apps, total, page, totalPages, loading: appsLoading,
+    filters, setFilters, setPage, reload: loadApps, openProfile,
+  } = useCampaignApplicants({ kind: "paid", campaignId: id, tab, apiFetch, enabled: !!brandId });
   const [error, setError] = useState("");
   const [msg, setMsg] = useState<{ text: string; type: "success" | "error" }>({ text: "", type: "success" });
   const [celeb, setCeleb] = useState<{ show: boolean; username: string | null; fullName: string | null }>({ show: false, username: null, fullName: null });
@@ -650,17 +649,18 @@ export default function BrandCampaignDetail() {
     else setError("Campaign not found");
   }, [id, apiFetch]);
 
-  const loadApps = useCallback(async () => {
-    const statuses = ["PENDING", "SHORTLISTED", "SELECTED"];
-    const r = await apiFetch(`/api/brand/campaigns/${id}/applications?status=${statuses[tab]}`);
-    if (r.ok) setApps(await r.json());
-    else setApps([]);
-  }, [id, tab, apiFetch]);
 
   useEffect(() => { if (brandId) loadCampaign(); }, [loadCampaign, brandId]);
+
+
+  /* Same options endpoint the search bar uses, so the two stay in sync. */
   useEffect(() => {
-    if (brandId) { setApps(null); loadApps(); }
-  }, [loadApps, brandId, tab]);
+    if (!brandId) return;
+    apiFetch("/api/brand/search/filter-options")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setFilterOpts(d); })
+      .catch(() => {});
+  }, [brandId, apiFetch]);
 
   const flash = (text: string, type: "success" | "error" = "success") => {
     setMsg({ text, type }); setTimeout(() => setMsg({ text: "", type: "success" }), 3500);
@@ -1010,6 +1010,13 @@ export default function BrandCampaignDetail() {
               ))}
             </div>
 
+            {/* Above the loading branch on purpose: the bar must not unmount
+                while a page or filter change is in flight, or the dropdown
+                disappears under the cursor mid-selection. */}
+            {tab !== 2 && (
+              <CreatorFilterBar opts={filterOpts} filters={filters} onChange={setFilters} />
+            )}
+
             {apps === null ? (
               <div className="space-y-3">
                 {[1, 2, 3].map(i => <div key={i} className="h-48 rounded-2xl animate-pulse" style={{ background: "rgba(255,255,255,0.05)" }} />)}
@@ -1037,10 +1044,11 @@ export default function BrandCampaignDetail() {
                       key={app.id}
                       app={app}
                       campaignType={campaign?.type}
-                      onViewProfile={creatorId => navigate(`/home-brand/unlocked/creator/${creatorId}`, { state: { campaignId: id, appId: app.id, slotsFull: (campaign.slotsFilled ?? 0) >= (campaign.slotCount ?? Infinity) } })}
+                      onViewProfile={creatorId => openProfile(`/home-brand/unlocked/creator/${creatorId}`, { campaignId: id, appId: app.id, appStatus: app.status, slotsFull: (campaign.slotsFilled ?? 0) >= (campaign.slotCount ?? Infinity) })}
                       onPay={setPayingDeal}
                     />
                   ))}
+                  <PaginationBar page={page} totalPages={totalPages} loading={appsLoading} onChange={setPage} />
                 </>
               )
             ) : (
@@ -1061,10 +1069,11 @@ export default function BrandCampaignDetail() {
                       app={app}
                       onRequestUnlock={a => { setUnlockPendingApp(a); setUnlockError(null); }}
                       onSelectClick={setConfirmApp}
-                      onViewProfile={(creatorId, appId) => navigate(`/home-brand/unlocked/creator/${creatorId}`, { state: { campaignId: id, appId, slotsFull: (campaign.slotsFilled ?? 0) >= (campaign.slotCount ?? Infinity) } })}
+                      onViewProfile={(creatorId, appId) => openProfile(`/home-brand/unlocked/creator/${creatorId}`, { campaignId: id, appId, appStatus: app.status, slotsFull: (campaign.slotsFilled ?? 0) >= (campaign.slotCount ?? Infinity) })}
                     />
                   ))
                 )}
+                <PaginationBar page={page} totalPages={totalPages} loading={appsLoading} onChange={setPage} />
               </div>
             )}
           </>

@@ -8,6 +8,11 @@ import {
 } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
+import ApplicantCard from "@/components/ApplicantCard";
+import CreatorFilterBar, { type FilterOptions } from "@/components/CreatorFilterBar";
+import { useCampaignApplicants } from "@/hooks/useCampaignApplicants";
+import { readReturnTab } from "@/lib/campaignApplicantsCache";
+import PaginationBar from "@/components/PaginationBar";
 import UnlockCelebration from "@/components/UnlockCelebration";
 
 const TABS = ["Applications", "Shortlisted", "Selected"];
@@ -120,9 +125,18 @@ export default function BrandBarterDetail() {
   const [, navigate] = useLocation();
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
-  const [tab, setTab] = useState(0);
+  /* Reopen the tab the brand left from, otherwise the per-tab snapshot
+     wouldn't match and the filter/page/scroll restore would be skipped. */
+  const [tab, setTab] = useState(() => readReturnTab("barter", params?.id ?? "") ?? 0);
   const [barter, setBarter] = useState<any>(null);
-  const [apps, setApps] = useState<any[] | null>(null);
+  const [filterOpts, setFilterOpts] = useState<FilterOptions | null>(null);
+  /* Server-side paging (50/page) plus filter/page/scroll restore on return from
+     a creator profile. Filters apply across the whole applicant set, not the
+     rendered page; Selected is never filtered. */
+  const {
+    apps, total, page, totalPages, loading: appsLoading,
+    filters, setFilters, setPage, reload: loadApps, openProfile,
+  } = useCampaignApplicants({ kind: "barter", campaignId: id, tab, apiFetch, enabled: !!brandId });
   const [error, setError] = useState("");
   const [msg, setMsg] = useState<{ text: string; type: "success" | "error" }>({ text: "", type: "success" });
   const [celeb, setCeleb] = useState<{ show: boolean; username: string | null; fullName: string | null }>({ show: false, username: null, fullName: null });
@@ -142,17 +156,18 @@ export default function BrandBarterDetail() {
     else setError("Campaign not found");
   }, [id, apiFetch]);
 
-  const loadApps = useCallback(async () => {
-    const statuses = ["PENDING", "SHORTLISTED", "SELECTED"];
-    const r = await apiFetch(`/api/brand/barter/${id}/applications?status=${statuses[tab]}`);
-    if (r.ok) setApps(await r.json());
-    else setApps([]);
-  }, [id, tab, apiFetch]);
 
   useEffect(() => { if (brandId) load(); }, [load, brandId]);
+
+
+  /* Same options endpoint the search bar uses, so the two stay in sync. */
   useEffect(() => {
-    if (brandId) { setApps(null); loadApps(); }
-  }, [loadApps, brandId, tab]);
+    if (!brandId) return;
+    apiFetch("/api/brand/search/filter-options")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setFilterOpts(d); })
+      .catch(() => {});
+  }, [brandId, apiFetch]);
 
   const flash = (text: string, type: "success" | "error" = "success") => {
     setMsg({ text, type });
@@ -437,6 +452,13 @@ export default function BrandBarterDetail() {
               ))}
             </div>
 
+            {/* Above the loading branch on purpose: the bar must not unmount
+                while a page or filter change is in flight, or the dropdown
+                disappears under the cursor mid-selection. */}
+            {tab !== 2 && (
+              <CreatorFilterBar opts={filterOpts} filters={filters} onChange={setFilters} />
+            )}
+
             {apps === null ? (
               <div className="space-y-3">{[1,2].map(i => <div key={i} className="h-24 rounded-2xl animate-pulse" style={{ background: "rgba(255,255,255,0.05)" }} />)}</div>
             ) : tab === 2 ? (
@@ -444,7 +466,8 @@ export default function BrandBarterDetail() {
               apps.length === 0 ? (
                 <p className="text-center text-white/70 text-xs py-10" style={{ fontFamily: POPPINS }}>No selected creators yet</p>
               ) : (
-                apps.map((app: any) => {
+              <>
+                {apps.map((app: any) => {
                   const isPendingConfirm = app.status === "SELECTED" && !app.dealId;
                   const isDealLive = app.dealStatus === "IN_ESCROW" || app.status === "CONFIRMED";
                   const deadline = app.confirmationDeadline ? new Date(app.confirmationDeadline).getTime() : 0;
@@ -540,7 +563,7 @@ export default function BrandBarterDetail() {
 
                         {/* CTA */}
                         <div className="flex gap-2 mt-1">
-                          <button onClick={() => navigate(`/home-brand/unlocked/creator/${app.creatorId}`, { state: { campaignId: id, appId: app.id, campaignType: "barter", slotsFull: (barter.slotsFilled ?? 0) >= (barter.slotCount ?? Infinity) } })}
+                          <button onClick={() => openProfile(`/home-brand/unlocked/creator/${app.creatorId}`, { campaignId: id, appId: app.id, campaignType: "barter", appStatus: app.status, slotsFull: (barter.slotsFilled ?? 0) >= (barter.slotCount ?? Infinity) })}
                             className="flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5"
                             style={{ background: "transparent", border: `1px solid rgba(240,24,122,0.6)`, color: PINK, fontFamily: POPPINS }}>
                             <Eye className="w-3.5 h-3.5" />
@@ -557,7 +580,9 @@ export default function BrandBarterDetail() {
                       </div>
                     </div>
                   );
-                })
+                })}
+                <PaginationBar page={page} totalPages={totalPages} loading={appsLoading} onChange={setPage} />
+              </>
               )
             ) : (
               <div>
@@ -569,171 +594,57 @@ export default function BrandBarterDetail() {
                   </div>
                 ) : tab === 0 ? (
                     (apps ?? []).map((app: any) => (
-                      <div key={app.id} className="rounded-2xl p-4 mb-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                        {/* Meta row — followers + rating */}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2.5">
-                          <div className="flex items-center gap-1">
-                            <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }}>
-                              <Lock className="w-3 h-3 text-white/70" />
-                            </div>
-                            <span className="text-white/80 text-xs font-semibold" style={{ fontFamily: POPPINS }}>{fmtK(app.followerCount ?? 0)} followers</span>
-                          </div>
-                          {app.averageRating > 0 && (
-                            <span className="flex items-center gap-0.5 text-[11px]" style={{ color: "#F59E0B", fontFamily: POPPINS }}>
-                              <Star className="w-3 h-3 fill-current" />{parseFloat(app.averageRating).toFixed(1)}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Tags — categories */}
-                        {app.categories?.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mb-2">
-                            {app.categories.map((c: any, i: number) => (
-                              <span key={i} className="px-2.5 py-0.5 rounded-full text-[11px]"
-                                style={{ background: "rgba(240,24,122,0.18)", color: PINK, fontFamily: POPPINS }}>{c.name}</span>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Gender + age */}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mb-1">
-                          {app.creatorGender && (
-                            <span className="text-white/70 text-[11px]" style={{ fontFamily: POPPINS }}>
-                              {app.audienceGenderFemale != null && app.audienceGenderMale != null
-                                ? `${app.audienceGenderFemale}% Female ${app.audienceGenderMale}% Male`
-                                : app.creatorGender}
-                            </span>
-                          )}
-                          {app.creatorAge != null && (
-                            <span className="text-white/70 text-[11px]" style={{ fontFamily: POPPINS }}>Age {app.creatorAge}</span>
-                          )}
-                        </div>
-
-                        {/* Portfolio strip */}
-                        {(app.portfolioImages ?? []).length > 0 && (
-                          <div className="grid grid-cols-4 gap-1.5 mt-3">
-                            {((app.portfolioImages ?? []) as string[]).slice(0, 4).map((src: string, i: number) => (
-                              <div key={i} className="relative rounded-xl overflow-hidden" style={{ aspectRatio: "1/1" }}>
-                                <img src={src} alt="" className="w-full h-full object-cover" />
-                              </div>
-                            ))}
-                            {Array.from({ length: Math.max(0, 4 - Math.min((app.portfolioImages ?? []).length, 4)) }).map((_, i) => (
-                              <div key={`ph-${i}`} className="rounded-xl" style={{ aspectRatio: "1/1", background: "rgba(255,255,255,0.04)" }} />
-                            ))}
-                          </div>
-                        )}
-
-                        <button onClick={() => handleShortlist(app.id)}
-                          className="w-full py-2.5 rounded-xl text-white font-semibold text-xs mt-3" style={{ background: PINK, fontFamily: POPPINS }}>
-                          Shortlist (Free)
-                        </button>
-                      </div>
+                      <ApplicantCard
+                        key={app.id}
+                        app={app}
+                        footer={
+                          <button onClick={() => handleShortlist(app.id)}
+                            className="w-full py-2.5 rounded-xl text-white font-semibold text-xs" style={{ background: PINK, fontFamily: POPPINS }}>
+                            Shortlist (Free)
+                          </button>
+                        }
+                      />
                     ))
                   ) : (
                     (apps ?? []).map((app: any) => {
                       const isLocked = !app.isUnlocked;
-                      const portfolioImgs = (app.portfolioImages ?? []).slice(0, 4) as string[];
+                      /* Identity stays off the card at every stage, matching
+                         search and the paid page. The 1-credit unlock below is
+                         unchanged — it reveals name/handle on the full profile. */
                       return (
-                        <div key={app.id} className="rounded-2xl p-4 mb-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-
-                          {/* Identity row — only when unlocked */}
-                          {!isLocked && (
-                            <div className="flex items-center gap-2.5 mb-3">
-                              {app.profilePhotoUrl
-                                ? <img src={app.profilePhotoUrl} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
-                                : <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-sm" style={{ background: "rgba(240,24,122,0.25)", color: PINK }}>{app.fullName?.[0] ?? "?"}</div>}
-                              <div className="min-w-0">
-                                <p className="text-white font-semibold text-sm truncate" style={{ fontFamily: POPPINS }}>{app.fullName}</p>
-                                <p className="text-white/70 text-xs" style={{ fontFamily: POPPINS }}>@{app.instagramHandle}</p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Meta row — followers + rating */}
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2.5">
-                            <div className="flex items-center gap-1">
+                        <ApplicantCard
+                          key={app.id}
+                          app={app}
+                          footer={
+                            <div className="flex gap-2">
                               {isLocked ? (
-                                <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }}>
-                                  <Lock className="w-3 h-3 text-white/70" />
-                                </div>
-                              ) : app.profilePhotoUrl ? (
-                                <img src={app.profilePhotoUrl} alt="" className="w-6 h-6 rounded-full object-cover flex-shrink-0" />
+                                <button onClick={() => handleUnlock(app.id)}
+                                  className="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2"
+                                  style={{ background: PINK, fontFamily: POPPINS }}>
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                  Unlock Full Profile – 1 Credit
+                                </button>
                               ) : (
-                                <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-[9px]" style={{ background: "rgba(240,24,122,0.3)", color: PINK }}>{app.fullName?.[0] ?? "?"}</div>
+                                <>
+                                  <button onClick={() => openProfile(`/home-brand/unlocked/creator/${app.creatorId}`, { campaignId: id, appId: app.id, campaignType: "barter", appStatus: app.status, slotsFull: (barter.slotsFilled ?? 0) >= (barter.slotCount ?? Infinity) })}
+                                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+                                    style={{ background: "transparent", border: `1px solid ${PINK}`, color: PINK, fontFamily: POPPINS }}>
+                                    Profile Unlocked — View Full Profile
+                                  </button>
+                                  <button onClick={() => setConfirmApp(app)}
+                                    className="px-4 py-2.5 rounded-xl text-white text-sm font-semibold flex-shrink-0"
+                                    style={{ background: "#10B981", fontFamily: POPPINS }}>
+                                    Select
+                                  </button>
+                                </>
                               )}
-                              <span className="text-white/80 text-xs font-semibold" style={{ fontFamily: POPPINS }}>{fmtK(app.followerCount ?? 0)} followers</span>
                             </div>
-                            {app.averageRating > 0 && (
-                              <span className="flex items-center gap-0.5 text-[11px]" style={{ color: "#F59E0B", fontFamily: POPPINS }}>
-                                <Star className="w-3 h-3 fill-current" />{parseFloat(app.averageRating).toFixed(1)}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Tags — categories */}
-                          {app.categories?.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mb-2">
-                              {app.categories.map((c: any, i: number) => (
-                                <span key={i} className="px-2.5 py-0.5 rounded-full text-[11px]"
-                                  style={{ background: "rgba(240,24,122,0.18)", color: PINK, fontFamily: POPPINS }}>{c.name}</span>
-                              ))}
-                            </div>
-                          )}
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mb-1">
-                            {app.creatorGender && (
-                              <span className="text-white/70 text-[11px]" style={{ fontFamily: POPPINS }}>
-                                {app.audienceGenderFemale != null && app.audienceGenderMale != null
-                                  ? `${app.audienceGenderFemale}% Female ${app.audienceGenderMale}% Male`
-                                  : app.creatorGender}
-                              </span>
-                            )}
-                            {app.creatorAge != null && (
-                              <span className="text-white/70 text-[11px]" style={{ fontFamily: POPPINS }}>Age {app.creatorAge}</span>
-                            )}
-                          </div>
-
-                          {/* Portfolio strip */}
-                          {portfolioImgs.length > 0 && (
-                            <div className="grid grid-cols-4 gap-1.5 mt-3">
-                              {portfolioImgs.map((src, i) => (
-                                <div key={i} className="relative rounded-xl overflow-hidden" style={{ aspectRatio: "1/1" }}>
-                                  <img src={src} alt="" className="w-full h-full object-cover" />
-                                </div>
-                              ))}
-                              {Array.from({ length: Math.max(0, 4 - portfolioImgs.length) }).map((_, i) => (
-                                <div key={`ph-${i}`} className="rounded-xl" style={{ aspectRatio: "1/1", background: "rgba(255,255,255,0.04)" }} />
-                              ))}
-                            </div>
-                          )}
-
-                          {/* CTAs */}
-                          <div className="flex gap-2 mt-3">
-                            {isLocked ? (
-                              <button onClick={() => handleUnlock(app.id)}
-                                className="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2"
-                                style={{ background: PINK, fontFamily: POPPINS }}>
-                                <Sparkles className="w-3.5 h-3.5" />
-                                Unlock Full Profile – 1 Credit
-                              </button>
-                            ) : (
-                              <>
-                                <button onClick={() => navigate(`/home-brand/unlocked/creator/${app.creatorId}`, { state: { campaignId: id, appId: app.id, campaignType: "barter", slotsFull: (barter.slotsFilled ?? 0) >= (barter.slotCount ?? Infinity) } })}
-                                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-                                  style={{ background: "transparent", border: `1px solid ${PINK}`, color: PINK, fontFamily: POPPINS }}>
-                                  Profile Unlocked — View Full Profile
-                                </button>
-                                <button onClick={() => setConfirmApp(app)}
-                                  className="px-4 py-2.5 rounded-xl text-white text-sm font-semibold flex-shrink-0"
-                                  style={{ background: "#10B981", fontFamily: POPPINS }}>
-                                  Select
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
+                          }
+                        />
                       );
                     })
                   )}
+                <PaginationBar page={page} totalPages={totalPages} loading={appsLoading} onChange={setPage} />
               </div>
             )}
           </>

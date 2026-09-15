@@ -46,9 +46,10 @@ export default function BrandCreatorProfile() {
   const [data, setData] = useState<FullProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showRequest, setShowRequest] = useState(false);
-  const [campaignCtx, setCampaignCtx] = useState<{ campaignId: string; appId: string; campaignType?: "barter" | "paid"; slotsFull?: boolean } | null>(null);
+  const [campaignCtx, setCampaignCtx] = useState<{ campaignId: string; appId: string; campaignType?: "barter" | "paid"; slotsFull?: boolean; appStatus?: string } | null>(null);
   const [selectLoading, setSelectLoading] = useState(false);
   const [selectDone, setSelectDone] = useState(false);
+  const [alreadySelected, setAlreadySelected] = useState(false);
   const [selectError, setSelectError] = useState<string | null>(null);
   const [showSelectCeleb, setShowSelectCeleb] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -60,8 +61,8 @@ export default function BrandCreatorProfile() {
   useEffect(() => { if (!authLoading && !brandId) navigate("/login-brand"); }, [brandId, authLoading, navigate]);
 
   useEffect(() => {
-    const s = window.history.state as { campaignId?: string; appId?: string; campaignType?: "barter" | "paid"; slotsFull?: boolean } | null;
-    if (s?.campaignId && s?.appId) setCampaignCtx({ campaignId: s.campaignId, appId: s.appId, campaignType: s.campaignType, slotsFull: s.slotsFull });
+    const s = window.history.state as { campaignId?: string; appId?: string; campaignType?: "barter" | "paid"; slotsFull?: boolean; appStatus?: string } | null;
+    if (s?.campaignId && s?.appId) setCampaignCtx({ campaignId: s.campaignId, appId: s.appId, campaignType: s.campaignType, slotsFull: s.slotsFull, appStatus: s.appStatus });
   }, []);
 
   useEffect(() => {
@@ -87,6 +88,11 @@ export default function BrandCreatorProfile() {
     } else {
       const d = await r.json().catch(() => ({}));
       const msg = d.error ?? "Failed to select creator";
+      /* The select endpoint only accepts PENDING/SHORTLISTED applications, so a
+         404 here means it is already selected — reflect that rather than
+         surfacing a raw "not selectable". Belt and braces for a reload, where
+         history state (and with it appStatus) is gone. */
+      if (r.status === 404 && /not selectable/i.test(msg)) { setAlreadySelected(true); return; }
       setSelectError(msg.toLowerCase().includes("slot") ? "All slots for this campaign are filled. You cannot select more creators." : msg);
     }
   };
@@ -388,6 +394,26 @@ export default function BrandCreatorProfile() {
                   <div className="w-full py-2.5 rounded-full text-center text-sm font-semibold" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontFamily: POPPINS }}>
                     ✓ Selected for Campaign
                   </div>
+                ) : (alreadySelected || campaignCtx.appStatus === "SELECTED" || campaignCtx.appStatus === "CONFIRMED") ? (
+                  /* Already selected: keep the button visible but inert. It used
+                     to stay active and fail with "Application not found or not
+                     selectable", because the endpoint only accepts
+                     PENDING/SHORTLISTED. */
+                  <button
+                    type="button"
+                    disabled
+                    aria-disabled="true"
+                    className="w-full py-2.5 rounded-full font-semibold text-sm"
+                    style={{
+                      background: "rgba(16,185,129,0.15)",
+                      color: "#10B981",
+                      border: "1px solid rgba(16,185,129,0.35)",
+                      fontFamily: POPPINS,
+                      cursor: "not-allowed",
+                      opacity: 0.85,
+                    }}>
+                    ✓ Selected for Campaign
+                  </button>
                 ) : campaignCtx.slotsFull ? (
                   <div className="w-full py-2.5 rounded-full text-center text-sm font-semibold" style={{ background: "rgba(239,68,68,0.10)", color: "#F87171", border: "1px solid rgba(239,68,68,0.25)", fontFamily: POPPINS }}>
                     All slots for this campaign are filled
