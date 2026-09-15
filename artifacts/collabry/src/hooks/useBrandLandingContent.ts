@@ -19,6 +19,9 @@ const BRAND_DEFAULTS: BrandContentMap = {
   "brand.hero.badge2": "Verified Creators",
   "brand.hero.badge3": "4 Ways to Collab",
   "brand.hero.banners": JSON.stringify([]),
+  /* One square image shown once, right after brand signup. Empty means the
+     signup flow skips the popup and goes straight to the home page. */
+  "brand.homepage.popup.image": "",
   "brand.stats.heading_line1": "Why Most Campaigns",
   "brand.stats.heading_highlight1": "Waste Money",
   "brand.stats.subheading": "The data is clear. Most brands are doing it wrong.",

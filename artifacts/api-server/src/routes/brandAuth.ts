@@ -11,7 +11,6 @@ import {
 } from "../lib/auth";
 import { saveRefreshToken, revokeToken } from "../lib/session";
 import { createNotification } from "../lib/notifications";
-import { createPopup } from "../lib/popups";
 import { sendEmail } from "../lib/email";
 import { renderPasswordResetEmail } from "../lib/notificationEmail";
 import { logger } from "../lib/logger";
@@ -212,7 +211,10 @@ router.post("/auth/brand/signup", async (req: Request, res: Response): Promise<v
     client.release();
   }
 
-  // Welcome notification + popup
+  /* Welcome notification only. The celebration popup that used to be created
+     here was the second of the two signup modals; the signup flow now shows a
+     single admin-configured image popup instead. The notification (and its
+     email) is unrelated and stays. */
   await createNotification({
     userId: brandId,
     userType: "BRAND",
@@ -220,16 +222,6 @@ router.post("/auth/brand/signup", async (req: Request, res: Response): Promise<v
     title: "Welcome to Collabry! 🎉",
     body: `You received ${freeCredits} free credit${freeCredits === 1 ? "" : "s"} to start collaborating. Use them to unlock creator profiles and post campaigns.`,
     emailParams: { credits: freeCredits },
-  }).catch(() => {});
-  await createPopup({
-    userId: brandId,
-    userType: "BRAND",
-    type: "WELCOME_CREDITS",
-    title: "Welcome to Collabry! 🎉",
-    body: `You've received ${freeCredits} free credit${freeCredits === 1 ? "" : "s"} to get started. Use them to post a campaign or unlock creator profiles.`,
-    ctaText: "Post a Campaign",
-    ctaPath: "/home-brand/campaigns/new",
-    isCelebration: true,
   }).catch(() => {});
 
   const accessToken = generateAccessToken(brandId, UserType.BRAND, getAccessSecret());

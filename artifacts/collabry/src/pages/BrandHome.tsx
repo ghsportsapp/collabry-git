@@ -23,7 +23,6 @@ import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
 import { useBrandLandingContent } from "@/hooks/useBrandLandingContent";
 import HowItWorks from "@/components/landing/HowItWorks";
 import ComparisonTable from "@/components/landing/ComparisonTable";
-import BrandWelcomePopup from "@/components/BrandWelcomePopup";
 
 const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
 
@@ -203,13 +202,6 @@ export default function BrandHome() {
         : [],
     });
   }, [brand, credits, setCredits]);
-
-  const handlePopupDismiss = () => {
-    if (!brandId || !welcomeState) return;
-    const next = { ...welcomeState, popupSeen: true };
-    writeWelcome(brandId, next);
-    setWelcomeState(next);
-  };
 
   const handleBannerDismiss = () => {
     if (!brandId || !welcomeState) return;
@@ -475,15 +467,6 @@ export default function BrandHome() {
           <ComparisonTable rows={c.getJson("brand.comparison.rows")} />
         </section>
       </div>
-
-      {/* ── Welcome popup (shown once after signup) ── */}
-      {welcomeState && !welcomeState.popupSeen && (
-        <BrandWelcomePopup
-          brandName={brand?.brandName ?? brandName ?? ""}
-          credits={welcomeState.credits}
-          onDismiss={handlePopupDismiss}
-        />
-      )}
 
       {/* ── Credit Detail Modal ── */}
       {showCreditDetail && credits && (

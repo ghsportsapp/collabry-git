@@ -26,6 +26,7 @@ interface HeroBanner { imageUrl: string; altText: string; blurData?: string; }
 const EDITOR_CACHE_KEY = "collabry_brand_editor_v1";
 const BANNERS_KEY = "brand.hero.banners";
 const MAX_BANNERS = 3;
+const POPUP_IMAGE_KEY = "brand.homepage.popup.image";
 
 function buildDefaults(): Record<string, ContentItem> {
   const result: Record<string, ContentItem> = {};
@@ -61,6 +62,9 @@ export default function AdminBrandLandingEditor() {
   const [bannerBusy, setBannerBusy] = useState(false);
   const [bannerError, setBannerError] = useState<string | null>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+  const [popupBusy, setPopupBusy] = useState(false);
+  const [popupError, setPopupError] = useState<string | null>(null);
+  const popupInputRef = useRef<HTMLInputElement>(null);
 
   const loadContent = useCallback(async () => {
     try {
@@ -96,6 +100,28 @@ export default function AdminBrandLandingEditor() {
   const compRows: ComparisonRow[] = gj("brand.comparison.rows");
   const teamMembers: TeamMember[] = gj("brand.team.members");
   const banners: HeroBanner[] = gj(BANNERS_KEY);
+
+  /* Single image, same pipeline as the hero banners: WebP conversion + blur-up
+     via prepareBannerImage, then the shared /api/uploads/image endpoint. */
+  const setPopupImage = async (file: File) => {
+    setPopupError(null);
+    setPopupBusy(true);
+    try {
+      const prepared = await prepareBannerImage(file);
+      if ("error" in prepared) { setPopupError(prepared.error); return; }
+
+      const formData = new FormData();
+      formData.append("file", prepared.blob, "popup.webp");
+      const r = await fetch(`${BASE_URL}/api/uploads/image`, { method: "POST", body: formData });
+      if (!r.ok) { setPopupError("Upload failed — please try again"); return; }
+      const { objectPath } = (await r.json()) as { objectPath?: string };
+      if (!objectPath) { setPopupError("Upload failed — please try again"); return; }
+
+      updateField(POPUP_IMAGE_KEY, JSON.stringify({ imageUrl: objectPath, blurData: prepared.blurData }));
+    } finally {
+      setPopupBusy(false);
+    }
+  };
 
   const addBanner = async (file: File) => {
     setBannerError(null);
@@ -301,6 +327,66 @@ export default function AdminBrandLandingEditor() {
                 />
               </>
             )}
+          </SectionBlock>
+
+          {/* Home Page Popup Image */}
+          <SectionBlock title="Home Page Popup Image">
+            <p className="text-[#9CA3AF] text-xs mb-3">
+              One square (1:1) image, max 5 MB. Converted to WebP on upload. Shown once,
+              immediately after a brand signs up, then it continues to the home page.
+              Leave empty for no popup — new brands go straight to the home page.
+            </p>
+
+            {(() => {
+              const popup = (() => {
+                try {
+                  const v = JSON.parse(g(POPUP_IMAGE_KEY)) as { imageUrl?: string };
+                  return v?.imageUrl ? v : null;
+                } catch { return null; }
+              })();
+
+              return (
+                <>
+                  {popup && (
+                    <div className="flex items-center gap-3 mb-3">
+                      <img
+                        src={popup.imageUrl}
+                        alt=""
+                        className="w-24 h-24 rounded-lg object-cover border border-white/10"
+                      />
+                      <button
+                        onClick={() => updateField(POPUP_IMAGE_KEY, "")}
+                        className="text-red-400 hover:text-red-300 text-sm flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-4 h-4" /> Remove image
+                      </button>
+                    </div>
+                  )}
+
+                  {popupError && <p className="text-red-400 text-xs mb-2">{popupError}</p>}
+
+                  <button
+                    onClick={() => popupInputRef.current?.click()}
+                    disabled={popupBusy}
+                    className="text-[#E14F69] text-sm flex items-center gap-1.5 hover:text-[#d4156b] disabled:opacity-50"
+                  >
+                    <Image className="w-4 h-4" />
+                    {popupBusy ? "Uploading…" : popup ? "Replace Image" : "Upload Image"}
+                  </button>
+                  <input
+                    ref={popupInputRef}
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) setPopupImage(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </>
+              );
+            })()}
           </SectionBlock>
 
           {/* Stats */}

@@ -5,6 +5,8 @@ import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { pixelTrack } from "@/lib/pixel";
 import { trackSignup, identifyUser } from "@/lib/analytics";
+import { useBrandLandingContent } from "@/hooks/useBrandLandingContent";
+import BrandSignupPopup, { parsePopupImage, preloadPopupImage, type PopupImage } from "@/components/BrandSignupPopup";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -69,6 +71,13 @@ async function uploadBrandLogo(file: File): Promise<string> {
 export default function BrandSignup() {
   const { setAuth } = useBrandAuth();
   const [, navigate] = useLocation();
+  /* The popup image is admin-set content. Read it up front and warm the browser
+     cache while the brand is still filling in the form, so the popup paints
+     immediately on submit instead of flashing empty. */
+  const landing = useBrandLandingContent();
+  const popupImage: PopupImage | null = parsePopupImage(landing.get("brand.homepage.popup.image"));
+  const [signupPopup, setSignupPopup] = useState<PopupImage | null>(null);
+  useEffect(() => { preloadPopupImage(popupImage); }, [popupImage?.imageUrl]);
 
   const [form, setForm] = useState({ brandName: "", contactName: "", email: "", websiteUrl: "", categoryId: "", subcategoryId: "", instagramHandle: "", password: "", confirmPassword: "" });
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -294,13 +303,19 @@ export default function BrandSignup() {
       pixelTrack("Lead", { content_name: "brand_signup" });
       identifyUser(data.brandId, "BRAND");
       trackSignup("BRAND", { free_credits: data.freeCredits ?? null });
+      /* Seeds the home page's welcome banner (unrelated to the signup popup —
+         it is an inline dismissible strip, not a modal). */
       try {
         localStorage.setItem(
           `collabry_welcome_${data.brandId}`,
-          JSON.stringify({ credits: data.freeCredits ?? 5, popupSeen: false, bannerDismissed: false }),
+          JSON.stringify({ credits: data.freeCredits ?? 5, popupSeen: true, bannerDismissed: false }),
         );
       } catch {}
-      navigate("/home-brand");
+
+      /* With an image configured, hold here and show it once; closing it
+         continues to the home page. With none, go straight there. */
+      if (popupImage) setSignupPopup(popupImage);
+      else navigate("/home-brand");
     } catch { const e = { _form: "Network error. Please try again." }; setErrors(e); scrollToFirstError(e); }
     finally { setSubmitting(false); }
   };
@@ -459,6 +474,9 @@ export default function BrandSignup() {
 
   return (
     <div className="min-h-screen" style={{ background: "#0A0A0F", fontFamily: POPPINS }}>
+      {signupPopup && (
+        <BrandSignupPopup image={signupPopup} onClose={() => navigate("/home-brand")} />
+      )}
       <header className="px-6 py-4 flex items-center justify-between">
         <span className="text-2xl text-[#E14F69]" style={{ fontFamily: "'Macondo Swash Caps', cursive" }}>Collabry</span>
         <Link href="/signup-creator">
