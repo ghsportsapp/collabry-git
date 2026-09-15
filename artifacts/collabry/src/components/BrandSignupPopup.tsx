@@ -56,8 +56,10 @@ export default function BrandSignupPopup({ image, onClose }: {
       className="fixed inset-0 flex items-center justify-center px-5"
       style={{
         zIndex: 300,
-        // ~50% dim, per spec — lighter than the old welcome modal's 88%.
-        background: "rgba(0,0,0,0.5)",
+        /* Near-opaque, not a dim: at 50% the signup form behind it (logo
+           upload, category dropdown) stayed legible through the overlay.
+           Built on the site's #0A0A0F base. */
+        background: "rgba(10,10,15,0.96)",
         transition: "opacity 0.3s ease",
         opacity: shown ? 1 : 0,
       }}
@@ -100,6 +102,10 @@ export default function BrandSignupPopup({ image, onClose }: {
           className="w-full overflow-hidden rounded-2xl"
           style={{
             aspectRatio: "1 / 1",
+            /* Soft ambient glow in the brand pink. Two stacked shadows — a wide
+               faint halo plus a tighter one — read as light spilling off the
+               image rather than as a drop shadow with an edge. */
+            boxShadow: `0 0 70px rgba(225,79,105,0.30), 0 0 28px rgba(225,79,105,0.18)`,
             backgroundImage: image.blurData ? `url(${image.blurData})` : undefined,
             backgroundSize: "cover",
             backgroundPosition: "center",
