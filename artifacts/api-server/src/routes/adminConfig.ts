@@ -418,7 +418,8 @@ const ABOUT_US_KEY = "about_us_content";
 interface TeamMember { name: string; image: string; occupation?: string }
 interface AboutUsContent {
   heading: string; content: string; mission: string;
-  missionImage: string; contactEmail: string; contactDesc: string; teamDesc: string;
+  missionImage: string; contactEmail: string; contactPhone: string; callTiming: string;
+  contactDesc: string; teamDesc: string;
   team: TeamMember[];
 }
 const ABOUT_US_DEFAULT: AboutUsContent = {
@@ -427,6 +428,10 @@ const ABOUT_US_DEFAULT: AboutUsContent = {
   mission: "Our mission is to make influencer collaborations more trusted, accessible, and result-oriented by removing fake engagement, scattered communication, and unreliable workflows. We aim to empower creators to grow professionally while helping brands collaborate smarter, faster, and more confidently.",
   missionImage: "",
   contactEmail: "support@collabry.in",
+  // No number is published until admin sets one — the Connect page hides the
+  // phone block while this is empty rather than showing a blank tel: link.
+  contactPhone: "",
+  callTiming: "10 AM – 6 PM",
   contactDesc: "If you have any questions, partnership inquiries, or support requests, feel free to reach out to us at the email address below. Please mention whether you are contacting us as a Creator or a Brand in the subject line for faster assistance.",
   teamDesc: "A passionate team focused on redefining how modern brand collaborations work.",
   team: [],
@@ -443,6 +448,8 @@ async function getAboutUs(): Promise<AboutUsContent> {
         mission: parsed.mission ?? ABOUT_US_DEFAULT.mission,
         missionImage: parsed.missionImage ?? ABOUT_US_DEFAULT.missionImage,
         contactEmail: parsed.contactEmail ?? ABOUT_US_DEFAULT.contactEmail,
+        contactPhone: parsed.contactPhone ?? ABOUT_US_DEFAULT.contactPhone,
+        callTiming: parsed.callTiming ?? ABOUT_US_DEFAULT.callTiming,
         contactDesc: parsed.contactDesc ?? ABOUT_US_DEFAULT.contactDesc,
         teamDesc: parsed.teamDesc ?? ABOUT_US_DEFAULT.teamDesc,
         team: Array.isArray(parsed.team) ? parsed.team.map((m: any) => ({ name: m.name ?? "", image: m.image ?? "", occupation: m.occupation ?? "" })) : [],
@@ -458,7 +465,7 @@ router.get("/about-us", async (_req: Request, res: Response): Promise<void> => {
 });
 
 router.patch("/admin/about-us", requireAdmin, async (req: Request, res: Response): Promise<void> => {
-  const { heading, content, mission, missionImage, contactEmail, contactDesc, teamDesc, team } = req.body as Partial<AboutUsContent>;
+  const { heading, content, mission, missionImage, contactEmail, contactPhone, callTiming, contactDesc, teamDesc, team } = req.body as Partial<AboutUsContent>;
   if (typeof heading !== "string" || typeof content !== "string" || !Array.isArray(team)) {
     res.status(400).json({ error: "heading, content, and team are required" }); return;
   }
@@ -472,6 +479,11 @@ router.patch("/admin/about-us", requireAdmin, async (req: Request, res: Response
     mission: (typeof mission === "string" ? mission.trim() : undefined) ?? ABOUT_US_DEFAULT.mission,
     missionImage: (typeof missionImage === "string" ? missionImage.trim() : undefined) ?? ABOUT_US_DEFAULT.missionImage,
     contactEmail: (typeof contactEmail === "string" ? contactEmail.trim() : undefined) ?? ABOUT_US_DEFAULT.contactEmail,
+    // Cleared on purpose stays cleared, so admin can pull the number down.
+    contactPhone: (typeof contactPhone === "string" ? contactPhone.trim() : undefined) ?? ABOUT_US_DEFAULT.contactPhone,
+    // Blank falls back to the default, like `heading` — a phone number with no
+    // hours beside it reads worse than the standard window.
+    callTiming: (typeof callTiming === "string" ? callTiming.trim() : "") || ABOUT_US_DEFAULT.callTiming,
     contactDesc: (typeof contactDesc === "string" ? contactDesc.trim() : undefined) ?? ABOUT_US_DEFAULT.contactDesc,
     teamDesc: (typeof teamDesc === "string" ? teamDesc.trim() : undefined) ?? ABOUT_US_DEFAULT.teamDesc,
     team: cleanTeam,

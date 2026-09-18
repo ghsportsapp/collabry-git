@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, User, Copy, Check } from "lucide-react";
+import { ArrowLeft, User, Copy, Check, Phone, Clock } from "lucide-react";
 import Footer from "@/components/landing/Footer";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -9,6 +9,10 @@ const MERRIWEATHER = "'Merriweather', serif";
 const PINK = "#E14F69";
 const BG = "#0A0A0F";
 
+/** tel: wants the bare number, so drop the spaces, dashes and brackets admin
+ *  may have typed for readability while keeping a leading country-code +. */
+const telHref = (phone: string): string => `tel:${phone.replace(/(?!^\+)\D/g, "")}`;
+
 interface TeamMember { name: string; image: string; occupation?: string }
 interface AboutUs {
   heading: string;
@@ -16,6 +20,8 @@ interface AboutUs {
   mission: string;
   missionImage: string;
   contactEmail: string;
+  contactPhone: string;
+  callTiming: string;
   contactDesc: string;
   teamDesc: string;
   team: TeamMember[];
@@ -27,6 +33,8 @@ const DEFAULT: AboutUs = {
   mission: "",
   missionImage: "",
   contactEmail: "support@collabry.in",
+  contactPhone: "",
+  callTiming: "10 AM – 6 PM",
   contactDesc: "If you have any questions, partnership inquiries, or support requests, feel free to reach out to us at the email address below. Please mention whether you are contacting us as a Creator or a Brand in the subject line for faster assistance.",
   teamDesc: "A passionate team focused on redefining how modern brand collaborations work.",
   team: [],
@@ -82,7 +90,7 @@ export default function AboutUsPage() {
               <div className="max-w-6xl mx-auto">
                 <h1 className="text-center font-bold mb-7 leading-tight"
                   style={{ fontFamily: MERRIWEATHER, fontSize: "clamp(1.75rem, 4vw, 2.75rem)", color: "white" }}>
-                  <span style={{ color: PINK }}>Contact</span> Us
+                  <span style={{ color: PINK }}>Connect</span> Now
                 </h1>
                 <p className="text-white/85 text-sm sm:text-base leading-relaxed mb-8 text-center"
                   style={{ fontFamily: POPPINS }}>
@@ -100,6 +108,23 @@ export default function AboutUsPage() {
                     {copied ? "Copied!" : "Copy Email"}
                   </button>
                 </div>
+
+                {/* Phone — only once admin has published a number. */}
+                {data.contactPhone && (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 max-w-4xl mx-auto mt-3">
+                    <a href={telHref(data.contactPhone)}
+                      className="flex-1 flex items-center gap-2.5 px-5 py-3.5 rounded-xl text-sm sm:text-base font-medium hover:opacity-90 transition-opacity"
+                      style={{ background: "rgba(225,79,105,0.15)", border: `1px solid ${PINK}55`, color: "rgba(255,255,255,0.85)", fontFamily: POPPINS }}>
+                      <Phone className="w-4 h-4 flex-shrink-0" style={{ color: PINK }} />
+                      {data.contactPhone}
+                    </a>
+                    <div className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-medium"
+                      style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.75)", fontFamily: POPPINS }}>
+                      <Clock className="w-4 h-4 flex-shrink-0" style={{ color: PINK }} />
+                      Call: {data.callTiming || DEFAULT.callTiming}
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
 
