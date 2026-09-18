@@ -464,7 +464,7 @@ router.post("/admin/creators/:id/ban", requireAdmin, async (req: Request, res: R
     userId: id, userType: "CREATOR", type: "ACCOUNT_BANNED",
     title: "Account Banned",
     body: "Your Collabry account is banned. If you think this is a mistake, contact us.",
-    ctaText: "Contact Us", ctaPath: "/about-us",
+    ctaText: "Connect Now", ctaPath: "/about-us",
     isCelebration: false,
   });
   res.json({ ok: true });

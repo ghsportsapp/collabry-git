@@ -288,7 +288,7 @@ export default function GlobalPopup({ popup, onDismiss, creatorStatus, onLogout 
               className="w-full py-3 rounded-2xl text-white font-bold text-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
               style={{ background: PINK, fontFamily: POPPINS }}
             >
-              {isBanPopup ? "Contact Us" : popup.ctaText}
+              {isBanPopup ? "Connect Now" : popup.ctaText}
             </button>
           )}
           {popup.secondCtaText && (

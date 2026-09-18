@@ -246,7 +246,7 @@ function BrandHeader({ credits, onLocked, badges, clearBadge }: { credits: numbe
                 <button onClick={() => navigate("/contact-us")}
                   className="relative px-4 py-2 text-sm font-medium transition-colors"
                   style={{ color: active ? PINK : "rgba(255,255,255,0.90)", fontFamily: POPPINS }}>
-                  Contact Us
+                  Connect Now
                   {active && <span className="absolute left-3 right-3 -bottom-0.5 h-0.5 rounded-full" style={{ background: PINK }} />}
                 </button>
               );

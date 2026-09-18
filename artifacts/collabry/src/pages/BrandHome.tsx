@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   Search as SearchIcon, Sparkles, Megaphone, Gift,
-  Coins, ArrowRight, X, Clock, ShieldCheck, BadgeCheck, LayoutGrid,
+  Coins, ArrowRight, X, Clock, ShieldCheck, BadgeCheck, LayoutGrid, Headphones,
   IndianRupee, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
@@ -312,7 +312,10 @@ export default function BrandHome() {
                 <p className="text-white/80 text-xs mt-0.5 leading-relaxed" style={{ fontFamily: POPPINS }}>
                   Unlock creators and launch your first campaign today.
                 </p>
-                <div className="flex gap-2 mt-3">
+                <p className="text-white/80 text-xs mt-1 leading-relaxed" style={{ fontFamily: POPPINS }}>
+                  Need help? Get free 1-to-1 setup support.
+                </p>
+                <div className="flex flex-wrap gap-2 mt-3">
                   <button
                     onClick={() => navigate("/home-brand/search")}
                     className="px-3.5 py-1.5 rounded-full text-white text-xs font-semibold flex items-center gap-1 transition-opacity hover:opacity-90"
@@ -326,6 +329,13 @@ export default function BrandHome() {
                     style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", fontFamily: POPPINS }}
                   >
                     <Megaphone className="w-3 h-3" /> Post Campaign
+                  </button>
+                  <button
+                    onClick={() => navigate("/contact-us")}
+                    className="px-3.5 py-1.5 rounded-full text-white text-xs font-semibold flex items-center gap-1 transition-opacity hover:opacity-80"
+                    style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", fontFamily: POPPINS }}
+                  >
+                    <Headphones className="w-3 h-3" /> Connect Now
                   </button>
                 </div>
               </div>

@@ -296,7 +296,7 @@ export function CreatorHeader({ badges, clearBadge, status = "", onLocked, onPop
               onClick={() => navigate("/contact-us")}
               className="relative px-4 py-2 text-sm font-medium transition-colors"
               style={{ color: (location === "/contact-us" || location === "/about-us") ? PINK : "rgba(255,255,255,0.90)", fontFamily: POPPINS }}>
-              Contact Us
+              Connect Now
               {(location === "/contact-us" || location === "/about-us") && <span className="absolute left-3 right-3 -bottom-0.5 h-0.5 rounded-full" style={{ background: PINK }} />}
             </button>
           </nav>

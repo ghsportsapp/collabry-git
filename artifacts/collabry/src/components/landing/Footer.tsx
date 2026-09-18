@@ -66,7 +66,7 @@ export default function Footer() {
         <div className="flex flex-wrap gap-x-6 gap-y-2 mb-6">
           <Link href="/contact-us" onClick={() => window.scrollTo(0, 0)}
             className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
-            Contact Us
+            Connect Now
           </Link>
           <a href="/contact-us#about-us"
             className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
