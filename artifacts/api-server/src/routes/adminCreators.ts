@@ -10,7 +10,7 @@ const router: IRouter = Router();
 
 const EXPORT_COLUMNS = [
   "Name", "Instagram Username", "Followers", "Mobile", "Email",
-  "Reel Price", "Story Price", "Post Price", "State", "Categories",
+  "Reel Price", "Story Price", "Post Price", "State", "Categories", "Gender",
 ];
 
 /** Spreadsheets read a leading =, +, - or @ as the start of a formula, and these
@@ -119,7 +119,10 @@ router.get("/admin/creators/export", requireAdminSecret, async (_req: Request, r
             (SELECT string_agg(cat.name, ', ' ORDER BY cc."displayOrder")
                FROM "CreatorCategory" cc
                JOIN "Category" cat ON cat.id = cc."categoryId"
-              WHERE cc."creatorId" = c.id) AS categories
+              WHERE cc."creatorId" = c.id) AS categories,
+            /* Nullable free text on Creator — emitted as stored, with an unset
+               gender (NULL) falling through csvCell to an empty cell. */
+            c.gender
      FROM "Creator" c
      WHERE c.status = 'ACTIVE'
      ORDER BY c."createdAt" DESC`
@@ -137,6 +140,7 @@ router.get("/admin/creators/export", requireAdminSecret, async (_req: Request, r
         priceRange(r.postPriceMin, r.postPriceMax),
         r.state,
         r.categories,
+        r.gender,
       ].map(csvCell).join(",")
     ),
   ];
