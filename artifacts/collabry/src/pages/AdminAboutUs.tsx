@@ -16,6 +16,8 @@ interface AboutUs {
   mission: string;
   missionImage: string;
   contactEmail: string;
+  contactPhone: string;
+  callTiming: string;
   contactDesc: string;
   teamDesc: string;
   team: TeamMember[];
@@ -120,6 +122,8 @@ const DEFAULT_DATA: AboutUs = {
   mission: "",
   missionImage: "",
   contactEmail: "support@collabry.in",
+  contactPhone: "",
+  callTiming: "10 AM – 6 PM",
   contactDesc: "If you have any questions, partnership inquiries, or support requests, feel free to reach out to us at the email address below. Please mention whether you are contacting us as a Creator or a Brand in the subject line for faster assistance.",
   teamDesc: "A passionate team focused on redefining how modern brand collaborations work.",
   team: [],
@@ -206,7 +210,7 @@ export default function AdminAboutUs() {
         <Link href="/admin-collabryangad">
           <button className="text-white/80 hover:text-white transition-colors"><ArrowLeft className="w-5 h-5" /></button>
         </Link>
-        <h1 className="text-white text-xl font-bold">Contact Us Editor</h1>
+        <h1 className="text-white text-xl font-bold">Connect Now Editor</h1>
         <a href="/contact-us" target="_blank" rel="noopener noreferrer" className="ml-auto text-xs hover:underline" style={{ color: PINK }}>Preview →</a>
       </div>
 
@@ -218,17 +222,30 @@ export default function AdminAboutUs() {
       ) : (
         <div className="space-y-6">
 
-          {/* ── Contact Us ── */}
+          {/* ── Connect Now ── */}
           <div className="rounded-2xl p-5" style={card}>
-            <h2 className="text-white font-semibold text-sm mb-4">Contact Us</h2>
-            <label className={labelClass}>Contact Us Description</label>
+            <h2 className="text-white font-semibold text-sm mb-4">Connect Now</h2>
+            <label className={labelClass}>Connect Now Description</label>
             <textarea className={textareaClass + " mb-4"} rows={4}
               placeholder="If you have any questions, partnership inquiries…"
               value={data.contactDesc}
               onChange={e => setData(p => ({ ...p, contactDesc: e.target.value }))} />
             <label className={labelClass}>Contact Email</label>
-            <input className={inputClass} placeholder="support@collabry.in" type="email"
+            <input className={inputClass + " mb-4"} placeholder="support@collabry.in" type="email"
               value={data.contactEmail} onChange={e => setData(p => ({ ...p, contactEmail: e.target.value }))} />
+
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1 min-w-0">
+                <label className={labelClass}>Contact Phone <span style={{ color: "rgba(255,255,255,0.4)", fontWeight: 400 }}>(leave blank to hide)</span></label>
+                <input className={inputClass} placeholder="+91 98765 43210" type="tel"
+                  value={data.contactPhone} onChange={e => setData(p => ({ ...p, contactPhone: e.target.value }))} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <label className={labelClass}>Call Timing</label>
+                <input className={inputClass} placeholder="10 AM – 6 PM" type="text"
+                  value={data.callTiming} onChange={e => setData(p => ({ ...p, callTiming: e.target.value }))} />
+              </div>
+            </div>
           </div>
 
           {/* ── About Collabry ── */}
