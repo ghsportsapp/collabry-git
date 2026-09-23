@@ -31,6 +31,29 @@
 /** Sentinel for "the other party's name" — see the rule above. */
 export const COUNTERPARTY = "counterparty";
 
+/**
+ * Brand-signup welcome campaign.
+ *
+ * Replaces "Brand Welcome-Brand", which sent this message from launch until
+ * 2026-09-23. Navneet rebuilt it as an AiSensy flow on template
+ * `brand_automation_free_collab` and wrapped it in a Live API campaign of the
+ * same name; his generated snippet confirms one templateParam, which is the
+ * shape this type already sent, so nothing downstream changes.
+ *
+ * This is a SWAP, not an addition — WELCOME_CREDITS resolves to exactly one
+ * campaign, so a brand can never receive both the old and new message.
+ *
+ * The env override exists because a campaign name that AiSensy can't resolve
+ * is not a no-op: the send throws and the brand gets no welcome at all. If the
+ * flow misbehaves, set AISENSY_BRAND_WELCOME_CAMPAIGN=Brand Welcome-Brand to
+ * fall back, which takes a pm2 reload rather than a redeploy.
+ */
+const BRAND_WELCOME_DEFAULT = "brand_automation_free_collab";
+
+export function brandWelcomeCampaign(): string {
+  return process.env["AISENSY_BRAND_WELCOME_CAMPAIGN"]?.trim() || BRAND_WELCOME_DEFAULT;
+}
+
 export interface WhatsAppCampaign {
   campaign: string;
   param2?: string | null;
@@ -42,7 +65,8 @@ type UserType = "BRAND" | "CREATOR";
 const SIMPLE: Record<string, WhatsAppCampaign> = {
   // ── Live now (single-param templates) ──────────────────────────────────
   CREATOR_WELCOME: { campaign: "Creator Welcome-Creator" },
-  WELCOME_CREDITS: { campaign: "Brand Welcome-Brand" },
+  // Resolved at call time by resolveWhatsAppCampaign() — see brandWelcomeCampaign().
+  WELCOME_CREDITS: { campaign: BRAND_WELCOME_DEFAULT },
   KYC_APPROVED: { campaign: "Creator KYC Verified-Creator" },
   KYC_REJECTED: { campaign: "Creator KYC Rejected-Creator" },
   CREATOR_APPROVED: { campaign: "Creator Profile Approved-Creator" },
@@ -229,6 +253,10 @@ export function resolveWhatsAppCampaign(
       ? { campaign: "Deal Payment Confirmed-Brand", param2: COUNTERPARTY }
       : { campaign: "Brand Credit Payment Confirmed-Brand" };
   }
+  // Resolved here rather than read off SIMPLE, because SIMPLE is frozen when
+  // this module first loads and the campaign name is an env-time decision.
+  // Single-param either way, so the {{1}} = brand name path below is unchanged.
+  if (type === "WELCOME_CREDITS") return { campaign: brandWelcomeCampaign() };
   if (BY_USER_TYPE[type]) return BY_USER_TYPE[type][userType] ?? null;
   return SIMPLE[type] ?? null;
 }
