@@ -490,7 +490,13 @@ router.get("/admin/deals", requireAdmin, async (req: Request, res: Response): Pr
   if (search?.trim()) {
     vals.push(`%${search.trim()}%`);
     const i = vals.length;
-    where.push(`(b."brandName" ILIKE $${i} OR b."companyName" ILIKE $${i} OR cr."instagramHandle" ILIKE $${i} OR cr."fullName" ILIKE $${i} OR d."orderId" ILIKE $${i})`);
+    /* b."companyName" used to be listed here, but Brand has no such column —
+       it only exists as an output alias for brandName in other routes' JSON.
+       Postgres therefore raised 42703 (undefined_column) on EVERY search, the
+       endpoint 500'd, and the client rendered that as "no results". Searching
+       brandName + email matches the working brand search in adminBrands.ts.
+       ILIKE is already a case-insensitive partial match. */
+    where.push(`(b."brandName" ILIKE $${i} OR b.email ILIKE $${i} OR cr."instagramHandle" ILIKE $${i} OR cr."fullName" ILIKE $${i} OR d."orderId" ILIKE $${i})`);
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
@@ -548,6 +554,7 @@ router.get("/admin/deals", requireAdmin, async (req: Request, res: Response): Pr
             b.id AS "brandId", b."brandName",
             cr.id AS "creatorId", cr."fullName" AS "creatorName", cr."instagramHandle" AS "creatorHandle",
             COALESCE(c.name, bc.name, '—') AS "campaignName",
+            cat.name AS "categoryName",
             ib."imageUrl" AS "brandInvoiceUrl",
             ic."imageUrl" AS "creatorInvoiceUrl"
        FROM "Deal" d
@@ -558,14 +565,37 @@ router.get("/admin/deals", requireAdmin, async (req: Request, res: Response): Pr
        LEFT JOIN "BarterCampaign" bc ON bc.id = d."barterId"
        LEFT JOIN "Invoice" ib ON ib."referenceId"=d.id AND ib."recipientType"='BRAND'
        LEFT JOIN "Invoice" ic ON ic."referenceId"=d.id AND ic."recipientType"='CREATOR'
+       LEFT JOIN "Category" cat ON cat.id = b."categoryId"
        ${whereSql}
-       ORDER BY d."createdAt" DESC
+       -- id breaks createdAt ties so paging is stable and a deal's page number
+       -- can be computed deterministically (see /admin/deals/:id/page).
+       ORDER BY d."createdAt" DESC, d.id DESC
        ${limitSql}`,
     vals
   );
   res.json(wantsPaging
     ? { deals: r.rows, total, page, totalPages: Math.max(1, Math.ceil(total / limit)) }
     : r.rows);
+});
+
+/* Which page of the unfiltered All Deals list contains this deal?
+ * Lets the bell jump straight to a deal that is not on the current page,
+ * instead of fudging it through the search box. Computed against the same
+ * ORDER BY the list uses (createdAt DESC, id DESC) with no filters applied,
+ * which matches the client clearing filters before it jumps. */
+router.get("/admin/deals/:id/page", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params as Record<string, string>;
+  const limit = Math.min(100, Math.max(1, parseInt(String(req.query["limit"] ?? DEALS_PAGE_SIZE), 10) || DEALS_PAGE_SIZE));
+  const r = await pool.query(
+    `SELECT COUNT(*)::int AS ahead
+       FROM "Deal" x, "Deal" t
+      WHERE t.id = $1
+        AND (x."createdAt", x.id) > (t."createdAt", t.id)`,
+    [id]
+  );
+  if (r.rowCount === 0) { res.status(404).json({ error: "Deal not found" }); return; }
+  const ahead = r.rows[0]?.ahead ?? 0;
+  res.json({ page: Math.floor(ahead / limit) + 1, position: ahead + 1 });
 });
 
 /* ── Admin deal stage-change feed ──────────────────────────────────────────
@@ -583,19 +613,33 @@ router.get("/admin/deal-stage-events", requireAdmin, async (req: Request, res: R
   const limit = Math.min(50, Math.max(1, parseInt(String(req.query["limit"] ?? 20), 10) || 20));
   try {
     const [events, unseen] = await Promise.all([
+      /* One row per deal — its latest change. A deal that bounced A→B→A would
+         otherwise fill the bell with rows for the same card. `hasUnseen` is
+         true when ANY event for that deal is still unseen, so the row (and the
+         matching card highlight) stays lit until admin actually acknowledges
+         that deal. */
       pool.query(
-        `SELECT e.id, e."dealId", e."fromStage", e."toStage", e."changedAt", e."seenAt",
-                d.source, d."orderId",
-                b."brandName", cr."instagramHandle" AS "creatorHandle"
-           FROM "DealStageEvent" e
-           LEFT JOIN "Deal" d    ON d.id  = e."dealId"
-           LEFT JOIN "Brand" b   ON b.id  = d."brandId"
-           LEFT JOIN "Creator" cr ON cr.id = d."creatorId"
-          ORDER BY e."changedAt" DESC
-          LIMIT $1`,
+        `SELECT t.* FROM (
+           SELECT DISTINCT ON (e."dealId")
+                  e.id, e."dealId", e."fromStage", e."toStage", e."changedAt", e."seenAt",
+                  d.source, d."orderId",
+                  b."brandName", cr."instagramHandle" AS "creatorHandle",
+                  EXISTS (
+                    SELECT 1 FROM "DealStageEvent" x
+                     WHERE x."dealId" = e."dealId" AND x."seenAt" IS NULL
+                  ) AS "hasUnseen"
+             FROM "DealStageEvent" e
+             LEFT JOIN "Deal" d     ON d.id  = e."dealId"
+             LEFT JOIN "Brand" b    ON b.id  = d."brandId"
+             LEFT JOIN "Creator" cr ON cr.id = d."creatorId"
+            ORDER BY e."dealId", e."changedAt" DESC
+         ) t
+         ORDER BY t."changedAt" DESC
+         LIMIT $1`,
         [limit]
       ),
-      pool.query(`SELECT COUNT(*)::int AS c FROM "DealStageEvent" WHERE "seenAt" IS NULL`),
+      // Badge counts DEALS needing attention, matching one-row-per-deal above.
+      pool.query(`SELECT COUNT(DISTINCT "dealId")::int AS c FROM "DealStageEvent" WHERE "seenAt" IS NULL`),
     ]);
     res.json({ events: events.rows, unseen: unseen.rows[0]?.c ?? 0, available: true });
   } catch (e: any) {
@@ -605,11 +649,21 @@ router.get("/admin/deal-stage-events", requireAdmin, async (req: Request, res: R
 });
 
 router.post("/admin/deal-stage-events/seen", requireAdmin, async (req: Request, res: Response): Promise<void> => {
-  // Cap at the newest event the admin actually saw, so anything that lands
-  // between render and click stays unread.
-  const { before } = req.body as { before?: string };
-  const cutoff = before && !Number.isNaN(Date.parse(before)) ? new Date(before) : new Date();
+  /* Acknowledgement is per deal: admin clears a deal by clicking its card or
+     its bell row, which is what removes that card's highlight. `dealId` marks
+     every outstanding event for that one deal. `before` (mark everything up to
+     a timestamp) is kept for the bulk "mark all" affordance. */
+  const { dealId, before } = req.body as { dealId?: string; before?: string };
   try {
+    if (dealId) {
+      const r = await pool.query(
+        `UPDATE "DealStageEvent" SET "seenAt" = NOW() WHERE "dealId" = $1 AND "seenAt" IS NULL`,
+        [dealId]
+      );
+      res.json({ ok: true, marked: r.rowCount ?? 0 });
+      return;
+    }
+    const cutoff = before && !Number.isNaN(Date.parse(before)) ? new Date(before) : new Date();
     const r = await pool.query(
       `UPDATE "DealStageEvent" SET "seenAt" = NOW()
         WHERE "seenAt" IS NULL AND "changedAt" <= $1`,

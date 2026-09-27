@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
+import { goBack } from "@/lib/adminReturnTo";
 import { Search, Plus, Trash2, ChevronUp, ChevronDown, X } from "lucide-react";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 
@@ -208,6 +209,7 @@ function BrandDetailModal({ brandId, onClose }: { brandId: string; onClose: () =
 
 export default function AdminBrandOnboarding() {
   const { adminFetch } = useAdminAuth();
+  const [, navigate] = useLocation();
   const [tab, setTab] = useState<"brands" | "fields">("brands");
   const [brands, setBrands] = useState<Brand[]>([]);
   const [total, setTotal] = useState(0);
@@ -216,6 +218,8 @@ export default function AdminBrandOnboarding() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [loading, setLoading] = useState(false);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  // True only while showing a modal that a deep link opened.
+  const deepLinkedRef = useRef(false);
 
   // Unified fields state
   const [unifiedFields, setUnifiedFields] = useState<UnifiedField[]>([]);
@@ -236,6 +240,7 @@ export default function AdminBrandOnboarding() {
     if (!id) return;
     setTab("brands");
     setSelectedBrandId(id);
+    deepLinkedRef.current = true;
   }, []);
 
   const loadBrands = async () => {
@@ -326,11 +331,13 @@ export default function AdminBrandOnboarding() {
     <div className="min-h-screen" style={{ background: "#0A0A0F", fontFamily: POPPINS }}>
       <header className="px-6 py-4 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-3">
-          <Link href="/admin-collabryangad">
-            <button className="text-white/70 hover:text-white transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-            </button>
-          </Link>
+          {/* Deep-linked from another admin screen (?returnTo=) → go back there;
+              otherwise the admin dashboard, as before. */}
+          <button onClick={() => goBack(navigate, "/admin-collabryangad")}
+            title="Back"
+            className="text-white/70 hover:text-white transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+          </button>
           <h1 className="text-white font-bold text-lg">Brand Onboarding</h1>
         </div>
         <div className="flex rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
@@ -515,7 +522,22 @@ export default function AdminBrandOnboarding() {
         )}
       </main>
 
-      {selectedBrandId && <BrandDetailModal brandId={selectedBrandId} onClose={() => setSelectedBrandId(null)} />}
+      {selectedBrandId && (
+        <BrandDetailModal
+          brandId={selectedBrandId}
+          onClose={() => {
+            /* When this modal was opened by a deep link, it covers the whole
+               screen — including the header Back button — so closing it is
+               how admin gets back, and it must return them where they came
+               from rather than stranding them on the brand list. */
+            if (deepLinkedRef.current) {
+              deepLinkedRef.current = false;
+              goBack(navigate, "/admin-collabryangad");
+              return;
+            }
+            setSelectedBrandId(null);
+          }} />
+      )}
     </div>
   );
 }

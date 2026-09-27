@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { ArrowLeft, Search, X, CheckCircle, XCircle, PauseCircle, PlayCircle, Ban, Eye, Plus, Trash2, Pencil, Users, UserCheck, UserX, AlertTriangle } from "lucide-react";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { goBack } from "@/lib/adminReturnTo";
 
 function fmtCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -968,7 +969,11 @@ export default function AdminCreatorOnboarding() {
       {/* Page header */}
       <div className="px-6 pt-6 pb-0">
         <div className="flex items-center gap-2 mb-4">
-          <button onClick={() => navigate("/admin-collabryangad")} className="text-white/70 hover:text-white"><ArrowLeft className="w-4 h-4" /></button>
+          {/* Deep-linked from another admin screen (?returnTo=) → go back there;
+              otherwise the admin dashboard, as before. */}
+          <button onClick={() => goBack(navigate, "/admin-collabryangad")}
+            title="Back"
+            className="text-white/70 hover:text-white"><ArrowLeft className="w-4 h-4" /></button>
           <h1 className="text-white font-semibold text-lg">Creator Onboarding</h1>
         </div>
         <div className="flex gap-1 flex-wrap" style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: 4, display: "inline-flex" }}>

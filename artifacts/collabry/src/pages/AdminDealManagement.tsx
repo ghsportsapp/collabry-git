@@ -200,16 +200,17 @@ function stageBadge(d: any) {
   );
 }
 
-const SOURCE_LABEL: Record<string, { label: string; bg: string; color: string }> = {
-  CAMPAIGN: { label: "Paid Campaign", bg: "rgba(225,79,105,0.15)", color: PINK },
-  BARTER:   { label: "Barter",        bg: "rgba(168,85,247,0.15)", color: "#c084fc" },
-  SEARCH:   { label: "Direct",        bg: "rgba(245,158,11,0.15)", color: "#fbbf24" },
+const SOURCE_LABEL: Record<string, { label: string; bg: string; color: string; border: string }> = {
+  CAMPAIGN: { label: "Paid Campaign", bg: "rgba(225,79,105,0.15)", color: PINK,      border: "rgba(225,79,105,0.34)" },
+  BARTER:   { label: "Barter",        bg: "rgba(168,85,247,0.15)", color: "#c084fc", border: "rgba(168,85,247,0.34)" },
+  SEARCH:   { label: "Direct",        bg: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "rgba(59,130,246,0.34)" },
 };
 
 function sourceBadge(source: string) {
-  const s = SOURCE_LABEL[source] ?? { label: source ?? "—", bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)" };
+  const s = SOURCE_LABEL[source]
+    ?? { label: source ?? "—", bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)", border: "rgba(255,255,255,0.14)" };
   return <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold whitespace-nowrap"
-    style={{ background: s.bg, color: s.color }}>{s.label}</span>;
+    style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>{s.label}</span>;
 }
 
 function payoutStatusBadge(status?: string | null) {
@@ -224,31 +225,37 @@ function payoutStatusBadge(status?: string | null) {
  * uses to vet people — not the brand-facing unlocked profile. Neither page has
  * a per-record route, so each takes an id as a query param and opens its own
  * existing panel; no new routes invented. */
-const creatorAdminUrl = (id: string) => `${BASE_URL}/admin-collabryangad/creator-onboarding?creatorId=${encodeURIComponent(id)}`;
-const brandAdminUrl = (id: string) => `${BASE_URL}/admin-collabryangad/brand-onboarding?brandId=${encodeURIComponent(id)}`;
+/** Where the review panel should send admin back to: wherever they are now,
+ *  pinned to the All Deals tab. Read from the live location rather than
+ *  written as a literal, so this keeps working if the route ever moves. */
+function returnToHere(): string {
+  if (typeof window === "undefined") return "";
+  const url = new URL(window.location.href);
+  url.searchParams.set("tab", "all");
+  return url.pathname + url.search;
+}
+
+const creatorAdminUrl = (id: string) =>
+  `${BASE_URL}/admin-collabryangad/creator-onboarding?creatorId=${encodeURIComponent(id)}&returnTo=${encodeURIComponent(returnToHere())}`;
+const brandAdminUrl = (id: string) =>
+  `${BASE_URL}/admin-collabryangad/brand-onboarding?brandId=${encodeURIComponent(id)}&returnTo=${encodeURIComponent(returnToHere())}`;
 
 /* ── Stage-change feed ────────────────────────────────────────────────────
  * The whole "notify admin" mechanism: the DealStageEvent log, newest first,
  * with an unread count. Opening the panel marks everything up to the newest
  * row shown as seen; anything that lands afterwards stays unread. */
-function StageChangeBell({ onJumpToDeal }: { onJumpToDeal: (e: any) => void }) {
-  const { adminFetch } = useAdminAuth();
+function StageChangeBell(
+  { events, unseen, onJumpToDeal, onMarkAll, onRefresh }:
+  {
+    events: any[] | null;
+    unseen: number;
+    onJumpToDeal: (e: any) => void;
+    onMarkAll: () => void;
+    onRefresh: () => void;
+  }
+) {
   const [open, setOpen] = useState(false);
-  const [events, setEvents] = useState<any[] | null>(null);
-  const [unseen, setUnseen] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
-
-  const load = useCallback(async () => {
-    try {
-      const r = await adminFetch(`${BASE_URL}/api/admin/deal-stage-events?limit=20`);
-      if (!r.ok) { setEvents([]); setUnseen(0); return; }
-      const d = await r.json();
-      setEvents(d.events ?? []);
-      setUnseen(d.unseen ?? 0);
-    } catch { setEvents([]); setUnseen(0); }
-  }, [adminFetch]);
-
-  useEffect(() => { load(); }, [load]);
 
   // Close on an outside click, like the other admin popovers.
   useEffect(() => {
@@ -260,20 +267,13 @@ function StageChangeBell({ onJumpToDeal }: { onJumpToDeal: (e: any) => void }) {
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
-  async function toggle() {
+  /* Opening deliberately does NOT mark everything read: a deal stays flagged —
+     in this list and as a highlighted card — until admin actually opens that
+     deal. "Mark all read" is there for when they want to clear the board. */
+  function toggle() {
     const next = !open;
     setOpen(next);
-    if (!next) return;
-    await load();
-    // Mark read on view, capped at the newest row we are about to show.
-    const newest = (events ?? [])[0]?.changedAt;
-    try {
-      await adminFetch(`${BASE_URL}/api/admin/deal-stage-events/seen`, {
-        method: "POST",
-        body: JSON.stringify({ before: newest ?? new Date().toISOString() }),
-      });
-      setUnseen(0);
-    } catch { /* leave the badge alone if the write failed */ }
+    if (next) onRefresh();
   }
 
   return (
@@ -298,12 +298,22 @@ function StageChangeBell({ onJumpToDeal }: { onJumpToDeal: (e: any) => void }) {
             border: "1px solid rgba(255,255,255,0.10)",
             boxShadow: "0 24px 60px rgba(0,0,0,0.75)",
           }}>
-          <div className="px-4 py-3 flex items-center justify-between"
+          <div className="px-4 py-3 flex items-center justify-between gap-2"
             style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-            <span className="text-white text-xs font-bold">Recent stage changes</span>
-            <button onClick={() => setOpen(false)} className="text-white/50 hover:text-white transition-colors">
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <span className="text-white text-xs font-bold">
+              Recent stage changes
+              {unseen > 0 && <span className="text-white/45 font-medium"> · {unseen} new</span>}
+            </span>
+            <div className="flex items-center gap-2">
+              {unseen > 0 && (
+                <button onClick={onMarkAll} className="text-[10px] font-semibold hover:underline" style={{ color: PINK }}>
+                  Mark all read
+                </button>
+              )}
+              <button onClick={() => setOpen(false)} className="text-white/50 hover:text-white transition-colors">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           <div className="max-h-[60vh] overflow-y-auto">
@@ -318,18 +328,27 @@ function StageChangeBell({ onJumpToDeal }: { onJumpToDeal: (e: any) => void }) {
                 const ago = timeInStage(e.changedAt);
                 const from = stageLabelOnly(e.fromStage, e.source);
                 const to = stageLabelOnly(e.toStage, e.source);
+                const isNew = !!e.hasUnseen;
                 return (
                   <button key={e.id}
                     onClick={() => { setOpen(false); onJumpToDeal(e); }}
-                    className="w-full text-left px-4 py-2.5 transition-colors hover:bg-white/5"
+                    className="w-full text-left pr-4 py-2.5 transition-colors hover:bg-white/5"
                     style={{
                       borderBottom: "1px solid rgba(255,255,255,0.05)",
-                      background: e.seenAt ? "transparent" : "rgba(225,79,105,0.06)",
+                      // Unread: pink left accent + tint. Read: flat and dimmed.
+                      borderLeft: isNew ? `3px solid ${PINK}` : "3px solid transparent",
+                      paddingLeft: "0.8125rem",
+                      background: isNew ? "rgba(225,79,105,0.09)" : "transparent",
+                      opacity: isNew ? 1 : 0.62,
                     }}>
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-white text-xs font-semibold">{e.brandName ?? "—"}</span>
+                      <span className={`text-white text-xs ${isNew ? "font-bold" : "font-medium"}`}>{e.brandName ?? "—"}</span>
                       <span className="text-white/50 text-[11px]">→</span>
-                      <span className="text-white text-xs font-semibold">@{e.creatorHandle ?? "—"}</span>
+                      <span className={`text-white text-xs ${isNew ? "font-bold" : "font-medium"}`}>@{e.creatorHandle ?? "—"}</span>
+                      {isNew && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                          style={{ background: PINK, color: "white" }}>NEW</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap text-[11px]">
                       {/* Two different DB statuses can share one label (barter
@@ -341,7 +360,7 @@ function StageChangeBell({ onJumpToDeal }: { onJumpToDeal: (e: any) => void }) {
                           <span className="text-white/35">→</span>
                         </>
                       )}
-                      <span style={{ color: PINK }} className="font-semibold">{to}</span>
+                      <span style={{ color: isNew ? PINK : "rgba(255,255,255,0.75)" }} className="font-semibold">{to}</span>
                       {ago && <span className="text-white/40 ml-auto">{ago} ago</span>}
                     </div>
                   </button>
@@ -366,6 +385,11 @@ function AllDealsList() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  /* One fetch of the stage-change log serves both the bell and the card
+     highlights — `unseenDeals` is derived from these same rows, never a
+     second request. */
+  const [stageEvents, setStageEvents] = useState<any[] | null>(null);
+  const [unseenDeals, setUnseenDeals] = useState<Set<string>>(new Set());
   const searchRef = useRef("");
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listTopRef = useRef<HTMLDivElement>(null);
@@ -428,6 +452,43 @@ function AllDealsList() {
   // result set would look like an empty tab.
   useEffect(() => { load(1); }, [status, source]);
 
+  /* ── Stage-change log (shared by the bell and the card highlights) ── */
+  const loadEvents = useCallback(async () => {
+    try {
+      const r = await adminFetch(`${BASE_URL}/api/admin/deal-stage-events?limit=30`);
+      if (!r.ok) { setStageEvents([]); setUnseenDeals(new Set()); return; }
+      const d = await r.json();
+      const evs: any[] = d.events ?? [];
+      setStageEvents(evs);
+      setUnseenDeals(new Set(evs.filter(e => e.hasUnseen).map(e => e.dealId)));
+    } catch { setStageEvents([]); setUnseenDeals(new Set()); }
+  }, [adminFetch]);
+
+  useEffect(() => { loadEvents(); }, [loadEvents]);
+
+  /** Acknowledge one deal: clears its card highlight and its bell row. */
+  const markDealSeen = useCallback(async (dealId: string) => {
+    if (!dealId || !unseenDeals.has(dealId)) return;
+    // Optimistic — the highlight should vanish on click, not after a round trip.
+    setUnseenDeals(prev => { const next = new Set(prev); next.delete(dealId); return next; });
+    setStageEvents(prev => prev?.map(e => e.dealId === dealId ? { ...e, hasUnseen: false } : e) ?? prev);
+    try {
+      await adminFetch(`${BASE_URL}/api/admin/deal-stage-events/seen`, {
+        method: "POST", body: JSON.stringify({ dealId }),
+      });
+    } catch { loadEvents(); }   // put it back the way the server sees it
+  }, [adminFetch, unseenDeals, loadEvents]);
+
+  const markAllSeen = useCallback(async () => {
+    setUnseenDeals(new Set());
+    setStageEvents(prev => prev?.map(e => ({ ...e, hasUnseen: false })) ?? prev);
+    try {
+      await adminFetch(`${BASE_URL}/api/admin/deal-stage-events/seen`, {
+        method: "POST", body: JSON.stringify({ before: new Date().toISOString() }),
+      });
+    } catch { loadEvents(); }
+  }, [adminFetch, loadEvents]);
+
   function handleSearch(v: string) {
     setSearch(v);
     searchRef.current = v;
@@ -435,26 +496,42 @@ function AllDealsList() {
     searchDebounce.current = setTimeout(() => load(1), 500);
   }
 
-  /* Jump from a stage-change event to the deal itself. The deal may be behind
-   * a filter or on another page, so clear the filters and search for it by
-   * order ID (falling back to the brand name when it has none yet — orderId is
-   * only assigned once a deal reaches escrow). Then highlight the card. */
-  function jumpToDeal(e: any) {
-    const term = e.orderId ?? e.brandName ?? "";
-    setStatus("ALL");
-    setSource("ALL");
-    setSearch(term);
-    searchRef.current = term;
-    setHighlightId(e.dealId);
-    load(1);
-  }
+  /* Jump from a stage-change event to the deal card itself.
+   * Deliberately does NOT touch the search box — stuffing a deal id in there
+   * was the old behaviour and it matched nothing. If the card is already
+   * rendered we just scroll to it; otherwise we clear the filters and ask the
+   * API which page holds it, then load that page. Either way the card gets
+   * highlighted and the deal is marked seen. */
+  const jumpToDeal = useCallback(async (e: any) => {
+    const dealId = e.dealId;
+    if (!dealId) return;
+
+    const onThisPage = (deals ?? []).some(d => d.id === dealId);
+    if (!onThisPage) {
+      // Filters could be hiding it, so drop them before locating the row.
+      const hadFilters = status !== "ALL" || source !== "ALL" || searchRef.current.trim() !== "";
+      if (hadFilters) {
+        setStatus("ALL"); setSource("ALL");
+        setSearch(""); searchRef.current = "";
+      }
+      let target = 1;
+      try {
+        const r = await adminFetch(`${BASE_URL}/api/admin/deals/${dealId}/page?limit=${DEALS_PER_PAGE}`);
+        if (r.ok) target = (await r.json()).page ?? 1;
+      } catch { /* fall back to page 1 */ }
+      await load(target);
+    }
+
+    setHighlightId(dealId);
+    markDealSeen(dealId);
+  }, [deals, status, source, adminFetch, load, markDealSeen]);
 
   // Scroll to and flash the jumped-to card once it has rendered.
   useEffect(() => {
     if (!highlightId || deals === null) return;
     const el = document.querySelector(`[data-deal-id="${highlightId}"]`);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    const t = setTimeout(() => setHighlightId(null), 2600);
+    const t = setTimeout(() => setHighlightId(null), 2200);
     return () => clearTimeout(t);
   }, [highlightId, deals]);
 
@@ -826,29 +903,54 @@ function AllDealsList() {
               </button>
             )}
           </div>
+          {/* An active filter is outlined in pink, so it is obvious at a glance
+              why the list is short. */}
           <select value={status} onChange={e => setStatus(e.target.value)}
-            className="px-3 py-2.5 rounded-xl text-white text-sm outline-none max-w-[16rem]"
-            style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
-            {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value} style={{ background: "#1a1a2e" }}>{s.label}</option>)}
+            className="px-3 py-2.5 rounded-xl text-white text-sm outline-none max-w-[16rem] cursor-pointer"
+            style={{
+              background: status !== "ALL" ? "rgba(225,79,105,0.12)" : "rgba(255,255,255,0.07)",
+              border: `1px solid ${status !== "ALL" ? PINK : "rgba(255,255,255,0.1)"}`,
+              color: status !== "ALL" ? "#ffd7de" : "white",
+            }}>
+            {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value} style={{ background: "#1a1a2e", color: "white" }}>{s.label}</option>)}
           </select>
           <select value={source} onChange={e => setSource(e.target.value)}
-            className="px-3 py-2.5 rounded-xl text-white text-sm outline-none"
-            style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
-            {SOURCE_OPTIONS.map(s => <option key={s.value} value={s.value} style={{ background: "#1a1a2e" }}>{s.label}</option>)}
+            className="px-3 py-2.5 rounded-xl text-white text-sm outline-none cursor-pointer"
+            style={{
+              background: source !== "ALL" ? "rgba(225,79,105,0.12)" : "rgba(255,255,255,0.07)",
+              border: `1px solid ${source !== "ALL" ? PINK : "rgba(255,255,255,0.1)"}`,
+              color: source !== "ALL" ? "#ffd7de" : "white",
+            }}>
+            {SOURCE_OPTIONS.map(s => <option key={s.value} value={s.value} style={{ background: "#1a1a2e", color: "white" }}>{s.label}</option>)}
           </select>
-          <button onClick={() => load(page)} className="p-2.5 text-white/70 hover:text-white transition-colors rounded-xl"
-            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}>
-            <RefreshCw className="w-4 h-4" />
-          </button>
-          <StageChangeBell onJumpToDeal={jumpToDeal} />
+          <div className="flex items-center gap-2 ml-auto sm:ml-0">
+            <button onClick={() => { load(page); loadEvents(); }} title="Refresh deals"
+              aria-label="Refresh deals"
+              className="p-2.5 text-white/70 hover:text-white transition-colors rounded-xl"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}>
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <StageChangeBell
+              events={stageEvents}
+              unseen={unseenDeals.size}
+              onJumpToDeal={jumpToDeal}
+              onMarkAll={markAllSeen}
+              onRefresh={loadEvents} />
+          </div>
         </div>
 
         {/* Result count + active-filter reset */}
         <div className="flex items-center gap-3 mt-2.5 flex-wrap">
-          <span className="text-white/60 text-[11px]">
+          <span className="text-white/85 text-xs font-semibold">
             {deals === null ? "Loading…" : total === 0 ? "No deals" : `Showing ${deals.length} of ${total} deal${total === 1 ? "" : "s"}`}
-            {totalPages > 1 && deals !== null && total > 0 && <span className="text-white/40"> · page {page} of {totalPages}</span>}
+            {totalPages > 1 && deals !== null && total > 0 && <span className="text-white/45 font-medium"> · page {page} of {totalPages}</span>}
           </span>
+          {unseenDeals.size > 0 && (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+              style={{ background: "rgba(225,79,105,0.14)", color: PINK, border: `1px solid rgba(225,79,105,0.35)` }}>
+              {unseenDeals.size} need{unseenDeals.size === 1 ? "s" : ""} attention
+            </span>
+          )}
           {(status !== "ALL" || source !== "ALL" || search.trim()) && (
             <button
               onClick={() => {
@@ -906,89 +1008,102 @@ function AllDealsList() {
             const refunded = d.payoutStatus === "REFUNDED_TO_BRAND";
             const paid = d.payoutStatus === "RELEASED";
             const isBarter = d.source === "BARTER";
+            const isUnseen = unseenDeals.has(d.id);
+            const isFlashing = d.id === highlightId;
 
             return (
-              <div key={d.id} data-deal-id={d.id} className="rounded-2xl p-4 transition-shadow"
+              <div key={d.id} data-deal-id={d.id}
+                data-unseen={isUnseen ? "1" : undefined}
+                /* Clicking anywhere on a flagged card acknowledges it, which is
+                   what removes the pink treatment below. */
+                onClick={isUnseen ? () => markDealSeen(d.id) : undefined}
+                className="rounded-2xl p-4 transition-all duration-300"
                 style={{
-                  background: "#13151D",
-                  border: d.id === highlightId
-                    ? `1px solid ${PINK}`
-                    : refunded
+                  background: isUnseen ? "rgba(225,79,105,0.045)" : "#13151D",
+                  border: refunded
                     ? "1px solid rgba(239,68,68,0.20)"
                     : paid
                     ? "1px solid rgba(34,197,94,0.18)"
                     : "1px solid rgba(255,255,255,0.07)",
-                  boxShadow: d.id === highlightId ? `0 0 0 3px rgba(225,79,105,0.22)` : undefined,
+                  // 4px pink rail marks a deal with an unacknowledged change.
+                  borderLeft: isUnseen ? `4px solid ${PINK}` : undefined,
+                  boxShadow: isFlashing ? `0 0 0 3px rgba(225,79,105,0.35)` : undefined,
+                  cursor: isUnseen ? "pointer" : undefined,
                 }}>
-                {/* Card Header */}
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                      <AdminProfileLink
-                        href={d.brandId ? brandAdminUrl(d.brandId) : null}
-                        navigate={navigate}
-                        title={d.brandName ? `Open ${d.brandName} in Brand Onboarding` : undefined}>
-                        {d.brandName ?? "—"}
-                      </AdminProfileLink>
-                      <span className="text-white/70 text-xs">→</span>
-                      <AdminProfileLink
-                        href={d.creatorId ? creatorAdminUrl(d.creatorId) : null}
-                        navigate={navigate}
-                        title={d.creatorHandle ? `Open @${d.creatorHandle} in Creator Onboarding` : undefined}>
-                        @{d.creatorHandle ?? "—"}
-                      </AdminProfileLink>
-                      {sourceBadge(d.source)}
-                      {stageBadge(d)}
-                    </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-white/70">
-                      {d.orderId && <span className="font-mono text-white/50">{d.orderId}</span>}
-                      {d.campaignName && d.campaignName !== "—" && <span>{d.campaignName}</span>}
-                      {breakdown.length > 0 && <span>{breakdown.join(" + ")}</span>}
-                      <span>{d.timelineDays}d timeline</span>
-                      <span>Created {fmtDate(d.createdAt)}</span>
-                    </div>
+                {/* Line 1 — the identity of the deal, the loudest thing here */}
+                <div className="flex items-start justify-between gap-3 flex-wrap mb-1.5">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    <AdminProfileLink
+                      href={d.brandId ? brandAdminUrl(d.brandId) : null}
+                      navigate={navigate}
+                      title={d.brandName ? `Open ${d.brandName} in Brand Onboarding` : undefined}>
+                      {d.brandName ?? "—"}
+                    </AdminProfileLink>
+                    <span className="text-white/45 text-sm">→</span>
+                    <AdminProfileLink
+                      href={d.creatorId ? creatorAdminUrl(d.creatorId) : null}
+                      navigate={navigate}
+                      title={d.creatorHandle ? `Open @${d.creatorHandle} in Creator Onboarding` : undefined}>
+                      @{d.creatorHandle ?? "—"}
+                    </AdminProfileLink>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+                    {sourceBadge(d.source)}
+                    {stageBadge(d)}
                   </div>
                 </div>
 
+                {/* Line 2 — quiet meta row */}
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-white/45 mb-3">
+                  {d.orderId && <><span className="font-mono text-white/40">{d.orderId}</span><span className="text-white/20">·</span></>}
+                  {d.campaignName && d.campaignName !== "—" && <><span className="text-white/60">{d.campaignName}</span><span className="text-white/20">·</span></>}
+                  {d.categoryName && <><span>{d.categoryName}</span><span className="text-white/20">·</span></>}
+                  {breakdown.length > 0 && <><span>{breakdown.join(" + ")}</span><span className="text-white/20">·</span></>}
+                  <span>{d.timelineDays}d timeline</span>
+                  <span className="text-white/20">·</span>
+                  <span>{fmtDate(d.createdAt)}</span>
+                </div>
+
                 {/* Financial Breakdown */}
-                <div className="rounded-xl p-3 mb-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div className="flex items-center gap-4 flex-wrap">
-                    <div>
-                      <p className="text-white/70 text-[10px] uppercase tracking-wider mb-0.5">Deal Amount</p>
-                      <p className="text-white font-bold text-sm">{fmtINR(d.totalAgreedValue)}</p>
+                <div className="rounded-xl px-3 py-2.5 mb-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  {isBarter ? (
+                    /* Barter moves no money: one cell, and none of the GST /
+                       fee / payout / payment-status columns. */
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <p className="text-white/45 text-[10px] uppercase tracking-wider mb-0.5">Deal Amount</p>
+                        <p className="text-white font-bold text-sm">₹0</p>
+                      </div>
+                      <span className="text-white/35 text-[11px]">No payment — barter collaboration</span>
                     </div>
-
-                    {showBreakdown && (
-                      <>
-                        <div className="text-white/70 text-xs hidden sm:block">/</div>
-                        {Number(d.gstAmount) > 0 && (
-                          <div>
-                            <p className="text-white/70 text-[10px] uppercase tracking-wider mb-0.5">GST</p>
-                            <p className="text-white/90 text-sm font-semibold">{fmtINR(d.gstAmount)}</p>
+                  ) : (
+                    <div className="flex items-end gap-x-6 gap-y-2 flex-wrap">
+                      <div className="min-w-[5.5rem]">
+                        <p className="text-white/45 text-[10px] uppercase tracking-wider mb-0.5">Deal Amount</p>
+                        <p className="text-white font-bold text-sm tabular-nums">{fmtINR(d.totalAgreedValue)}</p>
+                      </div>
+                      {showBreakdown && (
+                        <>
+                          <div className="min-w-[4.5rem]">
+                            <p className="text-white/45 text-[10px] uppercase tracking-wider mb-0.5">GST</p>
+                            <p className="text-white/85 text-sm font-semibold tabular-nums">{fmtINR(d.gstAmount)}</p>
                           </div>
-                        )}
-                        <div className="text-white/70 text-xs hidden sm:block">/</div>
-                        <div>
-                          <p className="text-white/70 text-[10px] uppercase tracking-wider mb-0.5">Platform Fee</p>
-                          <p className="text-white/90 text-sm font-semibold">{fmtINR(platformFee)}</p>
-                        </div>
-                        <div className="text-white/70 text-xs hidden sm:block">/</div>
-                        <div>
-                          <p className="text-white/70 text-[10px] uppercase tracking-wider mb-0.5">Creator Payout</p>
-                          <p className="font-bold text-sm" style={{ color: "#4ade80" }}>{fmtINR(d.creatorPayout)}</p>
-                        </div>
-                      </>
-                    )}
-
-                    {/* Barter moves no money, so a payment status on that card
-                        would be one more payment-flavoured thing to misread. */}
-                    {!isBarter && (
+                          <div className="min-w-[5.5rem]">
+                            <p className="text-white/45 text-[10px] uppercase tracking-wider mb-0.5">Platform Fee</p>
+                            <p className="text-white/85 text-sm font-semibold tabular-nums">{fmtINR(platformFee)}</p>
+                          </div>
+                          <div className="min-w-[6rem]">
+                            <p className="text-white/45 text-[10px] uppercase tracking-wider mb-0.5">Creator Payout</p>
+                            <p className="font-bold text-sm tabular-nums" style={{ color: "#4ade80" }}>{fmtINR(d.creatorPayout)}</p>
+                          </div>
+                        </>
+                      )}
                       <div className="ml-auto text-right">
-                        <p className="text-white/70 text-[10px] uppercase tracking-wider mb-0.5">Payment</p>
+                        <p className="text-white/45 text-[10px] uppercase tracking-wider mb-0.5">Payment</p>
                         {payoutStatusBadge(d.payoutStatus)}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
                   {/* Post-payment info */}
                   {paid && d.paidAmount && (
@@ -1155,10 +1270,27 @@ function DealReportsList({ type }: { type: "creator" | "brand" }) {
   );
 }
 
+const TAB_KEYS = new Set<string>(TABS.map(t => t.key));
+
 export default function AdminDealManagement() {
   const { adminId } = useAdminAuth();
   const [, navigate] = useLocation();
-  const [tab, setTab] = useState<Tab>("settings");
+  /* ?tab= makes the tab addressable, so a review panel can send admin back to
+     All Deals rather than dumping them on the default Settings tab. */
+  const [tab, setTab] = useState<Tab>(() => {
+    if (typeof window === "undefined") return "settings";
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return t && TAB_KEYS.has(t) ? (t as Tab) : "settings";
+  });
+
+  // Keep the URL in step without adding a history entry per tab click.
+  function selectTab(next: Tab) {
+    setTab(next);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", next);
+    window.history.replaceState(null, "", url.pathname + url.search);
+  }
 
   useEffect(() => { if (!adminId) navigate("/admin-collabryangad/login"); }, [adminId, navigate]);
   if (!adminId) return null;
@@ -1187,7 +1319,7 @@ export default function AdminDealManagement() {
             const Icon = t.icon;
             const active = tab === t.key;
             return (
-              <button key={t.key} onClick={() => setTab(t.key)}
+              <button key={t.key} onClick={() => selectTab(t.key)}
                 className="px-5 py-3 text-sm font-semibold transition-all flex items-center gap-2"
                 style={{
                   color: active ? PINK : "rgba(255,255,255,0.70)",
