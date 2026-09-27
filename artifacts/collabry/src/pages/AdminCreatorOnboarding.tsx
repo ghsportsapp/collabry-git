@@ -266,6 +266,18 @@ export default function AdminCreatorOnboarding() {
     if (selected) { setDetail(null); loadDetail(selected.id); setDetailTab("profile"); }
   }, [selected]);
 
+  /* Deep link from elsewhere in admin (e.g. a deal card in Deal Management):
+   * ?creatorId=<id> opens this creator's review panel directly. `selected`
+   * only needs an id — the panel itself renders from the detail fetch — so a
+   * creator who is not on the current page of the list still opens.
+   * Read once on mount; closing the panel afterwards must not re-open it. */
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("creatorId");
+    if (!id) return;
+    setMainTab("users-list");   // anyone with a deal is past the Applications queue
+    setSelected({ id });
+  }, []);
+
   // Load applications (PENDING only)
   const loadApplications = useCallback(async () => {
     setAppLoading(true);

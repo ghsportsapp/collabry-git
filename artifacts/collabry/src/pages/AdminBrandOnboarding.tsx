@@ -227,6 +227,17 @@ export default function AdminBrandOnboarding() {
   const [newFieldStatus, setNewFieldStatus] = useState<FieldStatus>("optional");
   const [addingField, setAddingField] = useState(false);
 
+  /* Deep link from elsewhere in admin (e.g. a deal card in Deal Management):
+   * ?brandId=<id> opens this brand's review modal directly. The modal fetches
+   * by id, so a brand not on the current page of the list still opens.
+   * Read once on mount; closing the modal afterwards must not re-open it. */
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("brandId");
+    if (!id) return;
+    setTab("brands");
+    setSelectedBrandId(id);
+  }, []);
+
   const loadBrands = async () => {
     setLoading(true);
     try {

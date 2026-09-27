@@ -9,6 +9,22 @@ import { uploadPrivate } from "../lib/storage";
 
 const router: IRouter = Router();
 
+/* ── All Deals paging ────────────────────────────────────────────────────────
+ * Same back-compat gate as the campaign applicant lists: without a `page`
+ * param the response stays the bare array it has always been, capped at the
+ * original 200. `page` opts into the { deals, total, page, totalPages } shape.
+ * Dropping the param is the kill switch if paging ever misbehaves. */
+const DEALS_LEGACY_LIMIT = 200;
+const DEALS_PAGE_SIZE = 25;
+
+function readDealPaging(req: Request): { page: number; limit: number; offset: number; wantsPaging: boolean } {
+  const wantsPaging = req.query["page"] !== undefined;
+  if (!wantsPaging) return { page: 1, limit: DEALS_LEGACY_LIMIT, offset: 0, wantsPaging };
+  const page = Math.max(1, parseInt(String(req.query["page"]), 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(String(req.query["limit"] ?? DEALS_PAGE_SIZE), 10) || DEALS_PAGE_SIZE));
+  return { page, limit, offset: (page - 1) * limit, wantsPaging };
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 async function getConfig(key: string, defaultVal: string): Promise<string> {
   const r = await pool.query(`SELECT value FROM "PlatformConfig" WHERE key=$1`, [key]);
@@ -452,9 +468,24 @@ router.get("/platform-config/deal-tutorial-video", async (_req: Request, res: Re
 // ─── All Deals (for Deal Management page) ────────────────────────────────────
 router.get("/admin/deals", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { status, source, search } = req.query as { status?: string; source?: string; search?: string };
+  const { page, limit, offset, wantsPaging } = readDealPaging(req);
   const where: string[] = [];
   const vals: unknown[] = [];
-  if (status && status !== "ALL") { vals.push(status); where.push(`d.status=$${vals.length}`); }
+  if (status && status !== "ALL") {
+    // "Refunded" is not a stored status — a refund leaves status='CANCELLED'
+    // and records itself on payoutStatus/escrowStatus. The badge shows those
+    // deals as Refunded, so the filter has to match on the same signal.
+    if (status === "REFUNDED") {
+      where.push(`(d."payoutStatus"='REFUNDED_TO_BRAND' OR d."escrowStatus"='REFUNDED')`);
+    } else if (status === "CANCELLED") {
+      // ...and a plain cancellation is the one that is *not* a refund.
+      vals.push(status);
+      where.push(`d.status=$${vals.length} AND COALESCE(d."payoutStatus",'') <> 'REFUNDED_TO_BRAND' AND COALESCE(d."escrowStatus",'') <> 'REFUNDED'`);
+    } else {
+      vals.push(status);
+      where.push(`d.status=$${vals.length}`);
+    }
+  }
   if (source && source !== "ALL") { vals.push(source); where.push(`d.source=$${vals.length}`); }
   if (search?.trim()) {
     vals.push(`%${search.trim()}%`);
@@ -462,6 +493,25 @@ router.get("/admin/deals", requireAdmin, async (req: Request, res: Response): Pr
     where.push(`(b."brandName" ILIKE $${i} OR b."companyName" ILIKE $${i} OR cr."instagramHandle" ILIKE $${i} OR cr."fullName" ILIKE $${i} OR d."orderId" ILIKE $${i})`);
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+  // Only paid for when the client asks to page; the legacy array path keeps
+  // its single query.
+  let total = 0;
+  if (wantsPaging) {
+    const countRow = await pool.query(
+      `SELECT COUNT(*)::int AS c
+         FROM "Deal" d
+         LEFT JOIN "Brand" b ON b.id = d."brandId"
+         LEFT JOIN "Creator" cr ON cr.id = d."creatorId"
+         ${whereSql}`,
+      vals
+    );
+    total = countRow.rows[0]?.c ?? 0;
+  }
+
+  vals.push(limit, offset);
+  const limitSql = `LIMIT $${vals.length - 1} OFFSET $${vals.length}`;
+
   const r = await pool.query(
     `WITH config AS (
        SELECT
@@ -484,6 +534,16 @@ router.get("/admin/deals", requireAdmin, async (req: Request, res: Response): Pr
             d."payoutStatus", d."paidAmount", d."payoutAdjustmentReason",
             d."refundAmount", d."refundReason",
             d."timelineDays", d."reelCount", d."storyCount", d."postCount", d."createdAt",
+            -- Lets the admin card separate "brand still owes payment" from
+            -- "this deal died unpaid": the expiry sweep never touches
+            -- PENDING_PAYMENT, so the status alone cannot say which it is.
+            d."paymentDeadlineAt",
+            /* Read through to_jsonb rather than d."stageUpdatedAt" so this
+               query still runs on a database where 001_deal_stage_tracking.sql
+               has not been applied yet — a missing key yields NULL instead of
+               erroring the whole endpoint. Lets the API and the migration ship
+               in either order. */
+            (to_jsonb(d) ->> 'stageUpdatedAt')::timestamptz AS "stageUpdatedAt",
             d."campaignId", d."barterId",
             b.id AS "brandId", b."brandName",
             cr.id AS "creatorId", cr."fullName" AS "creatorName", cr."instagramHandle" AS "creatorHandle",
@@ -500,10 +560,66 @@ router.get("/admin/deals", requireAdmin, async (req: Request, res: Response): Pr
        LEFT JOIN "Invoice" ic ON ic."referenceId"=d.id AND ic."recipientType"='CREATOR'
        ${whereSql}
        ORDER BY d."createdAt" DESC
-       LIMIT 200`,
+       ${limitSql}`,
     vals
   );
-  res.json(r.rows);
+  res.json(wantsPaging
+    ? { deals: r.rows, total, page, totalPages: Math.max(1, Math.ceil(total / limit)) }
+    : r.rows);
+});
+
+/* ── Admin deal stage-change feed ──────────────────────────────────────────
+ * Rows come from the DealStageEvent table written by the trigger in
+ * 001_deal_stage_tracking.sql. There is no admin notification system to hook
+ * into (Notification is per CREATOR/BRAND, AdminActionLog is an audit trail of
+ * admin-initiated actions), so this is the whole mechanism: read the log,
+ * newest first, and stamp seenAt when admin looks at it.
+ *
+ * Postgres raises 42P01 (undefined_table) until the migration is applied, so
+ * both handlers treat that as "no events yet" instead of failing the page. */
+const UNDEFINED_TABLE = "42P01";
+
+router.get("/admin/deal-stage-events", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const limit = Math.min(50, Math.max(1, parseInt(String(req.query["limit"] ?? 20), 10) || 20));
+  try {
+    const [events, unseen] = await Promise.all([
+      pool.query(
+        `SELECT e.id, e."dealId", e."fromStage", e."toStage", e."changedAt", e."seenAt",
+                d.source, d."orderId",
+                b."brandName", cr."instagramHandle" AS "creatorHandle"
+           FROM "DealStageEvent" e
+           LEFT JOIN "Deal" d    ON d.id  = e."dealId"
+           LEFT JOIN "Brand" b   ON b.id  = d."brandId"
+           LEFT JOIN "Creator" cr ON cr.id = d."creatorId"
+          ORDER BY e."changedAt" DESC
+          LIMIT $1`,
+        [limit]
+      ),
+      pool.query(`SELECT COUNT(*)::int AS c FROM "DealStageEvent" WHERE "seenAt" IS NULL`),
+    ]);
+    res.json({ events: events.rows, unseen: unseen.rows[0]?.c ?? 0, available: true });
+  } catch (e: any) {
+    if (e?.code === UNDEFINED_TABLE) { res.json({ events: [], unseen: 0, available: false }); return; }
+    throw e;
+  }
+});
+
+router.post("/admin/deal-stage-events/seen", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  // Cap at the newest event the admin actually saw, so anything that lands
+  // between render and click stays unread.
+  const { before } = req.body as { before?: string };
+  const cutoff = before && !Number.isNaN(Date.parse(before)) ? new Date(before) : new Date();
+  try {
+    const r = await pool.query(
+      `UPDATE "DealStageEvent" SET "seenAt" = NOW()
+        WHERE "seenAt" IS NULL AND "changedAt" <= $1`,
+      [cutoff]
+    );
+    res.json({ ok: true, marked: r.rowCount ?? 0 });
+  } catch (e: any) {
+    if (e?.code === UNDEFINED_TABLE) { res.json({ ok: true, marked: 0, available: false }); return; }
+    throw e;
+  }
 });
 
 // ── GET /api/admin/credit-purchases ──
