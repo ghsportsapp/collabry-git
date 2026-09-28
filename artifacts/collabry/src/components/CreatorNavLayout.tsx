@@ -260,8 +260,8 @@ export function CreatorHeader({ badges, clearBadge, status = "", onLocked, onPop
         style={{ background: BG, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
           <button className="text-2xl flex-shrink-0 flex items-center gap-2" style={{ fontFamily: "'Macondo Swash Caps', cursive", color: PINK }}
-            onClick={() => navigate("/home-creator")} aria-label="Home">
-            <img src={`${import.meta.env.BASE_URL}logo-mark.svg`} alt="" className="h-7 w-auto" />
+            onClick={() => location === "/home-creator" ? window.scrollTo({ top: 0, behavior: "smooth" }) : navigate("/home-creator")} aria-label="Home">
+            <img src={`${import.meta.env.BASE_URL}collabry-logo.png`} alt="" className="h-7 w-auto" />
             Collabry
           </button>
 

@@ -51,9 +51,9 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: [
-        "favicon.svg",
+        "favicon.png",
         "apple-touch-icon-180x180.png",
-        "pwa-icon-source.svg",
+        "collabry-logo.png",
       ],
       manifest: {
         name: "Collabry",
