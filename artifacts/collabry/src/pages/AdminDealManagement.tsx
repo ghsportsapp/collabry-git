@@ -136,11 +136,6 @@ export function resolveStage(d: any): { label: string; tone: Tone } {
   }
 
   if (d.status === "PENDING_PAYMENT") {
-    // The expiry job only sweeps deals that reached escrow, so an unpaid deal
-    // sits at PENDING_PAYMENT forever. Past its payment deadline it is dead in
-    // practice — say so rather than implying the brand can still pay.
-    const dl = d.paymentDeadlineAt ? new Date(d.paymentDeadlineAt).getTime() : null;
-    if (dl && dl < Date.now()) return { label: "Payment Expired", tone: "red" };
     return { label: "Pending Payment", tone: "amber" };
   }
 
