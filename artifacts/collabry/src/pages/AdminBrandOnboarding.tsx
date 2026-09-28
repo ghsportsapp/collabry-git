@@ -1,8 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { goBack } from "@/lib/adminReturnTo";
 import { Search, Plus, Trash2, ChevronUp, ChevronDown, X } from "lucide-react";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+
+/** Session-scoped so the passphrase is never persisted to disk — same key as
+ *  the creators export so one passphrase entry unlocks both exports. */
+const EXPORT_SECRET_KEY = "collabry_admin_export_secret";
 
 const POPPINS = "'Poppins', sans-serif";
 type FieldStatus = "mandatory" | "optional" | "hidden";
@@ -218,6 +222,12 @@ export default function AdminBrandOnboarding() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [loading, setLoading] = useState(false);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+
+  // ── CSV export state ──
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [askSecret, setAskSecret] = useState(false);
+  const [secretInput, setSecretInput] = useState("");
   // True only while showing a modal that a deep link opened.
   const deepLinkedRef = useRef(false);
 
@@ -242,6 +252,43 @@ export default function AdminBrandOnboarding() {
     setSelectedBrandId(id);
     deepLinkedRef.current = true;
   }, []);
+
+  const runExport = useCallback(async (secret: string) => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const r = await adminFetch("/api/admin/brands/export", { headers: { "x-admin-secret": secret } });
+      if (r.status === 401) { sessionStorage.removeItem(EXPORT_SECRET_KEY); setExportError("Incorrect passphrase."); return; }
+      if (!r.ok) {
+        setExportError(r.status === 503
+          ? "Export isn't configured on the server (ADMIN_API_SECRET is unset)."
+          : "Export failed. Please try again.");
+        return;
+      }
+      sessionStorage.setItem(EXPORT_SECRET_KEY, secret);
+      setAskSecret(false);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const suggested = r.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1];
+      a.download = suggested ?? "collabry_brands.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportError("Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  }, [adminFetch]);
+
+  const onDownloadCsv = useCallback(() => {
+    const cached = sessionStorage.getItem(EXPORT_SECRET_KEY);
+    if (cached) { runExport(cached); return; }
+    setExportError(null);
+    setSecretInput("");
+    setAskSecret(true);
+  }, [runExport]);
 
   const loadBrands = async () => {
     setLoading(true);
@@ -329,6 +376,39 @@ export default function AdminBrandOnboarding() {
 
   return (
     <div className="min-h-screen" style={{ background: "#0A0A0F", fontFamily: POPPINS }}>
+      {/* Export passphrase prompt */}
+      {askSecret && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.80)" }}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.10)" }}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-white font-semibold">Export Passphrase</h3>
+              <button onClick={() => { setAskSecret(false); setSecretInput(""); setExportError(null); }} className="text-white/70 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-white/70 text-sm mb-4">
+              The export contains brands' phone numbers and email addresses, so it needs the admin export passphrase.
+            </p>
+            <input
+              className="w-full bg-transparent border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-[#E14F69] placeholder:text-white/70 transition-all"
+              type="password"
+              autoFocus
+              placeholder="Passphrase"
+              value={secretInput}
+              onChange={e => { setSecretInput(e.target.value); setExportError(null); }}
+              onKeyDown={e => { if (e.key === "Enter" && secretInput.trim()) runExport(secretInput); }}
+            />
+            {exportError && <p className="text-red-400 text-xs mt-2">{exportError}</p>}
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => { setAskSecret(false); setSecretInput(""); setExportError(null); }}
+                className="flex-1 py-2.5 rounded-xl border border-white/15 text-white/80 text-sm">Cancel</button>
+              <button onClick={() => runExport(secretInput)} disabled={exporting || !secretInput.trim()}
+                className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50" style={{ background: "#E14F69" }}>
+                {exporting ? "Exporting..." : "Download CSV"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="px-6 py-4 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-3">
           {/* Deep-linked from another admin screen (?returnTo=) → go back there;
@@ -367,7 +447,14 @@ export default function AdminBrandOnboarding() {
                 <option value="ACTIVE">Active</option>
                 <option value="SUSPENDED">Suspended</option>
               </select>
+              <button onClick={onDownloadCsv} disabled={exporting}
+                title="Export all brands as CSV"
+                className="flex-shrink-0 text-xs px-3 py-2.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{ background: "#E14F69" }}>
+                {exporting ? "Exporting..." : "Download CSV"}
+              </button>
             </div>
+            {exportError && !askSecret && <p className="text-red-400 text-xs mt-1.5">{exportError}</p>}
             {loading ? (
               <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-[#E14F69] border-t-transparent rounded-full animate-spin" /></div>
             ) : (

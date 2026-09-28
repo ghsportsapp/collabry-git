@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireAdmin } from "../middleware/requireAdmin";
+import { requireAdminSecret } from "../middleware/requireAdminSecret";
 import { activateCreditHoldCampaigns } from "../lib/creditHoldActivation";
 import { createPopup } from "../lib/popups";
 import { createNotification } from "../lib/notifications";
@@ -49,6 +50,63 @@ router.get("/admin/brands/list-all", requireAdmin, async (_req: Request, res: Re
     `SELECT id, "brandName", email, "logoUrl", "creditBalance", status FROM "Brand" WHERE status='ACTIVE' ORDER BY "brandName"`
   );
   res.json(result.rows);
+});
+
+const BRAND_EXPORT_COLUMNS = [
+  "Brand Name", "Phone", "Email", "Contact Name", "Category", "Website", "Date Joined",
+];
+
+const FORMULA_TRIGGER = /^[=+\-@]/;
+
+function csvCell(value: unknown): string {
+  if (value === null || value === undefined) return `""`;
+  const raw = String(value);
+  const safe = FORMULA_TRIGGER.test(raw) ? `'${raw}` : raw;
+  return `"${safe.replace(/"/g, `""`)}"`;
+}
+
+// Must stay above "/admin/brands/:id" — Express matches in registration order.
+router.get("/admin/brands/export", requireAdminSecret, async (_req: Request, res: Response): Promise<void> => {
+  const result = await pool.query(
+    `SELECT
+       b."brandName",
+       (SELECT cfv.value
+          FROM "BrandCustomFieldValue" cfv
+          JOIN "BrandSignupField" f ON f.id = cfv."fieldId"
+         WHERE cfv."brandId" = b.id
+           AND f."fieldType" = 'tel'
+           AND f."isActive" = true
+         LIMIT 1) AS phone,
+       b.email,
+       b."contactName",
+       c.name AS "categoryName",
+       b."websiteUrl",
+       b."createdAt"
+     FROM "Brand" b
+     LEFT JOIN "Category" c ON c.id = b."categoryId"
+     ORDER BY b."createdAt" DESC`
+  );
+
+  const lines = [
+    BRAND_EXPORT_COLUMNS.map(csvCell).join(","),
+    ...result.rows.map((r: any) => {
+      // Format date as D/M/YYYY in IST (matching how dates appear in the admin UI).
+      const ist = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(r.createdAt));
+      const [y, m, d] = ist.split("-");
+      const dateJoined = `${parseInt(d)}/${parseInt(m)}/${y}`;
+      return [
+        r.brandName, r.phone, r.email, r.contactName,
+        r.categoryName, r.websiteUrl, dateJoined,
+      ].map(csvCell).join(",");
+    }),
+  ];
+
+  const csv = `﻿${lines.join("\r\n")}\r\n`;
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="collabry_brands_${today}.csv"`);
+  res.send(csv);
 });
 
 router.get("/admin/brands/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
