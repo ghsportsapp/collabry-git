@@ -2,6 +2,8 @@ import { Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
 import type { LandingContentHook } from "@/hooks/useLandingContent";
 import { InstallAppButton } from "@/components/InstallAppButton";
+import { useBrandAuth } from "@/contexts/BrandAuthContext";
+import { useCreatorAuth } from "@/contexts/CreatorAuthContext";
 
 function scrollToTop() {
   if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
@@ -15,6 +17,10 @@ export default function Header({ content }: Props) {
   const logoText = content?.get("header.logo_text") ?? "Collabry";
   const brandCta = content?.get("header.brand_cta") ?? "Signup as Brand";
   const creatorCta = content?.get("header.creator_cta") ?? "Signup as Creator";
+
+  const { brandId } = useBrandAuth();
+  const { creatorId } = useCreatorAuth();
+  const logoHref = brandId ? "/home-brand" : creatorId ? "/home-creator" : "/";
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -33,7 +39,7 @@ export default function Header({ content }: Props) {
     <header className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-md border-b border-white/5">
       <div className="max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between">
         <Link
-          href="/"
+          href={logoHref}
           onClick={scrollToTop}
           aria-label="Go to home"
           className="flex items-center gap-2 text-2xl text-[#E14F69] cursor-pointer bg-transparent border-0 p-0 no-underline"
