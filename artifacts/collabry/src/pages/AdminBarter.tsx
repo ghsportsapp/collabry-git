@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
-import { Package, CheckCircle, XCircle, Clock, MessageSquare } from "lucide-react";
+import { Package, CheckCircle, XCircle, Clock, MessageSquare, Pause, Play } from "lucide-react";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 
 const POPPINS = "'Poppins', sans-serif";
 const PINK = "#E14F69";
 
-const QUEUE_STATUSES = ["PENDING_APPROVAL","LIVE","HIDDEN","CREDIT_HOLD","REJECTED","EXPIRED"];
+const QUEUE_STATUSES = ["PENDING_APPROVAL","LIVE","HIDDEN","PAUSED","CREDIT_HOLD","REJECTED","EXPIRED"];
 
 export default function AdminBarter({ embedded = false }: { embedded?: boolean } = {}) {
   const { adminFetch, adminId } = useAdminAuth();
@@ -16,6 +16,7 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
   const [selected, setSelected] = useState<any>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [holdMessage, setHoldMessage] = useState("");
+  const [extendDays, setExtendDays] = useState("7");
   const [actionLoading, setActionLoading] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
@@ -32,7 +33,7 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
 
   useEffect(() => { if (adminId) load(); }, [load, adminId]);
 
-  const doAction = async (action: "approve" | "reject" | "hold", payload?: any) => {
+  const doAction = async (action: "approve" | "reject" | "hold" | "pause" | "resume" | "extend" | "expire", payload?: any) => {
     if (!selected) return;
     setActionLoading(true);
     try {
@@ -42,7 +43,11 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
       });
       const d = await r.json();
       if (r.ok) {
-        setMsg({ text: `Barter campaign ${action}d successfully. Status: ${d.status ?? "updated"}.`, ok: true });
+        const done: Record<string, string> = {
+          approve: "approved", reject: "rejected", hold: "put on hold",
+          pause: "paused", resume: "resumed", extend: "extended", expire: "expired",
+        };
+        setMsg({ text: `Barter campaign ${done[action] ?? "updated"}. Status: ${d.status ?? "updated"}.`, ok: true });
         setSelected(null);
         load();
       } else {
@@ -138,10 +143,26 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-1">
                       <p className="text-white font-bold text-base leading-snug" style={{ fontFamily: POPPINS }}>{selected.name}</p>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0"
-                        style={{ background: "rgba(245,158,11,0.15)", color: "#F59E0B", fontFamily: POPPINS }}>
-                        {queueStatus.replace("_", " ")}
-                      </span>
+                      {(() => {
+                        const st = (selected.status ?? queueStatus) as string;
+                        const meta: Record<string, [string, string]> = {
+                          LIVE: ["#10B981", "rgba(16,185,129,0.15)"],
+                          HIDDEN: ["#8B5CF6", "rgba(139,92,246,0.15)"],
+                          PAUSED: ["#F59E0B", "rgba(245,158,11,0.15)"],
+                          EXPIRED: ["#6B7280", "rgba(107,114,128,0.12)"],
+                          CANCELLED: ["#EF4444", "rgba(239,68,68,0.15)"],
+                          REJECTED: ["#EF4444", "rgba(239,68,68,0.15)"],
+                          CREDIT_HOLD: ["#F59E0B", "rgba(245,158,11,0.15)"],
+                          PENDING_APPROVAL: ["#F59E0B", "rgba(245,158,11,0.15)"],
+                        };
+                        const [color, bg] = meta[st] ?? ["#F59E0B", "rgba(245,158,11,0.15)"];
+                        return (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0"
+                            style={{ background: bg, color, fontFamily: POPPINS }}>
+                            {st.replace(/_/g, " ")}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <p className="text-white/55 text-xs" style={{ fontFamily: POPPINS }}>{selected.brandName}</p>
                   </div>
@@ -159,6 +180,8 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
                       ["Delivery Window", selected.deliveryWindowDays ? `${selected.deliveryWindowDays} days` : "—"],
                       ["Who Publishes", selected.whoPublishes ?? "—"],
                       ["Submitted", fmtDate(selected.createdAt)],
+                      ...(selected.liveAt ? [["Live Since", fmtDate(selected.liveAt)]] as [string, string][] : []),
+                      ...(selected.expiresAt ? [["Expires", fmtDate(selected.expiresAt)]] as [string, string][] : []),
                     ] as [string, string][]).map(([label, value]) => (
                       <div key={label}>
                         <p className="text-[10px] mb-0.5" style={{ color: "rgba(255,255,255,0.45)", fontFamily: POPPINS }}>{label}</p>
@@ -276,6 +299,56 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
                         className="w-full py-2.5 rounded-xl text-red-400 font-semibold text-sm flex items-center justify-center gap-2"
                         style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.2)", fontFamily: POPPINS }}>
                         <XCircle className="w-4 h-4" />Reject
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Live/Hidden actions: pause, extend, expire */}
+                {["LIVE","HIDDEN"].includes(selected.status) && (
+                  <div className="flex-shrink-0 p-4 space-y-2" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+                    <p className="text-white/50 text-[10px] font-semibold uppercase tracking-wide" style={{ fontFamily: POPPINS }}>Actions</p>
+                    <button onClick={() => { if (confirm("Pause this barter campaign? New creators won't see or apply to it; existing collaborations continue.")) doAction("pause"); }}
+                      disabled={actionLoading}
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-white text-xs font-semibold"
+                      style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.3)", fontFamily: POPPINS }}>
+                      <Pause className="w-3.5 h-3.5" />Pause Campaign
+                    </button>
+                    <div className="flex gap-2">
+                      <input type="number" value={extendDays} onChange={e => setExtendDays(e.target.value)} min="1"
+                        className="w-16 px-2 py-1.5 rounded-lg text-white text-xs outline-none text-center"
+                        style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", fontFamily: POPPINS }} />
+                      <button onClick={() => doAction("extend", { days: parseInt(extendDays) })} disabled={actionLoading}
+                        className="flex-1 py-1.5 rounded-lg text-white text-xs font-semibold"
+                        style={{ background: "rgba(59,130,246,0.25)", border: "1px solid rgba(59,130,246,0.4)", fontFamily: POPPINS }}>
+                        Extend +{extendDays}d
+                      </button>
+                    </div>
+                    <button onClick={() => { if (confirm("Expire this barter campaign now?")) doAction("expire"); }} disabled={actionLoading}
+                      className="w-full py-1.5 rounded-lg text-white text-xs font-semibold"
+                      style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.3)", fontFamily: POPPINS }}>
+                      Expire Now
+                    </button>
+                  </div>
+                )}
+
+                {/* Paused actions: resume, extend */}
+                {selected.status === "PAUSED" && (
+                  <div className="flex-shrink-0 p-4 space-y-2" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+                    <p className="text-white/50 text-[10px] font-semibold uppercase tracking-wide" style={{ fontFamily: POPPINS }}>Actions</p>
+                    <button onClick={() => doAction("resume")} disabled={actionLoading}
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-white text-xs font-semibold"
+                      style={{ background: "rgba(16,185,129,0.2)", border: "1px solid rgba(16,185,129,0.4)", fontFamily: POPPINS }}>
+                      <Play className="w-3.5 h-3.5 text-green-400" />Resume Campaign
+                    </button>
+                    <div className="flex gap-2">
+                      <input type="number" value={extendDays} onChange={e => setExtendDays(e.target.value)} min="1"
+                        className="w-16 px-2 py-1.5 rounded-lg text-white text-xs outline-none text-center"
+                        style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", fontFamily: POPPINS }} />
+                      <button onClick={() => doAction("extend", { days: parseInt(extendDays) })} disabled={actionLoading}
+                        className="flex-1 py-1.5 rounded-lg text-white text-xs font-semibold"
+                        style={{ background: "rgba(59,130,246,0.25)", border: "1px solid rgba(59,130,246,0.4)", fontFamily: POPPINS }}>
+                        Extend +{extendDays}d
                       </button>
                     </div>
                   </div>

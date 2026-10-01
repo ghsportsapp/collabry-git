@@ -1907,6 +1907,75 @@ router.post("/admin/barter/:id/hold", requireAdmin, async (req: Request, res: Re
   res.json({ ok: true });
 });
 
+// ─── Admin: Pause / Resume / Extend / Expire barter campaign ─────────────────
+// Mirrors the paid-campaign admin controls (extend/expire) plus the same
+// pause/resume state machine the brand already uses for barter. PAUSED is not
+// LIVE, so a paused barter is already hidden from `/creator/barter/available`
+// and rejected by `/creator/barter/:id/apply` — only new discovery is blocked;
+// existing deals (their own rows, independent of campaign status) are untouched.
+// Barter moves no money, so none of these touch escrow/payout/refund logic.
+
+router.post("/admin/barter/:id/pause", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params as Record<string, string>;
+  const barter = await pool.query(
+    `SELECT id, name, status, "brandId", "expiresAt" FROM "BarterCampaign" WHERE id=$1`,
+    [id]
+  );
+  if (!barter.rows[0]) { res.status(404).json({ error: "Barter campaign not found" }); return; }
+  const c = barter.rows[0];
+  if (!["LIVE", "HIDDEN"].includes(c.status)) {
+    res.status(400).json({ error: "Only active campaigns can be paused" }); return;
+  }
+  if (c.expiresAt && new Date(c.expiresAt) <= new Date()) {
+    res.status(400).json({ error: "Campaign has already expired" }); return;
+  }
+  await pool.query(`UPDATE "BarterCampaign" SET status='PAUSED' WHERE id=$1`, [id]);
+  await createNotification({
+    userId: c.brandId, userType: "BRAND", type: "BARTER_PAUSED",
+    title: "Barter Campaign Paused",
+    body: `Your barter campaign "${c.name}" has been paused. New creators can no longer see or apply to it, but your existing collaborations continue as normal.`,
+    relatedEntityType: "BARTER_CAMPAIGN", relatedEntityId: id,
+    expiresInDays: 90,
+  }).catch(() => {});
+  await createPopup({
+    userId: c.brandId, userType: "BRAND", type: "BARTER_PAUSED",
+    title: "Barter Campaign Paused",
+    body: `"${c.name}" has been paused. New creators can't see or apply to it, but your existing collaborations are unaffected.`,
+    ctaText: "View Campaign", ctaPath: `/home-brand/barter/${id}`,
+    isCelebration: false, relatedEntityId: id,
+  });
+  res.json({ ok: true, status: "PAUSED" });
+});
+
+router.post("/admin/barter/:id/resume", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params as Record<string, string>;
+  const barter = await pool.query(
+    `SELECT id, name, status, "expiresAt", "slotCount", "slotsFilled" FROM "BarterCampaign" WHERE id=$1`,
+    [id]
+  );
+  if (!barter.rows[0]) { res.status(404).json({ error: "Barter campaign not found" }); return; }
+  const c = barter.rows[0];
+  if (c.status !== "PAUSED") { res.status(400).json({ error: "Only paused campaigns can be resumed" }); return; }
+  if (c.expiresAt && new Date(c.expiresAt) <= new Date()) {
+    res.status(400).json({ error: "Campaign has expired and cannot be resumed" }); return;
+  }
+  const resumeStatus = (c.slotsFilled as number) >= (c.slotCount as number) ? "HIDDEN" : "LIVE";
+  await pool.query(`UPDATE "BarterCampaign" SET status=$1 WHERE id=$2`, [resumeStatus, id]);
+  res.json({ ok: true, status: resumeStatus });
+});
+
+router.post("/admin/barter/:id/extend", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const { days } = req.body;
+  if (!days || parseInt(days) < 1) { res.status(400).json({ error: "days required" }); return; }
+  await pool.query(`UPDATE "BarterCampaign" SET "expiresAt"="expiresAt"+($1::int * INTERVAL '1 day') WHERE id=$2`, [parseInt(days), req.params["id"]]);
+  res.json({ ok: true });
+});
+
+router.post("/admin/barter/:id/expire", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  await expireBarterCampaign(req.params["id"] as string);
+  res.json({ ok: true });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // DEAL-CANCELLATION SIDE EFFECT (free up slot, reopen if hidden+not expired)
 // ═══════════════════════════════════════════════════════════════════════════════
