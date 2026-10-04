@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Trash2, Save, ChevronUp, ChevronDown } from "lucide-re
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { goBack } from "@/lib/adminReturnTo";
 import { WHITE_GLOVE_DEFAULT, type WhiteGlove, type ServicePoint, type Plan } from "./whiteGloveContent";
+import WhiteGlovePurchases from "./WhiteGlovePurchases";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -92,6 +93,8 @@ export default function AdminWhiteGlove() {
           <p className="text-white/50 text-xs">Edits save live to the public /white-glove-service page.</p>
         </div>
       </div>
+
+      <WhiteGlovePurchases />
 
       {/* Hero */}
       <div className="rounded-2xl p-5 mb-5" style={card}>

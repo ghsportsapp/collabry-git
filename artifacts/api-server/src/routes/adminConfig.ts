@@ -576,7 +576,7 @@ function cleanPlans(input: unknown): WhiteGlovePlan[] {
   return plans.length > 0 ? plans : WHITE_GLOVE_DEFAULT.plans;
 }
 
-async function getWhiteGlove(): Promise<WhiteGloveContent> {
+export async function getWhiteGlove(): Promise<WhiteGloveContent> {
   const result = await pool.query(`SELECT value FROM "PlatformConfig" WHERE key=$1`, [WHITE_GLOVE_KEY]);
   if (result.rows.length > 0) {
     try {

@@ -10,6 +10,7 @@ import { initMatchmakingTables } from "./routes/matchmaking";
 import { activateAllCreditHoldCampaigns } from "./lib/creditHoldActivation";
 import { pool } from "@workspace/db";
 import { ensureExtensionTable } from "./routes/dealExtensions";
+import { ensureWhiteGloveTable } from "./routes/whiteGlove";
 import { isWhatsAppEnabled } from "./lib/aisensy";
 
 const rawPort = process.env["PORT"];
@@ -227,6 +228,13 @@ async function bootstrap() {
     logger.info("ensureExtensionTable complete");
   } catch (e) {
     logger.error({ err: e }, "ensureExtensionTable failed — continuing");
+  }
+
+  try {
+    await ensureWhiteGloveTable();
+    logger.info("ensureWhiteGloveTable complete");
+  } catch (e) {
+    logger.error({ err: e }, "ensureWhiteGloveTable failed — continuing");
   }
 
   try {

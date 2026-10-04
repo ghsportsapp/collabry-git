@@ -40,6 +40,7 @@ import creatorBrandProfileRouter from "./creatorBrandProfile";
 import dealExtensionsRouter from "./dealExtensions";
 import brandReportsRouter from "./brandReports";
 import dealReportsRouter from "./dealReports";
+import whiteGloveRouter from "./whiteGlove";
 
 const router: IRouter = Router();
 
@@ -84,6 +85,7 @@ router.use(creatorBrandProfileRouter);
 router.use(dealExtensionsRouter);
 router.use(brandReportsRouter);
 router.use(dealReportsRouter);
+router.use(whiteGloveRouter);
 
 router.get("/server-time", (_req: Request, res: Response) => {
   res.json({ ts: Date.now() });

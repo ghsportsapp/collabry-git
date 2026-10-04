@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Check } from "lucide-react";
 import { WHITE_GLOVE_DEFAULT, type WhiteGlove, type Plan } from "./whiteGloveContent";
+import { useBrandAuth } from "@/contexts/BrandAuthContext";
+import { openRazorpayCheckout } from "@/lib/razorpay";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -22,6 +24,9 @@ export default function WhiteGloveService() {
   // on the network and can never hang on a spinner. The fetch only *upgrades* content.
   const [data, setData] = useState<WhiteGlove>(WHITE_GLOVE_DEFAULT);
   const [, navigate] = useLocation();
+  const { brandId, brandName, apiFetch, loading: authLoading } = useBrandAuth();
+  const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -36,8 +41,53 @@ export default function WhiteGloveService() {
     return () => { alive = false; };
   }, []);
 
-  // Razorpay will slot in here later — for now every plan goes to the thank-you page.
-  const selectPlan = (_plan: Plan) => navigate("/white-glove-service/thank-you");
+  const selectPlan = async (plan: Plan) => {
+    if (payingPlanId || authLoading) return;
+    // Brand-only purchase — send logged-out visitors to login and bring them back here.
+    if (!brandId) { navigate(`/login-brand?next=${encodeURIComponent("/white-glove-service")}`); return; }
+    setPayingPlanId(plan.id);
+    setMsg(null);
+    try {
+      // 1) Create the Razorpay order server-side (price comes from the saved plan config).
+      const r = await apiFetch("/api/brand/white-glove/create-order", { method: "POST", body: JSON.stringify({ planId: plan.id }) });
+      const d = await r.json();
+      if (!r.ok) { setMsg(d.message ?? d.error ?? "Failed to start payment"); setPayingPlanId(null); return; }
+      // 2) Open the hosted checkout modal.
+      const opened = await openRazorpayCheckout({
+        key: d.key,
+        orderId: d.orderId,
+        amount: d.amount,
+        currency: d.currency,
+        description: `White Glove · ${d.planName ?? plan.name}`,
+        prefill: brandName ? { name: brandName } : undefined,
+        onSuccess: async (resp) => {
+          // 3) Verify the signature server-side, which records the purchase.
+          try {
+            const vr = await apiFetch("/api/brand/white-glove/verify-payment", {
+              method: "POST",
+              body: JSON.stringify({
+                razorpay_order_id: resp.razorpay_order_id,
+                razorpay_payment_id: resp.razorpay_payment_id,
+                razorpay_signature: resp.razorpay_signature,
+              }),
+            });
+            const vd = await vr.json();
+            if (vr.ok && vd.ok) navigate("/white-glove-service/thank-you");
+            else { setMsg(vd.error ?? "Payment verification failed. If money was deducted, our team will confirm shortly."); setPayingPlanId(null); }
+          } catch (err: any) {
+            setMsg(err?.message ?? "Could not verify payment. If money was deducted, our team will confirm shortly.");
+            setPayingPlanId(null);
+          }
+        },
+        onDismiss: () => setPayingPlanId(null),
+        onFailure: (message) => { setMsg(message); setPayingPlanId(null); },
+      });
+      if (!opened) { setMsg("Could not load the payment gateway. Check your connection and try again."); setPayingPlanId(null); }
+    } catch (e: any) {
+      setMsg(e?.message ?? "Payment failed");
+      setPayingPlanId(null);
+    }
+  };
 
   return (
     <div className="min-h-screen" style={{ background: BG, fontFamily: POPPINS }}>
@@ -152,17 +202,21 @@ export default function WhiteGloveService() {
                     </div>
                   )}
 
-                  <button onClick={() => selectPlan(plan)}
-                    className="mt-auto w-full py-3 rounded-xl text-sm font-semibold transition-opacity hover:opacity-90"
+                  <button onClick={() => selectPlan(plan)} disabled={!!payingPlanId}
+                    className="mt-auto w-full py-3 rounded-xl text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
                     style={highlight
                       ? { background: PINK, color: "#fff", boxShadow: "0 6px 20px rgba(225,79,105,0.4)" }
                       : { background: "rgba(255,255,255,0.04)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }}>
-                    {highlight ? `Choose ${plan.name}` : "Get started"}
+                    {payingPlanId === plan.id ? "Processing…" : highlight ? `Choose ${plan.name}` : "Get started"}
                   </button>
                 </div>
               );
             })}
           </div>
+
+          {msg && (
+            <p className="text-center text-sm mt-8" style={{ color: "#f87171" }}>{msg}</p>
+          )}
 
           {data.pricingNote && (
             <p className="text-center text-white/45 text-xs mt-10">{data.pricingNote}</p>

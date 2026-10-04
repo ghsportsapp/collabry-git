@@ -7,6 +7,7 @@ import { addBrandSSE, removeBrandSSE } from "../lib/sseManager";
 import { verifyToken, getAccessSecret } from "../lib/auth";
 import { activateCreditHoldCampaigns } from "../lib/creditHoldActivation";
 import { logger } from "../lib/logger";
+import { fulfillWhiteGlovePurchase } from "./whiteGlove";
 
 const router: IRouter = Router();
 
@@ -1073,6 +1074,31 @@ router.post("/webhooks/razorpay/credits", async (req: Request, res: Response): P
     const payment = req.body?.payload?.payment?.entity;
     const paymentId = payment?.id as string;
     const notes = payment?.notes ?? {};
+
+    // White Glove plans share this webhook. Order notes aren't guaranteed to be
+    // copied onto the payment, so read them from the order itself.
+    let orderNotes: Record<string, string> = {};
+    const keyId = process.env["RAZORPAY_KEY_ID"];
+    const keySecret = process.env["RAZORPAY_KEY_SECRET"];
+    if (payment?.order_id && keyId && keySecret && notes.purpose !== "credits") {
+      const Razorpay = (await import("razorpay")).default as any;
+      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      orderNotes = (await rzp.orders.fetch(payment.order_id))?.notes ?? {};
+    }
+    if (orderNotes.purpose === "white_glove" && orderNotes.brandId && paymentId) {
+      const wg = await fulfillWhiteGlovePurchase({
+        brandId: orderNotes.brandId,
+        planId: String(orderNotes.planId ?? ""),
+        planName: String(orderNotes.planName ?? ""),
+        months: parseInt(orderNotes.months ?? "0") || 0,
+        amountInr: parseInt(orderNotes.amountInr ?? "0") || 0,
+        orderId: payment.order_id,
+        paymentId,
+      });
+      res.json({ ok: true, duplicate: wg.status === "duplicate" });
+      return;
+    }
+
     const brandId = notes.brandId as string | undefined;
     const quantity = parseInt(notes.quantity as string);
     if (!brandId || !quantity || !paymentId) { res.status(400).json({ error: "Missing data in payment" }); return; }

@@ -59,7 +59,9 @@ export default function BrandLogin() {
       setAuth(data.accessToken, data.brandId, data.brandName);
       identifyUser(data.brandId, "BRAND");
       trackEvent("login_success", { user_type: "BRAND", method: "email" });
-      navigate("/home-brand");
+      // Return to an internal page (e.g. White Glove checkout) if one was requested.
+      const next = new URLSearchParams(window.location.search).get("next");
+      navigate(next && /^\/(?![/\\])/.test(next) ? next : "/home-brand");
     } catch { setError("Network error. Please try again."); }
     finally { setSubmitting(false); }
   };
