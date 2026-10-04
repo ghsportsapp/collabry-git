@@ -75,6 +75,9 @@ const AdminBrandLandingEditor = lazy(() => import("@/pages/AdminBrandLandingEdit
 const CreatorLandingPage = lazy(() => import("@/pages/CreatorLandingPage"));
 const AdminCreatorLandingEditor = lazy(() => import("@/pages/AdminCreatorLandingEditor"));
 const AdminLandingVideos = lazy(() => import("@/pages/AdminLandingVideos"));
+const WhiteGloveService = lazy(() => import("@/pages/WhiteGloveService"));
+const WhiteGloveThankYou = lazy(() => import("@/pages/WhiteGloveThankYou"));
+const AdminWhiteGlove = lazy(() => import("@/pages/AdminWhiteGlove"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function AR({ path, component: Comp }: { path: string; component: React.ComponentType<any> }) {
@@ -135,6 +138,7 @@ function Router() {
       <AR path="/admin-collabryangad/landing-videos" component={AdminLandingVideos} />
       <AR path="/admin-collabryangad/about-us" component={AdminAboutUs} />
       <AR path="/admin-collabryangad/contact-us" component={AdminAboutUs} />
+      <AR path="/admin-collabryangad/white-glove" component={AdminWhiteGlove} />
 
       <Route path="/brand" component={BrandLandingPage} />
       <Route path="/creator" component={CreatorLandingPage} />
@@ -163,6 +167,8 @@ function Router() {
       <Route path="/privacy-policies" component={PrivacyPolicy} />
       <Route path="/about-us" component={AboutUsPage} />
       <Route path="/contact-us" component={AboutUsPage} />
+      <Route path="/white-glove-service" component={WhiteGloveService} />
+      <Route path="/white-glove-service/thank-you" component={WhiteGloveThankYou} />
       <Route component={NotFound} />
     </Switch>
   );

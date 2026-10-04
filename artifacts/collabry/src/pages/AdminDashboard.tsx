@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Layout, Settings, Users, ArrowRight, CreditCard, Tag, LogOut, FileText, Star, Megaphone, Sliders, Info, Video, KeyRound, Eye, EyeOff, CheckCircle } from "lucide-react";
+import { Layout, Settings, Users, ArrowRight, CreditCard, Tag, LogOut, FileText, Star, Megaphone, Sliders, Info, Video, KeyRound, Eye, EyeOff, CheckCircle, Sparkles } from "lucide-react";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { clearAdminSession, verifyAdminPassword, changeAdminPassword, verifyAdminOtp, checkLocked, recordFailedAttempt, clearAttempts, LOCK_DURATION_MS } from "@/lib/adminAuth";
 
@@ -15,6 +15,7 @@ const pages = [
   { id: "credits", title: "Credits Management", desc: "Configure free credits on signup, set expiry days, and gift credits to one or multiple brands.", icon: CreditCard, href: "/admin-collabryangad/credits", status: "Live", statusColor: "bg-green-500" },
   { id: "categories", title: "Categories", desc: "Add, rename, and delete brand categories and subcategories. Brands are notified on deletion.", icon: Tag, href: "/admin-collabryangad/categories", status: "Live", statusColor: "bg-green-500" },
   { id: "about-us", title: "Connect Now Editor", desc: "Edit the public Connect Now / About Us page content, team members, mission, and contact details.", icon: Info, href: "/admin-collabryangad/contact-us", status: "Live", statusColor: "bg-green-500" },
+  { id: "white-glove", title: "White Glove Service", desc: "Edit the public /white-glove-service page — hero, the included service points, and all three pricing plans.", icon: Sparkles, href: "/admin-collabryangad/white-glove", status: "Live", statusColor: "bg-green-500" },
   { id: "legal", title: "Legal Pages", desc: "Edit Terms & Conditions and Privacy Policy content shown to users during signup and on the site.", icon: FileText, href: "/admin-collabryangad/legal", status: "Live", statusColor: "bg-green-500" },
   { id: "creator-onboarding", title: "Creator Onboarding", desc: "Review creator applications, approve or reject profiles, view portfolio, and manage suspensions and bans.", icon: Star, href: "/admin-collabryangad/creator-onboarding", status: "Live", statusColor: "bg-green-500" },
   { id: "pricing", title: "Pricing & Slabs", desc: "Configure follower-based pricing slabs shown as recommendations to creators during signup.", icon: CreditCard, href: "/admin-collabryangad/pricing", status: "Live", statusColor: "bg-green-500" },

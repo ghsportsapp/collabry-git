@@ -495,4 +495,141 @@ router.patch("/admin/about-us", requireAdmin, async (req: Request, res: Response
   res.json({ ok: true });
 });
 
+/* ── White Glove Service page content ─────────────────── */
+const WHITE_GLOVE_KEY = "white_glove_content";
+
+interface ServicePoint { title: string; desc: string }
+interface WhiteGlovePlan {
+  id: string;
+  name: string;
+  desc: string;
+  months: number;
+  mrp: number;
+  price: number;
+  badge: string;      // e.g. "Most popular" — empty for no badge
+  perks: string[];    // extra perk lines (Growth/Scale); Starter can be []
+}
+interface WhiteGloveContent {
+  heroTag: string;
+  heroLine1: string; heroLine2: string; heroSub: string;
+  includedLine1: string; includedLine2: string; includedSub: string;
+  points: ServicePoint[];
+  pricingLine1: string; pricingLine2: string;
+  plans: WhiteGlovePlan[];
+  pricingNote: string;
+  footerNote: string;
+}
+
+const WHITE_GLOVE_DEFAULT: WhiteGloveContent = {
+  heroTag: "White Glove · fully managed for you",
+  heroLine1: "Hand us your creator marketing.",
+  heroLine2: "We'll run every bit of it.",
+  heroSub: "No searching for creators, no chasing deliverables, no juggling payments. A dedicated Collabry team takes the entire process off your plate — you simply approve and watch it work.",
+  includedLine1: "One complete service.",
+  includedLine2: "Included in every plan.",
+  includedSub: "The same end-to-end concierge service across all three plans — only the duration and price change.",
+  points: [
+    { title: "Dedicated account management", desc: "A single point of contact from our team for your whole subscription — no more juggling multiple creator chats yourself." },
+    { title: "Curated creator shortlisting", desc: "We source and shortlist creators matched to your niche, audience and budget — refreshed each cycle as new creators join." },
+    { title: "End-to-end outreach & negotiation", desc: "We make first contact, pitch the collaboration, and negotiate terms — barter value or payout, deliverables and timeline — on your behalf." },
+    { title: "Deal setup & documentation", desc: "Deal creation, contracting and platform setup handled by us. You get a ready summary per deal, with no manual entry." },
+    { title: "Campaign briefing & creative guidance", desc: "We brief every creator on your brand guidelines, do's and don'ts, so the content always stays on-brand." },
+    { title: "Timeline & deliverable tracking", desc: "Active monitoring of every deal's status and deadline, so nothing slips through the cracks." },
+    { title: "Payment & escrow handling", desc: "We manage payout releases, refunds and escrow — you get one consolidated monthly invoice instead of per-deal billing." },
+    { title: "Priority support", desc: "Faster response times, a priority queue, and a direct escalation path for any disputes or creator no-shows." },
+  ],
+  pricingLine1: "Choose how long you want us.",
+  pricingLine2: "The longer you go, the less you pay.",
+  plans: [
+    { id: "starter", name: "Starter", desc: "Perfect for a one-off push or a first taste of the service.", months: 1, mrp: 10000, price: 1200, badge: "", perks: [] },
+    { id: "growth", name: "Growth", desc: "For brands running steady, ongoing creator campaigns.", months: 3, mrp: 25000, price: 3200, badge: "Most popular", perks: ["Lower per-month rate", "Same account manager all term"] },
+    { id: "scale", name: "Scale", desc: "Best value for always-on, long-term creator marketing.", months: 6, mrp: 45000, price: 5800, badge: "", perks: ["Lowest per-month rate", "Same account manager all term"] },
+  ],
+  pricingNote: "Secure payment via Razorpay · Our team reaches out within 24 hours of purchase",
+  footerNote: "A Krida Ventures Company · Gurugram, Haryana",
+};
+
+function cleanPoints(input: unknown): ServicePoint[] {
+  if (!Array.isArray(input)) return WHITE_GLOVE_DEFAULT.points;
+  const points = input
+    .filter((p): p is ServicePoint => !!p && typeof p.title === "string" && typeof p.desc === "string")
+    .map(p => ({ title: p.title.trim(), desc: p.desc.trim() }))
+    .filter(p => p.title.length > 0 || p.desc.length > 0);
+  return points.length > 0 ? points : WHITE_GLOVE_DEFAULT.points;
+}
+
+function cleanPlans(input: unknown): WhiteGlovePlan[] {
+  if (!Array.isArray(input)) return WHITE_GLOVE_DEFAULT.plans;
+  const plans = input
+    .filter((p): p is WhiteGlovePlan => !!p && typeof p.name === "string")
+    .map((p, i) => ({
+      id: typeof p.id === "string" && p.id.trim() ? p.id.trim() : WHITE_GLOVE_DEFAULT.plans[i]?.id ?? `plan-${i + 1}`,
+      name: p.name.trim(),
+      desc: typeof p.desc === "string" ? p.desc.trim() : "",
+      months: Number.isFinite(Number(p.months)) && Number(p.months) > 0 ? Math.round(Number(p.months)) : 1,
+      mrp: Number.isFinite(Number(p.mrp)) && Number(p.mrp) >= 0 ? Number(p.mrp) : 0,
+      price: Number.isFinite(Number(p.price)) && Number(p.price) >= 0 ? Number(p.price) : 0,
+      badge: typeof p.badge === "string" ? p.badge.trim() : "",
+      perks: Array.isArray(p.perks) ? p.perks.filter((x: unknown): x is string => typeof x === "string").map(x => x.trim()).filter(Boolean) : [],
+    }))
+    .filter(p => p.name.length > 0);
+  return plans.length > 0 ? plans : WHITE_GLOVE_DEFAULT.plans;
+}
+
+async function getWhiteGlove(): Promise<WhiteGloveContent> {
+  const result = await pool.query(`SELECT value FROM "PlatformConfig" WHERE key=$1`, [WHITE_GLOVE_KEY]);
+  if (result.rows.length > 0) {
+    try {
+      const p = JSON.parse(result.rows[0].value) as Partial<WhiteGloveContent>;
+      const str = (v: unknown, d: string) => (typeof v === "string" && v.trim() ? v : d);
+      return {
+        heroTag: str(p.heroTag, WHITE_GLOVE_DEFAULT.heroTag),
+        heroLine1: str(p.heroLine1, WHITE_GLOVE_DEFAULT.heroLine1),
+        heroLine2: str(p.heroLine2, WHITE_GLOVE_DEFAULT.heroLine2),
+        heroSub: str(p.heroSub, WHITE_GLOVE_DEFAULT.heroSub),
+        includedLine1: str(p.includedLine1, WHITE_GLOVE_DEFAULT.includedLine1),
+        includedLine2: str(p.includedLine2, WHITE_GLOVE_DEFAULT.includedLine2),
+        includedSub: str(p.includedSub, WHITE_GLOVE_DEFAULT.includedSub),
+        points: cleanPoints(p.points),
+        pricingLine1: str(p.pricingLine1, WHITE_GLOVE_DEFAULT.pricingLine1),
+        pricingLine2: str(p.pricingLine2, WHITE_GLOVE_DEFAULT.pricingLine2),
+        plans: cleanPlans(p.plans),
+        pricingNote: str(p.pricingNote, WHITE_GLOVE_DEFAULT.pricingNote),
+        footerNote: str(p.footerNote, WHITE_GLOVE_DEFAULT.footerNote),
+      };
+    } catch { return WHITE_GLOVE_DEFAULT; }
+  }
+  return WHITE_GLOVE_DEFAULT;
+}
+
+router.get("/white-glove", async (_req: Request, res: Response): Promise<void> => {
+  res.set("Cache-Control", "no-store");
+  res.json(await getWhiteGlove());
+});
+
+router.patch("/admin/white-glove", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const b = req.body as Partial<WhiteGloveContent>;
+  const str = (v: unknown, d: string) => (typeof v === "string" && v.trim() ? v.trim() : d);
+  const payload: WhiteGloveContent = {
+    heroTag: str(b.heroTag, WHITE_GLOVE_DEFAULT.heroTag),
+    heroLine1: str(b.heroLine1, WHITE_GLOVE_DEFAULT.heroLine1),
+    heroLine2: str(b.heroLine2, WHITE_GLOVE_DEFAULT.heroLine2),
+    heroSub: str(b.heroSub, WHITE_GLOVE_DEFAULT.heroSub),
+    includedLine1: str(b.includedLine1, WHITE_GLOVE_DEFAULT.includedLine1),
+    includedLine2: str(b.includedLine2, WHITE_GLOVE_DEFAULT.includedLine2),
+    includedSub: str(b.includedSub, WHITE_GLOVE_DEFAULT.includedSub),
+    points: cleanPoints(b.points),
+    pricingLine1: str(b.pricingLine1, WHITE_GLOVE_DEFAULT.pricingLine1),
+    pricingLine2: str(b.pricingLine2, WHITE_GLOVE_DEFAULT.pricingLine2),
+    plans: cleanPlans(b.plans),
+    pricingNote: str(b.pricingNote, WHITE_GLOVE_DEFAULT.pricingNote),
+    footerNote: str(b.footerNote, WHITE_GLOVE_DEFAULT.footerNote),
+  };
+  await pool.query(
+    `INSERT INTO "PlatformConfig" (id,key,value,description,"updatedAt") VALUES (gen_random_uuid(),$1,$2,$3,NOW()) ON CONFLICT (key) DO UPDATE SET value=$2,"updatedAt"=NOW()`,
+    [WHITE_GLOVE_KEY, JSON.stringify(payload), "White Glove Service page content"]
+  );
+  res.json({ ok: true });
+});
+
 export default router;

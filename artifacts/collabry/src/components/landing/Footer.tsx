@@ -72,6 +72,10 @@ export default function Footer() {
             className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
             About Us
           </a>
+          <Link href="/white-glove-service" onClick={() => window.scrollTo(0, 0)}
+            className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
+            White Glove Service
+          </Link>
           <Link href="/privacy-policies"
             className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
             Privacy Policy
