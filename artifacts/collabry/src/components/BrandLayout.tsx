@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { Bell, Home, Search, Megaphone, Handshake, User, LogOut, Coins, CheckCircle, XCircle, Package, PackageCheck, FileVideo, RotateCcw, ShieldCheck, AlertTriangle, Star, FileText } from "lucide-react";
+import { Bell, Home, Search, Megaphone, Handshake, User, LogOut, Coins, CheckCircle, XCircle, Package, PackageCheck, FileVideo, RotateCcw, ShieldCheck, AlertTriangle, Star, FileText, Crown } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import Footer from "@/components/landing/Footer";
@@ -104,8 +104,10 @@ const NAV_TABS = [
   { icon: Search, label: "Search", path: "/home-brand/search", badgeKey: null as null },
   { icon: Megaphone, label: "Campaigns", path: "/home-brand/campaigns", badgeKey: "campaigns" as const },
   { icon: Handshake, label: "Deals", path: "/home-brand/deals", badgeKey: "deals" as const },
-  { icon: User, label: "Profile", path: "/home-brand/profile", badgeKey: null as null },
+  { icon: Crown, label: "White Glove", path: "/white-glove-service", badgeKey: null as null },
 ];
+
+const PROFILE_PATH = "/home-brand/profile";
 
 type BadgeKey = "deals" | "campaigns";
 type Badges = Record<BadgeKey, number>;
@@ -254,6 +256,11 @@ function BrandHeader({ credits, onLocked, badges, clearBadge }: { credits: numbe
           </nav>
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button onClick={() => navigate(PROFILE_PATH)}
+              className="p-1.5"
+              aria-label="Profile">
+              <User className="w-5 h-5" style={{ color: isActiveTab(location, PROFILE_PATH) ? PINK : "rgba(255,255,255,0.90)" }} />
+            </button>
             <button onClick={() => navigate("/home-brand/credits")}
               className="flex items-center gap-1 px-2.5 py-1 rounded-full text-white text-xs font-semibold"
               style={{ background: PINK, fontFamily: POPPINS }}

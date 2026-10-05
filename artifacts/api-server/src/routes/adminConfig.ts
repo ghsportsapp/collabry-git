@@ -506,9 +506,11 @@ interface WhiteGlovePlan {
   months: number;
   mrp: number;
   price: number;
-  badge: string;      // e.g. "Most popular" — empty for no badge
-  perks: string[];    // extra perk lines (Growth/Scale); Starter can be []
+  badge: string;        // e.g. "Most popular" — empty for no badge
+  perks: string[];      // extra perk lines (Growth/Scale); Starter can be []
+  buttonLabel: string;  // CTA label on the plan card
 }
+interface WhiteGloveFounder { name: string; designation: string; image: string }
 interface WhiteGloveContent {
   heroTag: string;
   heroLine1: string; heroLine2: string; heroSub: string;
@@ -517,6 +519,10 @@ interface WhiteGloveContent {
   pricingLine1: string; pricingLine2: string;
   plans: WhiteGlovePlan[];
   pricingNote: string;
+  memberHeading: string; memberSubtext: string;
+  thankYouMessage: string;
+  founderHeading: string; founderSubheading: string;
+  founders: WhiteGloveFounder[];
   footerNote: string;
 }
 
@@ -541,11 +547,21 @@ const WHITE_GLOVE_DEFAULT: WhiteGloveContent = {
   pricingLine1: "Choose how long you want us.",
   pricingLine2: "The longer you go, the less you pay.",
   plans: [
-    { id: "starter", name: "Starter", desc: "Perfect for a one-off push or a first taste of the service.", months: 1, mrp: 10000, price: 1200, badge: "", perks: [] },
-    { id: "growth", name: "Growth", desc: "For brands running steady, ongoing creator campaigns.", months: 3, mrp: 25000, price: 3200, badge: "Most popular", perks: ["Lower per-month rate", "Same account manager all term"] },
-    { id: "scale", name: "Scale", desc: "Best value for always-on, long-term creator marketing.", months: 6, mrp: 45000, price: 5800, badge: "", perks: ["Lowest per-month rate", "Same account manager all term"] },
+    { id: "starter", name: "Starter", desc: "Perfect for a one-off push or a first taste of the service.", months: 1, mrp: 10000, price: 1200, badge: "", perks: [], buttonLabel: "Get started" },
+    { id: "growth", name: "Growth", desc: "For brands running steady, ongoing creator campaigns.", months: 3, mrp: 25000, price: 3200, badge: "Most popular", perks: ["Lower per-month rate", "Same account manager all term"], buttonLabel: "Choose Growth" },
+    { id: "scale", name: "Scale", desc: "Best value for always-on, long-term creator marketing.", months: 6, mrp: 45000, price: 5800, badge: "", perks: ["Lowest per-month rate", "Same account manager all term"], buttonLabel: "Get started" },
   ],
   pricingNote: "Secure payment via Razorpay · Our team reaches out within 24 hours of purchase",
+  memberHeading: "You're a Collabry White Glove member",
+  memberSubtext: "Your dedicated team is running your creator marketing end to end. Sit back — we've got this.",
+  thankYouMessage: "Thank you for trusting Collabry with your creator marketing. Our team is already on it — we'll personally handle every step and make sure your collaborations run smoothly, start to finish. You're in good hands.",
+  founderHeading: "From Founder to Founder",
+  founderSubheading: "We made it because we need it.",
+  founders: [
+    { name: "Navneet", designation: "Founder", image: "" },
+    { name: "Angad", designation: "Co-founder", image: "" },
+    { name: "Nikhil Goel", designation: "Co-founder", image: "" },
+  ],
   footerNote: "A Krida Ventures Company · Gurugram, Haryana",
 };
 
@@ -571,9 +587,27 @@ function cleanPlans(input: unknown): WhiteGlovePlan[] {
       price: Number.isFinite(Number(p.price)) && Number(p.price) >= 0 ? Number(p.price) : 0,
       badge: typeof p.badge === "string" ? p.badge.trim() : "",
       perks: Array.isArray(p.perks) ? p.perks.filter((x: unknown): x is string => typeof x === "string").map(x => x.trim()).filter(Boolean) : [],
+      buttonLabel: typeof p.buttonLabel === "string" && p.buttonLabel.trim()
+        ? p.buttonLabel.trim()
+        : (WHITE_GLOVE_DEFAULT.plans[i]?.buttonLabel ?? "Get started"),
     }))
     .filter(p => p.name.length > 0);
   return plans.length > 0 ? plans : WHITE_GLOVE_DEFAULT.plans;
+}
+
+function cleanFounders(input: unknown): WhiteGloveFounder[] {
+  if (!Array.isArray(input)) return WHITE_GLOVE_DEFAULT.founders;
+  const founders = input
+    .filter((f): f is WhiteGloveFounder => !!f && typeof f.name === "string")
+    .map(f => ({
+      name: f.name.trim(),
+      designation: typeof f.designation === "string" ? f.designation.trim() : "",
+      image: typeof f.image === "string" ? f.image.trim() : "",
+    }))
+    .filter(f => f.name.length > 0 || f.designation.length > 0 || f.image.length > 0);
+  // Founders can legitimately be emptied by the admin — only fall back when the
+  // field was absent/invalid entirely (handled by the Array.isArray guard above).
+  return founders;
 }
 
 export async function getWhiteGlove(): Promise<WhiteGloveContent> {
@@ -595,6 +629,12 @@ export async function getWhiteGlove(): Promise<WhiteGloveContent> {
         pricingLine2: str(p.pricingLine2, WHITE_GLOVE_DEFAULT.pricingLine2),
         plans: cleanPlans(p.plans),
         pricingNote: str(p.pricingNote, WHITE_GLOVE_DEFAULT.pricingNote),
+        memberHeading: str(p.memberHeading, WHITE_GLOVE_DEFAULT.memberHeading),
+        memberSubtext: str(p.memberSubtext, WHITE_GLOVE_DEFAULT.memberSubtext),
+        thankYouMessage: str(p.thankYouMessage, WHITE_GLOVE_DEFAULT.thankYouMessage),
+        founderHeading: str(p.founderHeading, WHITE_GLOVE_DEFAULT.founderHeading),
+        founderSubheading: str(p.founderSubheading, WHITE_GLOVE_DEFAULT.founderSubheading),
+        founders: Array.isArray(p.founders) ? cleanFounders(p.founders) : WHITE_GLOVE_DEFAULT.founders,
         footerNote: str(p.footerNote, WHITE_GLOVE_DEFAULT.footerNote),
       };
     } catch { return WHITE_GLOVE_DEFAULT; }
@@ -623,6 +663,12 @@ router.patch("/admin/white-glove", requireAdmin, async (req: Request, res: Respo
     pricingLine2: str(b.pricingLine2, WHITE_GLOVE_DEFAULT.pricingLine2),
     plans: cleanPlans(b.plans),
     pricingNote: str(b.pricingNote, WHITE_GLOVE_DEFAULT.pricingNote),
+    memberHeading: str(b.memberHeading, WHITE_GLOVE_DEFAULT.memberHeading),
+    memberSubtext: str(b.memberSubtext, WHITE_GLOVE_DEFAULT.memberSubtext),
+    thankYouMessage: str(b.thankYouMessage, WHITE_GLOVE_DEFAULT.thankYouMessage),
+    founderHeading: str(b.founderHeading, WHITE_GLOVE_DEFAULT.founderHeading),
+    founderSubheading: str(b.founderSubheading, WHITE_GLOVE_DEFAULT.founderSubheading),
+    founders: Array.isArray(b.founders) ? cleanFounders(b.founders) : WHITE_GLOVE_DEFAULT.founders,
     footerNote: str(b.footerNote, WHITE_GLOVE_DEFAULT.footerNote),
   };
   await pool.query(

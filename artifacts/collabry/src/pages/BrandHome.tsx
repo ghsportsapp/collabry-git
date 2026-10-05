@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import {
   Search as SearchIcon, Sparkles, Megaphone, Gift,
   Coins, ArrowRight, X, Clock, ShieldCheck, BadgeCheck, LayoutGrid, Headphones,
-  IndianRupee, ChevronDown, ChevronUp,
+  IndianRupee, ChevronDown, ChevronUp, Crown,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 
@@ -146,12 +146,25 @@ export default function BrandHome() {
   const [showCreditDetail, setShowCreditDetail] = useState(false);
 
   const [welcomeState, setWelcomeState] = useState<WelcomeState | null>(null);
+  // White Glove membership: default false → show the promo. Only an explicit
+  // active membership hides it; any fetch failure keeps the promo visible.
+  const [wgMember, setWgMember] = useState(false);
 
   useEffect(() => {
     if (!brandId) return;
     const ws = readWelcome(brandId);
     if (ws) setWelcomeState(ws);
   }, [brandId]);
+
+  useEffect(() => {
+    if (!brandId) { setWgMember(false); return; }
+    let alive = true;
+    apiFetch("/api/brand/white-glove/my-membership")
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((m: { active?: boolean }) => { if (alive) setWgMember(!!m?.active); })
+      .catch(() => { if (alive) setWgMember(false); });
+    return () => { alive = false; };
+  }, [brandId, apiFetch]);
 
   const c = useBrandLandingContent();
 
@@ -336,6 +349,61 @@ export default function BrandHome() {
                     style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", fontFamily: POPPINS }}
                   >
                     <Headphones className="w-3 h-3" /> Connect Now
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── White Glove: promo (non-member) or member badge (non-dismissible) ── */}
+        {wgMember ? (
+          <div className="relative rounded-2xl px-4 py-4 mb-5 overflow-hidden flex items-center gap-3"
+            style={{
+              background: "linear-gradient(135deg, rgba(240,24,122,0.22) 0%, rgba(180,0,100,0.14) 50%, rgba(60,0,80,0.18) 100%)",
+              border: "1px solid rgba(240,24,122,0.38)",
+            }}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: "rgba(240,24,122,0.2)", border: "1px solid rgba(240,24,122,0.4)" }}>
+              <Crown className="w-4 h-4" style={{ color: PINK }} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-white font-bold text-sm leading-snug" style={{ fontFamily: POPPINS }}>
+                You're a <span style={{ color: PINK }}>Collabry White Glove</span> member
+              </p>
+              <p className="text-white/80 text-xs mt-0.5 leading-relaxed" style={{ fontFamily: POPPINS }}>
+                Your dedicated team is running your creator marketing end to end.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="relative rounded-2xl px-4 py-4 mb-5 overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, rgba(240,24,122,0.22) 0%, rgba(180,0,100,0.14) 50%, rgba(60,0,80,0.18) 100%)",
+              border: "1px solid rgba(240,24,122,0.38)",
+              boxShadow: "0 0 40px rgba(240,24,122,0.08)",
+            }}>
+            <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full pointer-events-none"
+              style={{ background: "radial-gradient(circle, rgba(240,24,122,0.2) 0%, transparent 70%)" }} />
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{ background: "rgba(240,24,122,0.2)", border: "1px solid rgba(240,24,122,0.4)" }}>
+                <Crown className="w-4 h-4" style={{ color: PINK }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-bold text-sm leading-snug" style={{ fontFamily: POPPINS }}>
+                  Let us run your campaigns, <span style={{ color: PINK }}>end to end</span>.
+                </p>
+                <p className="text-white/80 text-xs mt-0.5 leading-relaxed" style={{ fontFamily: POPPINS }}>
+                  White Glove is our fully managed service — we find creators, negotiate, and deliver while you approve.
+                </p>
+                <div className="mt-3">
+                  <button
+                    onClick={() => navigate("/white-glove-service")}
+                    className="px-3.5 py-1.5 rounded-full text-white text-xs font-semibold flex items-center gap-1 transition-opacity hover:opacity-90"
+                    style={{ background: PINK, fontFamily: POPPINS }}
+                  >
+                    <Crown className="w-3 h-3" /> Explore White Glove Service
                   </button>
                 </div>
               </div>

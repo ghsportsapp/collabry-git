@@ -1,0 +1,48 @@
+<svg width="520" height="420" viewBox="0 0 520 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Thank you">
+  <defs>
+    <linearGradient id="wgFront" x1="130" y1="230" x2="400" y2="400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E14F69"/>
+      <stop offset="1" stop-color="#B83553"/>
+    </linearGradient>
+    <linearGradient id="wgPlane" x1="150" y1="150" x2="300" y2="270" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E96A80"/>
+      <stop offset="1" stop-color="#C23E59"/>
+    </linearGradient>
+  </defs>
+
+  <!-- soft background blobs -->
+  <path d="M250 70c70-18 150-6 185 52 33 54 6 128-55 156-54 25-70 70-140 66-74-4-150-44-168-114-18-70 38-128 108-146 24-6 46-8 70-14z" fill="#E14F69" opacity="0.10"/>
+  <path d="M150 150c40-26 96-20 128 16 30 34 20 88-14 116-30 24-24 62-70 66-44 4-96-30-104-78-8-50 22-96 60-116z" fill="#E14F69" opacity="0.08"/>
+
+  <!-- dashed swirl trail -->
+  <path d="M196 196c-40 24-66 70-56 112 8 34 44 52 80 40 28-10 36-44 16-62-18-16-48-6-50 18-2 22 16 42 42 46" stroke="#E14F69" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 12" opacity="0.5" fill="none"/>
+
+  <!-- envelope back flap -->
+  <path d="M212 236l94-74 94 74v150a14 14 0 01-14 14H226a14 14 0 01-14-14V236z" fill="#C23E59"/>
+
+  <!-- white letter card -->
+  <rect x="246" y="150" width="140" height="150" rx="10" fill="#FFF7F8"/>
+  <!-- "Thank you" handwritten-style text -->
+  <text x="316" y="206" font-family="'Segoe Script','Bradley Hand',cursive" font-size="34" font-weight="700" fill="#0A0A0F" text-anchor="middle">Thank</text>
+  <text x="316" y="246" font-family="'Segoe Script','Bradley Hand',cursive" font-size="34" font-weight="700" fill="#0A0A0F" text-anchor="middle">you</text>
+
+  <!-- envelope front (covers lower part of card) -->
+  <path d="M212 236l94 70 94-70v150a14 14 0 01-14 14H226a14 14 0 01-14-14V236z" fill="url(#wgFront)"/>
+  <!-- front inner fold lines -->
+  <path d="M212 236l94 70 94-70" stroke="#8E2742" stroke-width="2" opacity="0.4" fill="none"/>
+  <path d="M212 386l70-70M400 386l-70-70" stroke="#8E2742" stroke-width="2" opacity="0.35" fill="none"/>
+
+  <!-- paper plane -->
+  <g transform="translate(120 120) rotate(-8)">
+    <path d="M10 70L150 8 92 120 70 86 10 70z" fill="url(#wgPlane)"/>
+    <path d="M70 86L150 8 92 120 70 86z" fill="#9A2E49"/>
+    <path d="M70 86L150 8 42 78 70 86z" fill="#E96A80"/>
+  </g>
+
+  <!-- little sparkle lines -->
+  <g stroke="#E14F69" stroke-width="3.5" stroke-linecap="round" opacity="0.8">
+    <path d="M430 150l16-16"/>
+    <path d="M440 176l20-4"/>
+    <path d="M428 196l12 10"/>
+  </g>
+</svg>

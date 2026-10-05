@@ -177,6 +177,39 @@ router.post("/brand/white-glove/verify-payment", requireBrand, async (req: Reque
   }
 });
 
+// ── GET /api/brand/white-glove/my-membership ──
+// Active membership for the logged-in brand, computed from purchase records.
+// expiresAt = purchasedAt + plan months; active = now < expiresAt. We take the
+// purchase with the furthest expiry so stacking/renewing extends cover.
+router.get("/brand/white-glove/my-membership", requireBrand, async (req: Request, res: Response): Promise<void> => {
+  const brandId = (req as any).brandId as string;
+  try {
+    const r = await pool.query(
+      `SELECT "planName", "createdAt",
+              ("createdAt" + make_interval(months => months)) AS "expiresAt"
+         FROM "WhiteGlovePurchase"
+        WHERE "brandId" = $1
+        ORDER BY ("createdAt" + make_interval(months => months)) DESC
+        LIMIT 1`,
+      [brandId],
+    );
+    if (r.rows.length === 0) { res.json({ active: false }); return; }
+    const row = r.rows[0];
+    const expiresAt = new Date(row.expiresAt);
+    const active = Date.now() < expiresAt.getTime();
+    res.json({
+      active,
+      planName: row.planName as string,
+      purchasedAt: new Date(row.createdAt).toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    });
+  } catch (e) {
+    // Never block the page on a membership lookup — treat failures as non-member.
+    logger.error({ err: e, brandId }, "White Glove my-membership failed");
+    res.json({ active: false });
+  }
+});
+
 // ── GET /api/admin/white-glove/purchases ──
 // Returns brand contact details in bulk, so it sits behind the real admin secret.
 router.get("/admin/white-glove/purchases", requireAdmin, requireAdminSecret, async (_req: Request, res: Response): Promise<void> => {
