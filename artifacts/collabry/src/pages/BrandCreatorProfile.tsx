@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useRoute } from "wouter";
-import { ArrowLeft, ShieldCheck, X, Plus, Minus, Link as LinkIcon, Instagram } from "lucide-react";
+import { ArrowLeft, ShieldCheck, X, Plus, Minus, Link as LinkIcon, Instagram, Lock, Share2, Check } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
@@ -33,18 +33,46 @@ interface FullProfile {
 const CONTACT_REGEX = /(\+?\d[\d\s\-]{8,}\d|[\w.-]+@[\w-]+\.[\w.-]+|https?:\/\/|www\.)/i;
 const S = { background: "rgba(225,79,105,0.13)", border: "1px solid rgba(255,255,255,0.18)" } as const;
 const fmtRupee = (n: number) => `₹${Number(n).toLocaleString("en-IN")}`;
+const BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+
+interface ResolvedCreator {
+  id: string;
+  instagramHandle: string;
+  fullName: string | null;
+  profilePhotoUrl: string | null;
+  followerCount: number;
+  status: string;
+  isUnlocked: boolean;
+}
 
 export default function BrandCreatorProfile() {
   const { brandId, apiFetch, loading: authLoading } = useBrandAuth();
   const [, navigate] = useLocation();
-  const [, paramsSearch] = useRoute("/home-brand/search/creator/:id");
-  const [isMatchmaking, paramsMM] = useRoute("/home-brand/matchmaking/creator/:id");
-  const [isUnlocked, paramsUnlocked] = useRoute("/home-brand/unlocked/creator/:id");
-  const creatorId = (paramsSearch ?? paramsMM ?? paramsUnlocked)?.id;
+  const [, pUser] = useRoute("/creator/:username");
+  const [, pSearch] = useRoute("/home-brand/search/creator/:id");
+  const [, pMM] = useRoute("/home-brand/matchmaking/creator/:id");
+  const [, pUn] = useRoute("/home-brand/unlocked/creator/:id");
+
+  // Capture the entry route ONCE. Canonicalizing the URL below re-matches the
+  // route to /creator/:username, so origin must not be recomputed afterwards.
+  const [entry] = useState(() => ({
+    username: pUser?.username as string | undefined,
+    id: (pSearch ?? pMM ?? pUn)?.id as string | undefined,
+    origin: (pMM ? "matchmaking" : pUn ? "unlocked" : pSearch ? "search" : "canonical") as
+      "matchmaking" | "unlocked" | "search" | "canonical",
+  }));
+  const isMatchmaking = entry.origin === "matchmaking";
+  const isUnlocked = entry.origin === "unlocked";
 
   const { credits } = useBrandCredits();
+  const [resolved, setResolved] = useState<ResolvedCreator | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [data, setData] = useState<FullProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockErr, setUnlockErr] = useState<string | null>(null);
+  const [noCredits, setNoCredits] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [showRequest, setShowRequest] = useState(false);
   const [campaignCtx, setCampaignCtx] = useState<{ campaignId: string; appId: string; campaignType?: "barter" | "paid"; slotsFull?: boolean; appStatus?: string } | null>(null);
   const [selectLoading, setSelectLoading] = useState(false);
@@ -58,20 +86,82 @@ export default function BrandCreatorProfile() {
   const [reportError, setReportError] = useState<string | null>(null);
   const [reportToast, setReportToast] = useState(false);
 
-  useEffect(() => { if (!authLoading && !brandId) navigate("/login-brand"); }, [brandId, authLoading, navigate]);
+  const resolveRef = useRef(false);
+  const profileRef = useRef(false);
+  const creatorId = resolved?.id;
+
+  // Logged-out visitors → brand login, returning to the canonical profile URL.
+  useEffect(() => {
+    if (!authLoading && !brandId) {
+      const next = entry.username
+        ? `/creator/${entry.username}`
+        : (window.location.pathname.slice(BASE.length) || "/");
+      navigate(`/login-brand?next=${encodeURIComponent(next)}`, { replace: true });
+    }
+  }, [authLoading, brandId, navigate, entry]);
 
   useEffect(() => {
     const s = window.history.state as { campaignId?: string; appId?: string; campaignType?: "barter" | "paid"; slotsFull?: boolean; appStatus?: string } | null;
     if (s?.campaignId && s?.appId) setCampaignCtx({ campaignId: s.campaignId, appId: s.appId, campaignType: s.campaignType, slotsFull: s.slotsFull, appStatus: s.appStatus });
   }, []);
 
+  // Resolve username/id → creator + unlock status (once).
   useEffect(() => {
-    if (!brandId || !creatorId) return;
-    apiFetch(`/api/brand/creators/${creatorId}/profile`).then(async r => {
+    if (authLoading || !brandId || resolveRef.current) return;
+    resolveRef.current = true;
+    const url = entry.username
+      ? `/api/brand/creators/by-username/${encodeURIComponent(entry.username)}`
+      : entry.id ? `/api/brand/creators/${entry.id}/summary` : null;
+    if (!url) { setNotFound(true); return; }
+    apiFetch(url)
+      .then(async r => { if (r.ok) setResolved(await r.json()); else setNotFound(true); })
+      .catch(() => setNotFound(true));
+  }, [authLoading, brandId, apiFetch, entry]);
+
+  // Canonicalize the address bar to /creator/:username, preserving history state
+  // (campaign context) so old id-links and internal opens share one clean URL.
+  useEffect(() => {
+    if (!resolved?.instagramHandle) return;
+    const canonical = `${BASE}/creator/${resolved.instagramHandle}`;
+    if (window.location.pathname !== canonical) {
+      try { window.history.replaceState(window.history.state, "", canonical); } catch { /* ignore */ }
+    }
+  }, [resolved]);
+
+  // Load the full profile once we know the brand has unlocked this creator.
+  useEffect(() => {
+    if (!resolved?.isUnlocked || !resolved.id || profileRef.current) return;
+    profileRef.current = true;
+    apiFetch(`/api/brand/creators/${resolved.id}/profile`).then(async r => {
       if (r.ok) setData(await r.json());
-      else setError((await r.json()).error ?? "Failed to load profile");
-    });
-  }, [brandId, creatorId, apiFetch]);
+      else setError((await r.json().catch(() => ({}))).error ?? "Failed to load profile");
+    }).catch(() => setError("Failed to load profile"));
+  }, [resolved, apiFetch]);
+
+  const handleUnlock = async () => {
+    if (!resolved || unlocking) return;
+    setUnlocking(true); setUnlockErr(null); setNoCredits(false);
+    try {
+      const r = await apiFetch(`/api/brand/creators/${resolved.id}/unlock`, { method: "POST" });
+      if (r.ok) {
+        profileRef.current = false;
+        setResolved(prev => prev ? { ...prev, isUnlocked: true } : prev);
+      } else {
+        const d = await r.json().catch(() => ({}));
+        if (d.error === "ALREADY_UNLOCKED") { profileRef.current = false; setResolved(prev => prev ? { ...prev, isUnlocked: true } : prev); }
+        else if (d.error === "INSUFFICIENT_CREDITS") setNoCredits(true);
+        else setUnlockErr(d.message ?? d.error ?? "Unlock failed");
+      }
+    } catch { setUnlockErr("Unlock failed"); }
+    finally { setUnlocking(false); }
+  };
+
+  const shareUrl = resolved ? `https://collabry.co/creator/${resolved.instagramHandle}` : "";
+  const handleShare = async () => {
+    if (!shareUrl) return;
+    try { await navigator.clipboard.writeText(shareUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { /* clipboard unavailable */ }
+  };
 
   const handleSelectForCampaign = async () => {
     if (!campaignCtx) return;
@@ -98,6 +188,77 @@ export default function BrandCreatorProfile() {
   };
 
   if (authLoading || !brandId) return null;
+
+  const backTo = campaignCtx
+    ? (campaignCtx.campaignType === "barter" ? `/home-brand/barter/${campaignCtx.campaignId}` : `/home-brand/campaigns/${campaignCtx.campaignId}`)
+    : isMatchmaking ? "/home-brand/matchmaking/results"
+    : isUnlocked ? "/home-brand/unlocked"
+    : "/home-brand/search";
+  const backLabel = campaignCtx ? "Back to Campaign" : isMatchmaking ? "Back to Results" : isUnlocked ? "Back to Unlocked Profiles" : "Back to Search";
+
+  if (notFound) {
+    return (
+      <BrandLayout credits={credits?.total ?? null}>
+        <div className="min-h-[70vh] flex flex-col items-center justify-center px-6 text-center" style={{ fontFamily: POPPINS }}>
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mb-5" style={{ background: "rgba(225,79,105,0.12)", border: "1px solid rgba(225,79,105,0.35)" }}>
+            <X className="w-8 h-8" style={{ color: PINK }} />
+          </div>
+          <h1 className="text-white font-bold text-xl mb-2">Creator not found</h1>
+          <p className="text-white/60 text-sm mb-6 max-w-xs">This profile doesn't exist or the link is no longer valid.</p>
+          <button onClick={() => navigate("/home-brand/search")} className="px-6 py-3 rounded-full text-white text-sm font-semibold" style={{ background: PINK }}>
+            Back to Search
+          </button>
+        </div>
+      </BrandLayout>
+    );
+  }
+
+  if (resolved && !resolved.isUnlocked) {
+    const lc = resolved;
+    return (
+      <BrandLayout credits={credits?.total ?? null}>
+        <div className="max-w-3xl lg:max-w-4xl mx-auto px-4 lg:px-6 pt-5 lg:pt-6">
+          <button onClick={() => navigate(backTo)} className="flex items-center gap-1.5 text-white/75 text-xs" style={{ fontFamily: POPPINS }}>
+            <ArrowLeft className="w-3.5 h-3.5" /> {backLabel}
+          </button>
+        </div>
+        <div className="min-h-[60vh] flex items-center justify-center px-6 pb-16" style={{ fontFamily: POPPINS }}>
+          <div className="w-full max-w-sm rounded-3xl p-7 text-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)" }}>
+            <div className="w-16 h-16 rounded-full overflow-hidden mx-auto mb-3" style={{ border: `2px solid ${PINK}99` }}>
+              {lc.profilePhotoUrl
+                ? <img src={lc.profilePhotoUrl} alt="" className="w-full h-full object-cover" />
+                : <div className="w-full h-full flex items-center justify-center font-bold text-xl text-white" style={{ background: PINK }}>{lc.fullName?.[0] ?? "C"}</div>}
+            </div>
+            <p className="text-white font-semibold text-sm">{lc.fullName ?? "—"}</p>
+            <p className="text-white/55 text-xs mb-5">@{lc.instagramHandle.replace(/^@/, "")}</p>
+
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: "rgba(225,79,105,0.14)", border: "1px solid rgba(225,79,105,0.35)" }}>
+              <Lock className="w-7 h-7" style={{ color: PINK }} />
+            </div>
+            <h1 className="text-white font-bold text-lg mb-1.5">This profile is locked</h1>
+            <p className="text-white/60 text-sm leading-relaxed mb-6">Unlock this profile to see all the creator's details.</p>
+
+            {noCredits ? (
+              <>
+                <p className="text-sm mb-3" style={{ color: "#f87171" }}>You have 0 credits. Buy credits to unlock this profile.</p>
+                <button onClick={() => navigate("/home-brand/credits")} className="w-full py-3 rounded-full text-white text-sm font-semibold" style={{ background: PINK }}>
+                  Buy More Credits →
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={handleUnlock} disabled={unlocking} className="w-full py-3 rounded-full text-white text-sm font-semibold disabled:opacity-50" style={{ background: PINK }}>
+                  {unlocking ? "Unlocking…" : "Unlock Profile"}
+                </button>
+                <p className="text-white/45 text-xs mt-2.5">Costs 1 credit</p>
+                {unlockErr && <p className="text-xs mt-3" style={{ color: "#f87171" }}>{unlockErr}</p>}
+              </>
+            )}
+          </div>
+        </div>
+      </BrandLayout>
+    );
+  }
 
   const c = data?.creator;
 
@@ -179,6 +340,14 @@ export default function BrandCreatorProfile() {
                       style={{ background: "rgba(240,24,122,0.16)", border: "1px solid rgba(240,24,122,0.30)", color: "white", fontFamily: POPPINS }}
                     >
                       View Instagram Profile
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleShare}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-opacity hover:opacity-90"
+                      style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.18)", color: "white", fontFamily: POPPINS }}
+                    >
+                      {copied ? <><Check className="w-3.5 h-3.5" /> Copied!</> : <><Share2 className="w-3.5 h-3.5" /> Share</>}
                     </button>
                   </div>
                   <p className="text-[11px] font-semibold mt-1" style={{ color: PINK, fontFamily: POPPINS }}>Verified Collabry Creator</p>

@@ -110,6 +110,8 @@ function Router() {
       <Route path="/home-brand/matchmaking/creator/:id" component={BrandCreatorProfile} />
       <Route path="/home-brand/unlocked" component={BrandUnlockedProfiles} />
       <Route path="/home-brand/unlocked/creator/:id" component={BrandCreatorProfile} />
+      {/* Canonical shareable creator URL (brand-only; logged-out → login redirect in-component) */}
+      <Route path="/creator/:username" component={BrandCreatorProfile} />
       <Route path="/home-brand/credits" component={BrandCredits} />
 
       {/* Admin — login is public */}

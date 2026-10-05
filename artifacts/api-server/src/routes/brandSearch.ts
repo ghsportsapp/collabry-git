@@ -628,6 +628,48 @@ router.post("/brand/creators/:id/unlock", requireBrand, async (req: Request, res
   }
 });
 
+// ── Resolve a creator for the public /creator/:username page ──
+// Returns basic info + whether THIS brand has unlocked them. Keyed by username
+// (instagramHandle) for the canonical URL, or by id for legacy /creator/:id links.
+async function creatorResolveRow(where: "username" | "id", value: string, brandId: string) {
+  const col = where === "username" ? `lower("instagramHandle")=lower($1)` : `id=$1`;
+  const cr = await pool.query(
+    `SELECT id,"instagramHandle","fullName","profilePhotoUrl","followerCount",status
+       FROM "Creator" WHERE ${col} LIMIT 1`,
+    [value],
+  );
+  if (cr.rows.length === 0) return null;
+  const c = cr.rows[0];
+  const u = await pool.query(
+    `SELECT 1 FROM "BrandUnlockRecord" WHERE "brandId"=$1 AND "creatorId"=$2 LIMIT 1`,
+    [brandId, c.id],
+  );
+  return {
+    id: c.id,
+    instagramHandle: c.instagramHandle,
+    fullName: c.fullName,
+    profilePhotoUrl: c.profilePhotoUrl,
+    followerCount: c.followerCount,
+    status: c.status,
+    isUnlocked: u.rows.length > 0,
+  };
+}
+
+router.get("/brand/creators/by-username/:username", requireBrand, async (req: Request, res: Response): Promise<void> => {
+  const brandId = (req as any).brandId as string;
+  const username = String(req.params["username"] ?? "").replace(/^@/, "");
+  const row = await creatorResolveRow("username", username, brandId);
+  if (!row) { res.status(404).json({ error: "Creator not found" }); return; }
+  res.json(row);
+});
+
+router.get("/brand/creators/:id/summary", requireBrand, async (req: Request, res: Response): Promise<void> => {
+  const brandId = (req as any).brandId as string;
+  const row = await creatorResolveRow("id", String(req.params["id"] ?? ""), brandId);
+  if (!row) { res.status(404).json({ error: "Creator not found" }); return; }
+  res.json(row);
+});
+
 // ── GET /api/brand/creators/:id/profile (only if unlocked) ──
 router.get("/brand/creators/:id/profile", requireBrand, async (req: Request, res: Response): Promise<void> => {
   const brandId = (req as any).brandId as string;
