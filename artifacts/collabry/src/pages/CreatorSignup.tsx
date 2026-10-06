@@ -413,8 +413,17 @@ export default function CreatorSignup() {
   const isUnder18 = form.dateOfBirth ? ageYears < 18 && ageYears >= 14 : false;
   const ageDisplay = form.dateOfBirth ? Math.floor(ageYears) : 0;
 
-  // Phone helper: strip to 10 digits
-  const cleanPhoneDisplay = (v: string) => v.replace(/\D/g, "").replace(/^91/, "").slice(0, 10);
+  // Phone helper — mirrors BrandSignup's cleanPhoneInput exactly: only strip a
+  // country/trunk prefix when the length makes it unambiguous (12-digit +91, or
+  // 11-digit leading 0), never an unconditional leading "91" (which wrongly
+  // mangled valid numbers like 9188776655).
+  const cleanPhoneDisplay = (v: string) => {
+    const d = v.replace(/\D/g, "");
+    let r = d;
+    if (d.length === 12 && d.startsWith("91")) r = d.slice(2);
+    else if (d.length === 11 && d.startsWith("0")) r = d.slice(1);
+    return r.slice(0, 10);
+  };
 
   const validate = (s: number): boolean => {
     const errs: Record<string, string> = {};
@@ -431,7 +440,7 @@ export default function CreatorSignup() {
       else { const age = (Date.now() - new Date(form.dateOfBirth).getTime()) / (365.25*24*60*60*1000); if (age < 14) errs.dateOfBirth = "You must be at least 14 years old"; else if (age > 100) errs.dateOfBirth = "Please enter a valid date of birth"; }
       const ph = cleanPhoneDisplay(form.phone);
       if (!ph) errs.phone = "Phone number is required";
-      else if (ph.length !== 10) errs.phone = "Please enter a valid 10-digit phone number";
+      else if (!/^\d{10}$/.test(ph)) errs.phone = "Please enter a valid 10-digit phone number";
       else if (phoneAvailable === false) errs.phone = "This phone number is already registered";
       const emailVal = (form.email ?? "").trim();
       if (!emailVal) errs.email = "Email address is required";
