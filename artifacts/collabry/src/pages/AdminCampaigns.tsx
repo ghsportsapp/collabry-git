@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { Search, CheckCircle, XCircle, AlertCircle, Clock, Users, ChevronRight } from "lucide-react";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import AdminCampaignApplicants from "@/components/AdminCampaignApplicants";
 
 const POPPINS = "'Poppins', sans-serif";
 const PINK = "#E14F69";
@@ -38,6 +39,7 @@ export default function AdminCampaigns({ embedded = false }: { embedded?: boolea
   const [msg, setMsg] = useState({ text: "", ok: true });
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [showHoldForm, setShowHoldForm] = useState(false);
+  const [showApplicants, setShowApplicants] = useState(false);
 
   useEffect(() => { if (!adminId) navigate("/admin-collabryangad/login"); }, [adminId]);
 
@@ -155,6 +157,12 @@ export default function AdminCampaigns({ embedded = false }: { embedded?: boolea
                   </div>
                   <p className="text-white/55 text-xs" style={{ fontFamily: POPPINS }}>{selectedCamp.brandName}</p>
                 </div>
+
+                <button onClick={() => setShowApplicants(true)}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-semibold"
+                  style={{ background: "rgba(240,24,122,0.14)", border: "1px solid rgba(240,24,122,0.4)", fontFamily: POPPINS }}>
+                  <Users className="w-4 h-4" /> View Applicants{typeof selectedCamp.totalApps === "number" ? ` (${selectedCamp.totalApps})` : ""}
+                </button>
 
                 {msg.text && (
                   <div className="rounded-lg p-2" style={{ background: msg.ok ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)" }}>
@@ -389,6 +397,11 @@ export default function AdminCampaigns({ embedded = false }: { embedded?: boolea
           </div>
         )}
       </div>
+
+      {showApplicants && selectedCamp && (
+        <AdminCampaignApplicants kind="paid" campaignId={selectedCamp.id} campaignName={selectedCamp.name}
+          onClose={() => setShowApplicants(false)} />
+      )}
     </>
   );
 

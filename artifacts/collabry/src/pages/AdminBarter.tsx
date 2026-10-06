@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
-import { Package, CheckCircle, XCircle, Clock, MessageSquare, Pause, Play } from "lucide-react";
+import { Package, CheckCircle, XCircle, Clock, MessageSquare, Pause, Play, Users } from "lucide-react";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import AdminCampaignApplicants from "@/components/AdminCampaignApplicants";
 
 const POPPINS = "'Poppins', sans-serif";
 const PINK = "#E14F69";
@@ -18,6 +19,7 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
   const [holdMessage, setHoldMessage] = useState("");
   const [extendDays, setExtendDays] = useState("7");
   const [actionLoading, setActionLoading] = useState(false);
+  const [showApplicants, setShowApplicants] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   useEffect(() => { if (!adminId) navigate("/admin-collabryangad/login"); }, [adminId]);
@@ -118,6 +120,7 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
                   <span className="flex items-center gap-1"><Package className="w-3.5 h-3.5" />{b.productName}</span>
                   <span>₹{parseFloat(b.productValueInr ?? 0).toLocaleString("en-IN")}</span>
                   <span>{b.slotCount} slots</span>
+                  <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />{b.totalApps ?? 0} apps</span>
                   <span>{fmtDate(b.createdAt)}</span>
                 </div>
                 {b.categories?.length > 0 && (
@@ -166,6 +169,12 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
                     </div>
                     <p className="text-white/55 text-xs" style={{ fontFamily: POPPINS }}>{selected.brandName}</p>
                   </div>
+
+                  <button onClick={() => setShowApplicants(true)}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-semibold"
+                    style={{ background: "rgba(240,24,122,0.14)", border: "1px solid rgba(240,24,122,0.4)", fontFamily: POPPINS }}>
+                    <Users className="w-4 h-4" /> View Applicants{typeof selected.totalApps === "number" ? ` (${selected.totalApps})` : ""}
+                  </button>
 
                   {/* Key metrics grid */}
                   <div className="grid grid-cols-2 gap-x-5 gap-y-3">
@@ -357,6 +366,11 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
             </div>
           )}
         </div>
+
+        {showApplicants && selected && (
+          <AdminCampaignApplicants kind="barter" campaignId={selected.id} campaignName={selected.name}
+            onClose={() => setShowApplicants(false)} />
+        )}
     </>
   );
 

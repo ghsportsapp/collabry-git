@@ -17,12 +17,16 @@ export const APPLICANTS_PAGE_SIZE = 50;
 
 const STATUSES = ["PENDING", "SHORTLISTED", "SELECTED"];
 
-export function useCampaignApplicants({ kind, campaignId, tab, apiFetch, enabled }: {
+export function useCampaignApplicants({ kind, campaignId, tab, apiFetch, enabled, apiRole = "brand", statuses = STATUSES }: {
   kind: CampaignKind;
   campaignId: string;
   tab: number;
   apiFetch: (path: string, init?: RequestInit) => Promise<Response>;
   enabled: boolean;
+  /** API namespace: "brand" (default, unchanged) or "admin" (read-only view). */
+  apiRole?: "brand" | "admin";
+  /** Status per tab index. Defaults to the brand PENDING/SHORTLISTED/SELECTED tabs. */
+  statuses?: string[];
 }) {
   const [, navigate] = useLocation();
   const scope = campaignScope(kind, campaignId, tab);
@@ -66,11 +70,11 @@ export function useCampaignApplicants({ kind, campaignId, tab, apiFetch, enabled
     const myReq = ++reqId.current;
     setLoading(true);
     const qs = creatorFilterParams(filters);
-    qs.set("status", STATUSES[tab]!);
+    qs.set("status", statuses[tab]!);
     qs.set("page", String(page));
     qs.set("limit", String(APPLICANTS_PAGE_SIZE));
     try {
-      const r = await apiFetch(`/api/brand/${base}/${campaignId}/applications?${qs}`);
+      const r = await apiFetch(`/api/${apiRole}/${base}/${campaignId}/applications?${qs}`);
       if (myReq !== reqId.current) return; // a newer request already won
       if (!r.ok) { setApps([]); setTotal(0); setTotalPages(1); return; }
       const d = await r.json();
@@ -89,7 +93,7 @@ export function useCampaignApplicants({ kind, campaignId, tab, apiFetch, enabled
     } finally {
       if (myReq === reqId.current) setLoading(false);
     }
-  }, [enabled, apiFetch, base, campaignId, tab, page, filters]);
+  }, [enabled, apiFetch, base, campaignId, tab, page, filters, apiRole, statuses]);
 
   /* Deliberately does NOT blank the list first. Setting apps back to null on
      every filter tweak or page turn swaps the whole tab body for a skeleton,

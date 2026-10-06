@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireBrand } from "../middleware/requireBrand";
+import { requireAdmin } from "../middleware/requireAdmin";
 import { createNotification } from "../lib/notifications";
 import { createPopup } from "../lib/popups";
 import { addBrandSSE, removeBrandSSE } from "../lib/sseManager";
@@ -97,9 +98,10 @@ async function readConfigNumber(key: string, fallback: number): Promise<number> 
   return isNaN(n) ? fallback : n;
 }
 
-// ── GET /api/brand/search/filter-options ──
-// Returns all dynamic filter options sourced from admin config.
-router.get("/brand/search/filter-options", requireBrand, async (_req: Request, res: Response): Promise<void> => {
+// ── GET /api/brand/search/filter-options (+ admin alias) ──
+// Returns all dynamic filter options sourced from admin config. Shared verbatim
+// by the brand filter bar and the admin applicants view (same reference data).
+const filterOptionsHandler = async (_req: Request, res: Response): Promise<void> => {
   res.set("Cache-Control", "no-store");
   const [slabsRes, catRes, audienceAges, audienceLocations, minTimeline, commission, personalFieldsRow] = await Promise.all([
     pool.query(`SELECT id, label, "minFollowers", "maxFollowers" FROM "FollowerSlab" WHERE "isActive"=true ORDER BY "minFollowers" ASC`),
@@ -155,7 +157,9 @@ router.get("/brand/search/filter-options", requireBrand, async (_req: Request, r
     commissionRate: commission,
     creatorImagesEnabled,
   });
-});
+};
+router.get("/brand/search/filter-options", requireBrand, filterOptionsHandler);
+router.get("/admin/search/filter-options", requireAdmin, filterOptionsHandler);
 
 // ── GET /api/brand/search/creators-all ──
 // Returns ALL active creators (no slab gate). AND across filters, OR within multi-select.

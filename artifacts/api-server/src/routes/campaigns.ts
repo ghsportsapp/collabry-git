@@ -1628,6 +1628,75 @@ router.get("/admin/campaigns/:id", requireAdmin, async (req: Request, res: Respo
   res.json(r.rows[0]);
 });
 
+/* ── Admin: view a campaign's applicants (read-only) ───────────────────────
+   Reuses buildCreatorFilters + readPaging/pagedApplicants so filters and paging
+   match the brand surfaces exactly. Selects only the fields ApplicantCard needs
+   (the card masks name/handle regardless), so no brand-unlock join is required.
+   Table/column names are hardcoded literals from the two routes below. */
+async function adminApplicantList(
+  req: Request, table: "CampaignApplication" | "BarterApplication", fk: "campaignId" | "barterId", id: string,
+): Promise<unknown> {
+  const selected = String(req.query["status"] ?? "ALL") === "SELECTED";
+  const statusSql = selected ? ` AND a.status IN ('SELECTED','CONFIRMED')` : "";
+  const { page, limit, offset, wantsPaging } = readPaging(req);
+  const { conditions, params: fp } = await buildCreatorFilters(req.query as any, "cr", 1);
+  const filterSql = conditions.length ? ` AND ${conditions.join(" AND ")}` : "";
+  const apps = await pool.query(
+    `SELECT a.id, a.status, a."appliedAt", a."creatorId",
+            cr."profilePhotoUrl", cr."followerCount",
+            cr."audienceGenderFemale", cr."audienceGenderMale", cr."audienceAge", cr."audienceLocation",
+            EXTRACT(YEAR FROM AGE(cr."dateOfBirth"))::int as "creatorAge",
+            cr.state as "creatorState", cr."images" as "portfolioImages",
+            COALESCE(json_agg(DISTINCT jsonb_build_object('id',cat.id,'name',cat.name)) FILTER (WHERE cat.id IS NOT NULL),'[]') as categories
+     FROM "${table}" a
+     JOIN "Creator" cr ON cr.id=a."creatorId"
+     LEFT JOIN "CreatorCategory" cc ON cc."creatorId"=cr.id
+     LEFT JOIN "Category" cat ON cat.id=cc."categoryId"
+     WHERE a."${fk}"=$1${statusSql}${filterSql}
+     GROUP BY a.id, cr.id
+     ORDER BY a."appliedAt" DESC
+     LIMIT $${1 + fp.length + 1} OFFSET $${1 + fp.length + 2}`,
+    [id, ...fp, limit, offset],
+  );
+  const totalRes = await pool.query(
+    `SELECT COUNT(*)::int as c FROM "${table}" a JOIN "Creator" cr ON cr.id=a."creatorId"
+     WHERE a."${fk}"=$1${statusSql}${filterSql}`,
+    [id, ...fp],
+  );
+  return pagedApplicants(apps.rows, totalRes.rows[0].c, page, limit, wantsPaging);
+}
+
+async function adminApplicantCounts(
+  table: "CampaignApplication" | "BarterApplication", fk: "campaignId" | "barterId", id: string,
+): Promise<{ applied: number; selected: number }> {
+  const [applied, selected] = await Promise.all([
+    pool.query(`SELECT COUNT(*)::int as c FROM "${table}" WHERE "${fk}"=$1`, [id]),
+    pool.query(`SELECT COUNT(*)::int as c FROM "${table}" WHERE "${fk}"=$1 AND status IN ('SELECTED','CONFIRMED')`, [id]),
+  ]);
+  return { applied: applied.rows[0].c, selected: selected.rows[0].c };
+}
+
+router.get("/admin/campaigns/:id/applications", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const camp = await pool.query(`SELECT id FROM "Campaign" WHERE id=$1`, [req.params["id"]]);
+  if (!camp.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(await adminApplicantList(req, "CampaignApplication", "campaignId", String(req.params["id"])));
+});
+router.get("/admin/campaigns/:id/applicant-counts", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const camp = await pool.query(`SELECT id FROM "Campaign" WHERE id=$1`, [req.params["id"]]);
+  if (!camp.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(await adminApplicantCounts("CampaignApplication", "campaignId", String(req.params["id"])));
+});
+router.get("/admin/barter/:id/applications", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const b = await pool.query(`SELECT id FROM "BarterCampaign" WHERE id=$1`, [req.params["id"]]);
+  if (!b.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(await adminApplicantList(req, "BarterApplication", "barterId", String(req.params["id"])));
+});
+router.get("/admin/barter/:id/applicant-counts", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const b = await pool.query(`SELECT id FROM "BarterCampaign" WHERE id=$1`, [req.params["id"]]);
+  if (!b.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(await adminApplicantCounts("BarterApplication", "barterId", String(req.params["id"])));
+});
+
 router.post("/admin/campaigns/:id/extend", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const { days } = req.body;
   if (!days || parseInt(days) < 1) { res.status(400).json({ error: "days required" }); return; }
@@ -1782,6 +1851,7 @@ router.get("/admin/barter", requireAdmin, async (req: Request, res: Response): P
     `SELECT bc.*,
        b."brandName",b."logoUrl",
        (EXTRACT(EPOCH FROM (NOW()-bc."createdAt"))/3600)::int as "hoursWaiting",
+       (SELECT COUNT(*)::int FROM "BarterApplication" WHERE "barterId"=bc.id) as "totalApps",
        COALESCE(json_agg(DISTINCT jsonb_build_object('categoryId',bcat."categoryId",'name',cat.name)) FILTER (WHERE bcat.id IS NOT NULL),'[]') as categories
      FROM "BarterCampaign" bc
      JOIN "Brand" b ON b.id=bc."brandId"
