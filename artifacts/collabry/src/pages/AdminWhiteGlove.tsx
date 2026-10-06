@@ -212,6 +212,13 @@ export default function AdminWhiteGlove() {
               <div><label className={labelClass}>Heading line 2 (pink)</label>
                 <input className={inputClass} value={data.pricingLine2} onChange={e => set({ pricingLine2: e.target.value })} /></div>
             </div>
+            <div className="mt-3 max-w-[200px]">
+              <label className={labelClass}>GST rate %</label>
+              <input type="number" min="0" max="100" className={inputClass}
+                value={data.gstRatePercent}
+                onChange={e => set({ gstRatePercent: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })} />
+              <p className="text-white/40 text-[11px] mt-1">Added on top of each plan's base price. Plan prices are pre-GST.</p>
+            </div>
           </div>
 
           {/* Plans */}

@@ -1128,14 +1128,20 @@ router.post("/webhooks/razorpay/credits", async (req: Request, res: Response): P
       orderNotes = (await rzp.orders.fetch(payment.order_id))?.notes ?? {};
     }
     if (orderNotes.purpose === "white_glove" && orderNotes.brandId && paymentId) {
+      const wgTotal = parseInt(orderNotes.totalInr ?? orderNotes.amountInr ?? "0") || 0;
+      const wgBase = parseInt(orderNotes.baseInr ?? "0") || 0;
       const wg = await fulfillWhiteGlovePurchase({
         brandId: orderNotes.brandId,
         planId: String(orderNotes.planId ?? ""),
         planName: String(orderNotes.planName ?? ""),
         months: parseInt(orderNotes.months ?? "0") || 0,
-        amountInr: parseInt(orderNotes.amountInr ?? "0") || 0,
+        amountInr: wgTotal,
         orderId: payment.order_id,
         paymentId,
+        baseAmountInr: wgBase || undefined,
+        gstRatePercent: orderNotes.gstRatePercent != null ? (parseInt(orderNotes.gstRatePercent) || 0) : undefined,
+        gstAmountInr: orderNotes.gstInr != null ? (parseInt(orderNotes.gstInr) || 0) : (wgTotal && wgBase ? wgTotal - wgBase : undefined),
+        totalAmountInr: wgTotal || undefined,
       });
       res.json({ ok: true, duplicate: wg.status === "duplicate" });
       return;

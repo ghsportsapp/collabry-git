@@ -30,6 +30,7 @@ export interface WhiteGlove {
   points: ServicePoint[];
   pricingLine1: string; pricingLine2: string;
   plans: Plan[];
+  gstRatePercent: number;   // GST % added on top of each plan's base price
   pricingNote: string;
   // Returning-member card (shown to active members instead of pricing)
   memberHeading: string; memberSubtext: string;
@@ -66,6 +67,7 @@ export const WHITE_GLOVE_DEFAULT: WhiteGlove = {
     { id: "growth", name: "Growth", desc: "For brands running steady, ongoing creator campaigns.", months: 3, mrp: 25000, price: 3200, badge: "Most popular", perks: ["Lower per-month rate", "Same account manager all term"], buttonLabel: "Choose Growth" },
     { id: "scale", name: "Scale", desc: "Best value for always-on, long-term creator marketing.", months: 6, mrp: 45000, price: 5800, badge: "", perks: ["Lowest per-month rate", "Same account manager all term"], buttonLabel: "Get started" },
   ],
+  gstRatePercent: 18,
   pricingNote: "Secure payment via Razorpay · Our team reaches out within 24 hours of purchase",
   memberHeading: "You're a Collabry White Glove member",
   memberSubtext: "Your dedicated team is running your creator marketing end to end. Sit back — we've got this.",
@@ -79,3 +81,10 @@ export const WHITE_GLOVE_DEFAULT: WhiteGlove = {
   ],
   footerNote: "A Krida Ventures Company · Gurugram, Haryana",
 };
+
+// GST-inclusive total for a base price. The SAME formula must be used on the
+// public page (display) and the server (Razorpay charge) so the shown total and
+// the charged amount match exactly. GST amount = total - base (avoids a separate
+// round that could drift by ₹1).
+export const gstInclusiveTotal = (base: number, ratePercent: number): number =>
+  Math.round(Number(base) * (1 + (Number(ratePercent) || 0) / 100));

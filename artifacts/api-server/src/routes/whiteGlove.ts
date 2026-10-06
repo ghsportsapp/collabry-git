@@ -26,6 +26,12 @@ export async function ensureWhiteGloveTable(): Promise<void> {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS "idx_wgp_brandId" ON "WhiteGlovePurchase" ("brandId")`);
+  // GST breakdown — added non-destructively. "amountInr" holds the total charged
+  // (incl GST) for new rows; these columns record the split. Old rows: NULL.
+  await pool.query(`ALTER TABLE "WhiteGlovePurchase" ADD COLUMN IF NOT EXISTS "baseAmountInr" INTEGER`);
+  await pool.query(`ALTER TABLE "WhiteGlovePurchase" ADD COLUMN IF NOT EXISTS "gstRatePercent" INTEGER`);
+  await pool.query(`ALTER TABLE "WhiteGlovePurchase" ADD COLUMN IF NOT EXISTS "gstAmountInr" INTEGER`);
+  await pool.query(`ALTER TABLE "WhiteGlovePurchase" ADD COLUMN IF NOT EXISTS "totalAmountInr" INTEGER`);
 }
 
 interface FulfillResult {
@@ -43,9 +49,13 @@ export async function fulfillWhiteGlovePurchase(opts: {
   planId: string;
   planName: string;
   months: number;
-  amountInr: number;
+  amountInr: number;        // total charged (incl GST) for new orders
   orderId: string;
   paymentId: string;
+  baseAmountInr?: number;
+  gstRatePercent?: number;
+  gstAmountInr?: number;
+  totalAmountInr?: number;
 }): Promise<FulfillResult> {
   const client = await pool.connect();
   try {
@@ -65,9 +75,11 @@ export async function fulfillWhiteGlovePurchase(opts: {
     const orderRef = `CLBwg${String(seq).padStart(6, "0")}`;
     await client.query(
       `INSERT INTO "WhiteGlovePurchase"
-         ("orderRef","brandId","planId","planName",months,"amountInr","razorpayOrderId","razorpayPaymentId")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [orderRef, opts.brandId, opts.planId, opts.planName, opts.months, opts.amountInr, opts.orderId, opts.paymentId],
+         ("orderRef","brandId","planId","planName",months,"amountInr","razorpayOrderId","razorpayPaymentId",
+          "baseAmountInr","gstRatePercent","gstAmountInr","totalAmountInr")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [orderRef, opts.brandId, opts.planId, opts.planName, opts.months, opts.amountInr, opts.orderId, opts.paymentId,
+       opts.baseAmountInr ?? null, opts.gstRatePercent ?? null, opts.gstAmountInr ?? null, opts.totalAmountInr ?? opts.amountInr],
     );
     await client.query("COMMIT");
     void createNotification({
@@ -90,13 +102,18 @@ export async function fulfillWhiteGlovePurchase(opts: {
 router.post("/brand/white-glove/create-order", requireBrand, async (req: Request, res: Response): Promise<void> => {
   const brandId = (req as any).brandId as string;
   const planId = typeof req.body?.planId === "string" ? req.body.planId : "";
-  // Price comes from the admin-managed plan config, never from the client.
-  const { plans } = await getWhiteGlove();
+  // Price + GST rate come from the admin-managed config, never from the client.
+  const { plans, gstRatePercent } = await getWhiteGlove();
   const plan = plans.find(p => p.id === planId);
   if (!plan) { res.status(400).json({ error: "Unknown plan" }); return; }
-  const amountInr = Math.round(plan.price);
-  if (!amountInr || amountInr < 1) { res.status(400).json({ error: "This plan has no price set" }); return; }
-  const amountPaise = amountInr * 100;
+  const baseInr = Math.round(plan.price);
+  if (!baseInr || baseInr < 1) { res.status(400).json({ error: "This plan has no price set" }); return; }
+  // GST-inclusive total is what we charge. Same formula as the public page's
+  // displayed total, so the shown and charged amounts match to the rupee.
+  const rate = gstRatePercent;
+  const totalInr = Math.round(baseInr * (1 + rate / 100));
+  const gstInr = totalInr - baseInr;
+  const amountPaise = totalInr * 100;
 
   const keyId = process.env["RAZORPAY_KEY_ID"];
   const keySecret = process.env["RAZORPAY_KEY_SECRET"];
@@ -110,16 +127,21 @@ router.post("/brand/white-glove/create-order", requireBrand, async (req: Request
     const order = await rzp.orders.create({
       amount: amountPaise, currency: "INR",
       // Notes are authoritative server-side data read back at verify/webhook time.
+      // amountInr carries the TOTAL charged (incl GST) for back-compat with readers.
       notes: {
         brandId,
         planId: plan.id,
         planName: plan.name,
         months: String(plan.months),
-        amountInr: String(amountInr),
+        amountInr: String(totalInr),
+        baseInr: String(baseInr),
+        gstRatePercent: String(rate),
+        gstInr: String(gstInr),
+        totalInr: String(totalInr),
         purpose: "white_glove",
       },
     });
-    res.json({ orderId: order.id, amount: amountPaise, currency: "INR", key: keyId, planName: plan.name, amountInr });
+    res.json({ orderId: order.id, amount: amountPaise, currency: "INR", key: keyId, planName: plan.name, baseInr, gstRatePercent: rate, gstInr, totalInr, amountInr: totalInr });
   } catch (e: any) {
     logger.error({ err: e, brandId }, "White Glove create-order failed");
     res.status(500).json({ error: e.message ?? "Failed to create order" });
@@ -161,14 +183,20 @@ router.post("/brand/white-glove/verify-payment", requireBrand, async (req: Reque
     if (notes.purpose !== "white_glove") { res.status(400).json({ error: "Invalid order" }); return; }
     if (notes.brandId !== brandId) { res.status(403).json({ error: "Order does not belong to this account" }); return; }
 
+    const totalInr = parseInt(notes.totalInr ?? notes.amountInr ?? "0") || 0;
+    const baseInr = parseInt(notes.baseInr ?? "0") || 0;
     const result = await fulfillWhiteGlovePurchase({
       brandId,
       planId: String(notes.planId ?? ""),
       planName: String(notes.planName ?? ""),
       months: parseInt(notes.months ?? "0") || 0,
-      amountInr: parseInt(notes.amountInr ?? "0") || 0,
+      amountInr: totalInr,
       orderId: razorpay_order_id,
       paymentId: razorpay_payment_id,
+      baseAmountInr: baseInr || undefined,
+      gstRatePercent: notes.gstRatePercent != null ? (parseInt(notes.gstRatePercent) || 0) : undefined,
+      gstAmountInr: notes.gstInr != null ? (parseInt(notes.gstInr) || 0) : (totalInr && baseInr ? totalInr - baseInr : undefined),
+      totalAmountInr: totalInr || undefined,
     });
     res.json({ ok: true, orderRef: result.orderRef, duplicate: result.status === "duplicate" });
   } catch (e: any) {
@@ -215,6 +243,7 @@ router.get("/brand/white-glove/my-membership", requireBrand, async (req: Request
 router.get("/admin/white-glove/purchases", requireAdmin, requireAdminSecret, async (_req: Request, res: Response): Promise<void> => {
   const rows = await pool.query(
     `SELECT p.id, p."orderRef", p."brandId", p."planName", p.months, p."amountInr",
+            p."baseAmountInr", p."gstRatePercent", p."gstAmountInr", p."totalAmountInr",
             p."razorpayPaymentId", p."contactedAt", p."createdAt",
             b."brandName", b."contactName", b.email
      FROM "WhiteGlovePurchase" p

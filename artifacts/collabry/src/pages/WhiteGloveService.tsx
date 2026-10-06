@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Check, Crown, BadgeCheck, CalendarClock } from "lucide-react";
-import { WHITE_GLOVE_DEFAULT, type WhiteGlove, type Plan } from "./whiteGloveContent";
+import { WHITE_GLOVE_DEFAULT, gstInclusiveTotal, type WhiteGlove, type Plan } from "./whiteGloveContent";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { openRazorpayCheckout } from "@/lib/razorpay";
 import { BrandLayout } from "@/components/BrandLayout";
@@ -255,8 +255,14 @@ export default function WhiteGloveService() {
                         <span className="text-white/35 line-through text-base mb-1">{inr(plan.mrp)}</span>
                       )}
                       <span className="text-white font-bold leading-none" style={{ fontSize: "2.25rem" }}>{inr(plan.price)}</span>
+                      {data.gstRatePercent > 0 && <span className="text-white/50 text-xs mb-1.5">+ GST</span>}
                     </div>
-                    <p className="text-white/50 text-xs mb-4">{perMonthLabel(plan)}</p>
+                    <p className={`text-white/50 text-xs ${data.gstRatePercent > 0 ? "" : "mb-4"}`}>{perMonthLabel(plan)}</p>
+                    {data.gstRatePercent > 0 && (
+                      <p className="text-white/45 text-[11px] mt-1 mb-4">
+                        {inr(gstInclusiveTotal(plan.price, data.gstRatePercent))} total incl. {data.gstRatePercent}% GST
+                      </p>
+                    )}
 
                     {pct > 0 && (
                       <div className="w-full rounded-lg px-3 py-2 mb-5"

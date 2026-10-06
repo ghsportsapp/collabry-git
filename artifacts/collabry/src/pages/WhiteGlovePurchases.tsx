@@ -15,6 +15,10 @@ interface Purchase {
   planName: string;
   months: number;
   amountInr: number;
+  baseAmountInr: number | null;
+  gstRatePercent: number | null;
+  gstAmountInr: number | null;
+  totalAmountInr: number | null;
   razorpayPaymentId: string;
   contactedAt: string | null;
   createdAt: string;
@@ -92,8 +96,13 @@ export default function WhiteGlovePurchases() {
               style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${p.contactedAt ? "rgba(255,255,255,0.07)" : "rgba(225,79,105,0.35)"}` }}>
               <div className="flex-1 min-w-0">
                 <p className="text-white text-sm font-semibold truncate">
-                  {p.brandName ?? "Unknown brand"} <span className="text-white/40 font-normal">· {p.planName} ({p.months} mo) · {inr(p.amountInr)}</span>
+                  {p.brandName ?? "Unknown brand"} <span className="text-white/40 font-normal">· {p.planName} ({p.months} mo) · {inr(p.totalAmountInr ?? p.amountInr)}</span>
                 </p>
+                {p.baseAmountInr != null && p.gstAmountInr != null && (
+                  <p className="text-white/45 text-[11px]">
+                    {inr(p.baseAmountInr)} + {inr(p.gstAmountInr)} GST{p.gstRatePercent != null ? ` (${p.gstRatePercent}%)` : ""} = {inr(p.totalAmountInr ?? p.amountInr)}
+                  </p>
+                )}
                 <p className="text-white/60 text-xs truncate">{[p.contactName, p.email].filter(Boolean).join(" · ") || "—"}</p>
                 <p className="text-white/35 text-[11px] truncate">{p.orderRef} · {p.razorpayPaymentId} · {fmtDate(p.createdAt)}</p>
               </div>

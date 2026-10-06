@@ -518,6 +518,7 @@ interface WhiteGloveContent {
   points: ServicePoint[];
   pricingLine1: string; pricingLine2: string;
   plans: WhiteGlovePlan[];
+  gstRatePercent: number;
   pricingNote: string;
   memberHeading: string; memberSubtext: string;
   thankYouMessage: string;
@@ -551,6 +552,7 @@ const WHITE_GLOVE_DEFAULT: WhiteGloveContent = {
     { id: "growth", name: "Growth", desc: "For brands running steady, ongoing creator campaigns.", months: 3, mrp: 25000, price: 3200, badge: "Most popular", perks: ["Lower per-month rate", "Same account manager all term"], buttonLabel: "Choose Growth" },
     { id: "scale", name: "Scale", desc: "Best value for always-on, long-term creator marketing.", months: 6, mrp: 45000, price: 5800, badge: "", perks: ["Lowest per-month rate", "Same account manager all term"], buttonLabel: "Get started" },
   ],
+  gstRatePercent: 18,
   pricingNote: "Secure payment via Razorpay · Our team reaches out within 24 hours of purchase",
   memberHeading: "You're a Collabry White Glove member",
   memberSubtext: "Your dedicated team is running your creator marketing end to end. Sit back — we've got this.",
@@ -616,6 +618,7 @@ export async function getWhiteGlove(): Promise<WhiteGloveContent> {
     try {
       const p = JSON.parse(result.rows[0].value) as Partial<WhiteGloveContent>;
       const str = (v: unknown, d: string) => (typeof v === "string" && v.trim() ? v : d);
+      const num = (v: unknown, d: number) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 0 && n <= 100 ? n : d; };
       return {
         heroTag: str(p.heroTag, WHITE_GLOVE_DEFAULT.heroTag),
         heroLine1: str(p.heroLine1, WHITE_GLOVE_DEFAULT.heroLine1),
@@ -628,6 +631,7 @@ export async function getWhiteGlove(): Promise<WhiteGloveContent> {
         pricingLine1: str(p.pricingLine1, WHITE_GLOVE_DEFAULT.pricingLine1),
         pricingLine2: str(p.pricingLine2, WHITE_GLOVE_DEFAULT.pricingLine2),
         plans: cleanPlans(p.plans),
+        gstRatePercent: num(p.gstRatePercent, WHITE_GLOVE_DEFAULT.gstRatePercent),
         pricingNote: str(p.pricingNote, WHITE_GLOVE_DEFAULT.pricingNote),
         memberHeading: str(p.memberHeading, WHITE_GLOVE_DEFAULT.memberHeading),
         memberSubtext: str(p.memberSubtext, WHITE_GLOVE_DEFAULT.memberSubtext),
@@ -650,6 +654,7 @@ router.get("/white-glove", async (_req: Request, res: Response): Promise<void> =
 router.patch("/admin/white-glove", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const b = req.body as Partial<WhiteGloveContent>;
   const str = (v: unknown, d: string) => (typeof v === "string" && v.trim() ? v.trim() : d);
+  const num = (v: unknown, d: number) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 0 && n <= 100 ? n : d; };
   const payload: WhiteGloveContent = {
     heroTag: str(b.heroTag, WHITE_GLOVE_DEFAULT.heroTag),
     heroLine1: str(b.heroLine1, WHITE_GLOVE_DEFAULT.heroLine1),
@@ -662,6 +667,7 @@ router.patch("/admin/white-glove", requireAdmin, async (req: Request, res: Respo
     pricingLine1: str(b.pricingLine1, WHITE_GLOVE_DEFAULT.pricingLine1),
     pricingLine2: str(b.pricingLine2, WHITE_GLOVE_DEFAULT.pricingLine2),
     plans: cleanPlans(b.plans),
+    gstRatePercent: num(b.gstRatePercent, WHITE_GLOVE_DEFAULT.gstRatePercent),
     pricingNote: str(b.pricingNote, WHITE_GLOVE_DEFAULT.pricingNote),
     memberHeading: str(b.memberHeading, WHITE_GLOVE_DEFAULT.memberHeading),
     memberSubtext: str(b.memberSubtext, WHITE_GLOVE_DEFAULT.memberSubtext),
