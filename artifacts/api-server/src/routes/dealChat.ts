@@ -14,19 +14,12 @@ const router: IRouter = Router();
 // ─── Contact info scan ────────────────────────────────────────────────────────
 const PHONE_RE = /(\+91|0)?[6-9]\d{9}/;
 const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
-const URL_RE = /(https?:\/\/|www\.)[^\s]+/gi;
 
-const ALLOWED_DOMAINS = ["drive.google.com", "instagram.com", "www.instagram.com"];
-
+// URLs/links are intentionally allowed in deal chat. Only phone numbers and
+// emails are blocked here.
 function containsContactInfo(text: string): boolean {
   if (PHONE_RE.test(text)) return true;
   if (EMAIL_RE.test(text)) return true;
-
-  const urlMatches = text.match(URL_RE) ?? [];
-  for (const url of urlMatches) {
-    const isAllowed = ALLOWED_DOMAINS.some(d => url.toLowerCase().includes(d));
-    if (!isAllowed) return true;
-  }
   return false;
 }
 
