@@ -12,10 +12,25 @@ const BLOCKED_WORDS = [
   "bsdk","mkc","bkc",
 ];
 
+/* Match a banned word only as a WHOLE word (\b…\b), case-insensitive. For
+   multi-char tokens, tolerate common separators (space/dot/underscore/hyphen)
+   BETWEEN characters so split-up evasions like "b.c" or "m c" are still caught —
+   while a clean word that merely CONTAINS a token ("abc", "mcdonald", "bcci",
+   "subconscious", "parachute") is not, because the surrounding \b fails. */
+const SEP = "[\\s._-]*";
+const BLOCKED_PATTERN = new RegExp(
+  "\\b(?:" +
+    BLOCKED_WORDS
+      .map(w => w.toLowerCase().replace(/[^a-z0-9]/g, ""))
+      .filter(Boolean)
+      .map(w => w.split("").map(ch => ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(SEP))
+      .join("|") +
+    ")\\b",
+  "i",
+);
+
 function containsAbusiveLanguage(message: string): boolean {
-  // Strip everything except a-z0-9, then check each blocked word (also stripped)
-  const normalized = message.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return BLOCKED_WORDS.some(w => normalized.includes(w.replace(/[^a-z0-9]/g, "")));
+  return BLOCKED_PATTERN.test(message);
 }
 
 interface DealMessage {
