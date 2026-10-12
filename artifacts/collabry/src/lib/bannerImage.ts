@@ -86,3 +86,49 @@ export async function prepareBannerImage(
 
   return { blob, blurData };
 }
+
+/** 16:9 variant for the optional DESKTOP hero image. Same pipeline (WebP + LQIP)
+ *  as the square one, but validates landscape 16:9 and draws at 16:9. The square
+ *  mobile image is unchanged. */
+const WIDE_RATIO = 16 / 9;
+const WIDE_RATIO_TOLERANCE = 0.03; // ~16:9; tolerates 1920×1080, 1600×900, etc.
+const WIDE_MAX_W = 1600;
+
+export async function prepareWideBannerImage(
+  file: File
+): Promise<PreparedBanner | { error: string }> {
+  if (!ALLOWED.includes(file.type)) {
+    return { error: "Only JPG, PNG, or WebP images are allowed" };
+  }
+  if (file.size > MAX_BYTES) {
+    const mb = (file.size / (1024 * 1024)).toFixed(1);
+    return { error: `Image is ${mb} MB — maximum is 5 MB` };
+  }
+
+  let img: HTMLImageElement;
+  try {
+    img = await decode(await readDataUrl(file));
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+
+  const { width, height } = img;
+  if (Math.abs(width / height - WIDE_RATIO) / WIDE_RATIO > WIDE_RATIO_TOLERANCE) {
+    return { error: `Desktop image must be 16:9 (landscape) — this one is ${width}×${height}` };
+  }
+
+  const w = Math.min(WIDE_MAX_W, width);
+  const h = Math.round(w / WIDE_RATIO);
+  const canvas = draw(img, w, h);
+
+  let quality = QUALITY_START;
+  let blob = await toBlob(canvas, quality);
+  while (blob.size > TARGET_BYTES && quality > QUALITY_FLOOR) {
+    quality -= 0.05;
+    blob = await toBlob(canvas, quality);
+  }
+
+  const blurData = draw(img, 32, 18).toDataURL("image/webp", 0.5);
+
+  return { blob, blurData };
+}

@@ -147,7 +147,7 @@ const trustBadges = [
   { icon: LayoutGrid, label: "4 Ways to Collab" },
 ];
 
-function HeroSection({ c, showCta }: { c: ReturnType<typeof useBrandLandingContent>; showCta: boolean }) {
+function HeroSection({ c, showCta, hideHeadingOnDesktop = false }: { c: ReturnType<typeof useBrandLandingContent>; showCta: boolean; hideHeadingOnDesktop?: boolean }) {
   const sub = c.get("brand.hero.subheading");
   const tagline = "Verified creators. Secure payments. Real results.";
   const cta = c.get("brand.hero.cta_btn");
@@ -157,7 +157,7 @@ function HeroSection({ c, showCta }: { c: ReturnType<typeof useBrandLandingConte
       <div className="max-w-[1280px] mx-auto">
         {/* Heading */}
         <h1
-          className="font-bold leading-tight mb-6 text-[1.6rem] lg:text-[3.25rem]"
+          className={`font-bold leading-tight mb-6 text-[1.6rem] lg:text-[3.25rem] ${hideHeadingOnDesktop ? "lg:hidden" : ""}`}
           style={{ fontFamily: "'Merriweather', serif" }}
         >
           <span className="text-white">Find Creators Who </span>
@@ -276,6 +276,7 @@ export default function BrandLandingPage() {
   const landingContent = useLandingContent();
 
   const banners = normalizeBanners(c.getJson("brand.hero.banners"));
+  const [heroOverlayActive, setHeroOverlayActive] = useState(false);
 
   return (
     <div ref={containerRef} className="min-h-screen" style={{ background: BG }}>
@@ -289,10 +290,20 @@ export default function BrandLandingPage() {
           banners={banners}
           ctaLabel={c.get("brand.hero.cta_btn")}
           ctaLink="/signup-brand"
+          onActiveDesktopChange={setHeroOverlayActive}
+          overlayHeading={
+            <h2 className="font-bold leading-tight text-[1.9rem] lg:text-[3rem]" style={{ fontFamily: "'Merriweather', serif" }}>
+              <span className="text-white">Find Creators Who </span>
+              <span style={{ color: PINK }}>Actually Convert.</span>
+              <br />
+              <span className="text-white">Real Influence. </span>
+              <span style={{ color: PINK }}>Real Results.</span>
+            </h2>
+          }
         />
 
         <div className="fade-in-section">
-          <HeroSection c={c} showCta={banners.length === 0} />
+          <HeroSection c={c} showCta={banners.length === 0} hideHeadingOnDesktop={heroOverlayActive} />
         </div>
 
         <div className="fade-in-section">

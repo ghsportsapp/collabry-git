@@ -147,7 +147,7 @@ function CreatorPageHeader({ c }: { c: ReturnType<typeof useCreatorLandingConten
 /* ── HERO ── */
 const trustBadgeIcons = [ShieldCheck, BadgeCheck, LayoutGrid];
 
-function HeroSection({ c, showCta }: { c: ReturnType<typeof useCreatorLandingContent>; showCta: boolean }) {
+function HeroSection({ c, showCta, hideHeadingOnDesktop = false }: { c: ReturnType<typeof useCreatorLandingContent>; showCta: boolean; hideHeadingOnDesktop?: boolean }) {
   const line1 = c.get("creator.hero.heading_line1");
   const highlight1 = c.get("creator.hero.heading_highlight1");
   const line2 = c.get("creator.hero.heading_line2");
@@ -165,7 +165,7 @@ function HeroSection({ c, showCta }: { c: ReturnType<typeof useCreatorLandingCon
     <section className="pt-8 pb-8 lg:pt-32 lg:pb-10 text-center px-5">
       <div className="max-w-[1280px] mx-auto">
         <h1
-          className="font-bold leading-tight mb-6 text-[1.6rem] lg:text-[3.25rem]"
+          className={`font-bold leading-tight mb-6 text-[1.6rem] lg:text-[3.25rem] ${hideHeadingOnDesktop ? "lg:hidden" : ""}`}
           style={{ fontFamily: "'Merriweather', serif" }}
         >
           <span className="text-white">{line1} </span>
@@ -282,6 +282,7 @@ export default function CreatorLandingPage() {
   const landingContent = useLandingContent();
 
   const banners = normalizeBanners(c.getJson("creator.hero.banners"));
+  const [heroOverlayActive, setHeroOverlayActive] = useState(false);
   const collabModes = c.getJson<Array<{ num: string; title: string; desc: string; steps: string[] }>>("creator.collab_modes.modes");
   const collabHeadingLine = c.get("creator.collab_modes.heading_line1");
   const collabHighlight = c.get("creator.collab_modes.heading_highlight1");
@@ -299,10 +300,20 @@ export default function CreatorLandingPage() {
           banners={banners}
           ctaLabel={c.get("creator.hero.cta_btn")}
           ctaLink={c.get("creator.hero.cta_link") || "/signup-creator"}
+          onActiveDesktopChange={setHeroOverlayActive}
+          overlayHeading={
+            <h2 className="font-bold leading-tight text-[1.9rem] lg:text-[3rem]" style={{ fontFamily: "'Merriweather', serif" }}>
+              <span className="text-white">{c.get("creator.hero.heading_line1")} </span>
+              <span style={{ color: PINK }}>{c.get("creator.hero.heading_highlight1")}</span>
+              <br />
+              <span className="text-white">{c.get("creator.hero.heading_line2")} </span>
+              <span style={{ color: PINK }}>{c.get("creator.hero.heading_highlight2")}</span>
+            </h2>
+          }
         />
 
         <div className="fade-in-section">
-          <HeroSection c={c} showCta={banners.length === 0} />
+          <HeroSection c={c} showCta={banners.length === 0} hideHeadingOnDesktop={heroOverlayActive} />
         </div>
 
         <div>

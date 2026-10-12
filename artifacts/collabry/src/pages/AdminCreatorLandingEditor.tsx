@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "wouter";
 import { Save, Eye, Upload, ArrowLeft, Plus, Trash2, AlertCircle } from "lucide-react";
 import { CREATOR_DEFAULTS, CREATOR_LANDING_UPDATE_CHANNEL, writeCreatorLandingCache } from "@/hooks/useCreatorLandingContent";
-import { prepareBannerImage } from "@/lib/bannerImage";
+import { prepareBannerImage, prepareWideBannerImage } from "@/lib/bannerImage";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
@@ -20,7 +20,7 @@ interface ContentItem {
 interface EarningsCard { value: string; label: string; }
 interface CollabMode { num: string; title: string; desc: string; steps: string[]; }
 interface ComparisonRow { feature: string; old: string; collabry: string; }
-interface HeroBanner { imageUrl: string; altText: string; blurData?: string; }
+interface HeroBanner { imageUrl: string; altText: string; blurData?: string; desktopImageUrl?: string; desktopBlurData?: string; }
 
 const EDITOR_CACHE_KEY = "collabry_creator_editor_v1";
 const BANNERS_KEY = "creator.hero.banners";
@@ -147,6 +147,39 @@ export default function AdminCreatorLandingEditor() {
     }
   };
 
+  /* Optional DESKTOP image (16:9) for an existing slide. Mobile image + layout
+     are untouched; slides without a desktop image keep today's desktop look. */
+  const setBannerDesktop = async (i: number, file: File) => {
+    setBannerError(null);
+    setBannerBusy(true);
+    try {
+      const prepared = await prepareWideBannerImage(file);
+      if ("error" in prepared) { setBannerError(prepared.error); return; }
+
+      const formData = new FormData();
+      formData.append("file", prepared.blob, "banner-desktop.webp");
+      const r = await fetch(`${BASE_URL}/api/uploads/image`, { method: "POST", body: formData });
+      if (!r.ok) { setBannerError("Upload failed — please try again"); return; }
+      const { objectPath } = (await r.json()) as { objectPath?: string };
+      if (!objectPath) { setBannerError("Upload failed — please try again"); return; }
+
+      const b = banners.map((bn, idx) => idx === i ? { ...bn, desktopImageUrl: objectPath, desktopBlurData: prepared.blurData } : bn);
+      updateJsonArray(BANNERS_KEY, b);
+    } finally {
+      setBannerBusy(false);
+    }
+  };
+
+  const removeBannerDesktop = (i: number) => {
+    const b = banners.map((bn, idx) => {
+      if (idx !== i) return bn;
+      const { desktopImageUrl, desktopBlurData, ...rest } = bn;
+      void desktopImageUrl; void desktopBlurData;
+      return rest;
+    });
+    updateJsonArray(BANNERS_KEY, b);
+  };
+
   const saveAll = async (): Promise<boolean> => {
     setSaving(true);
     const items = Object.values(content);
@@ -267,36 +300,61 @@ export default function AdminCreatorLandingEditor() {
 
             <h4 className="text-white/90 text-xs font-semibold uppercase tracking-wider mt-6 mb-1">Hero Banners</h4>
             <p className="text-[#9CA3AF] text-xs mb-3">
-              Up to {MAX_BANNERS} square (1:1) images, max 5 MB each. Converted to WebP on upload.
-              With no banners the hero keeps its current text-only layout.
+              Up to {MAX_BANNERS} slides. Each needs a square (1:1) <strong>mobile</strong> image; you can also add
+              an optional 16:9 <strong>desktop</strong> image that shows full-width with the headline + button
+              overlaid on desktop. Max 5 MB each, converted to WebP. Slides with no desktop image keep the current
+              desktop look. With no banners the hero keeps its text-only layout.
             </p>
 
             {banners.map((banner, i) => (
-              <div key={i} className="grid grid-cols-[64px_1fr_auto] gap-3 mb-3 items-center">
-                <img
-                  src={banner.imageUrl}
-                  alt=""
-                  className="w-16 h-16 rounded-lg object-cover border border-white/10"
-                />
-                <div>
-                  <label className="text-[#9CA3AF] text-xs font-medium mb-1.5 block">Alt text (banner {i + 1})</label>
-                  <input
-                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/70 focus:border-[#E14F69]/50 focus:outline-none"
-                    placeholder="Describe the image for screen readers"
-                    value={banner.altText ?? ""}
-                    onChange={(e) => {
-                      const b = [...banners];
-                      b[i] = { ...b[i], altText: e.target.value };
-                      updateJsonArray(BANNERS_KEY, b);
-                    }}
-                  />
+              <div key={i} className="mb-3 rounded-lg border border-white/10 p-3">
+                <div className="grid grid-cols-[64px_1fr_auto] gap-3 items-center">
+                  <div className="flex flex-col items-center gap-1">
+                    <img src={banner.imageUrl} alt="" className="w-16 h-16 rounded-lg object-cover border border-white/10" />
+                    <span className="text-[10px] text-white/40">Mobile 1:1</span>
+                  </div>
+                  <div>
+                    <label className="text-[#9CA3AF] text-xs font-medium mb-1.5 block">Alt text (banner {i + 1})</label>
+                    <input
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/70 focus:border-[#E14F69]/50 focus:outline-none"
+                      placeholder="Describe the image for screen readers"
+                      value={banner.altText ?? ""}
+                      onChange={(e) => {
+                        const b = [...banners];
+                        b[i] = { ...b[i], altText: e.target.value };
+                        updateJsonArray(BANNERS_KEY, b);
+                      }}
+                    />
+                  </div>
+                  <button
+                    onClick={() => updateJsonArray(BANNERS_KEY, banners.filter((_, idx) => idx !== i))}
+                    className="text-red-400 hover:text-red-300 p-2"
+                    title="Remove banner"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => updateJsonArray(BANNERS_KEY, banners.filter((_, idx) => idx !== i))}
-                  className="text-red-400 hover:text-red-300 p-2"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+
+                {/* Optional desktop (16:9) image for this slide */}
+                <div className="mt-3 flex items-center gap-3">
+                  {banner.desktopImageUrl ? (
+                    <img src={banner.desktopImageUrl} alt="" className="w-28 rounded-md object-cover border border-white/10" style={{ aspectRatio: "16 / 9" }} />
+                  ) : (
+                    <div className="w-28 rounded-md border border-dashed border-white/15 flex items-center justify-center text-[10px] text-white/40" style={{ aspectRatio: "16 / 9" }}>16:9</div>
+                  )}
+                  <label className="text-[#E14F69] text-xs cursor-pointer hover:text-[#d4156b]">
+                    {bannerBusy ? "Uploading…" : banner.desktopImageUrl ? "Replace desktop image" : "Upload desktop image (16:9, optional)"}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) setBannerDesktop(i, f); e.target.value = ""; }}
+                    />
+                  </label>
+                  {banner.desktopImageUrl && (
+                    <button onClick={() => removeBannerDesktop(i)} className="text-white/40 hover:text-red-400 text-xs">Remove</button>
+                  )}
+                </div>
               </div>
             ))}
 
