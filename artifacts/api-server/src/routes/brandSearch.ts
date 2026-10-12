@@ -843,24 +843,31 @@ router.post("/brand/requests", requireBrand, async (req: Request, res: Response)
   if (sc > 0 && !storyScript?.trim()) { res.status(400).json({ error: "Script of story/video is required" }); return; }
   if (pc > 0 && !postContent?.trim()) { res.status(400).json({ error: "Content of post is required" }); return; }
 
-  // Must be unlocked first
+  // Must be unlocked first (gate unchanged — still requires an unlock record).
   const u = await pool.query(
-    `SELECT "reelSlabMin","reelSlabMax","storySlabMin","storySlabMax","postSlabMin","postSlabMax"
-     FROM "BrandUnlockRecord" WHERE "brandId"=$1 AND "creatorId"=$2`, [brandId, creatorId]
+    `SELECT 1 FROM "BrandUnlockRecord" WHERE "brandId"=$1 AND "creatorId"=$2`, [brandId, creatorId]
   );
   if (u.rows.length === 0) { res.status(403).json({ error: "Profile not unlocked" }); return; }
-  const slab = u.rows[0];
   const num = (v: any) => v == null ? 0 : parseFloat(v);
 
-  // Validate prices within slab snapshot
-  if (rc > 0 && (pricePerReel < num(slab.reelSlabMin) || pricePerReel > num(slab.reelSlabMax))) {
-    res.status(400).json({ error: `Reel price must be between ₹${num(slab.reelSlabMin)} and ₹${num(slab.reelSlabMax)}` }); return;
+  // Validate against the creator's CURRENT pricing — the same ranges the modal
+  // displays — not the frozen unlock snapshot. Otherwise a creator who raised
+  // their rates blocks brands from sending at the new, shown prices.
+  const pr = await pool.query(
+    `SELECT "reelPriceMin","reelPriceMax","storyPriceMin","storyPriceMax","postPriceMin","postPriceMax"
+     FROM "Creator" WHERE id=$1`, [creatorId]
+  );
+  if (pr.rows.length === 0) { res.status(404).json({ error: "Creator not found" }); return; }
+  const price = pr.rows[0];
+
+  if (rc > 0 && (pricePerReel < num(price.reelPriceMin) || pricePerReel > num(price.reelPriceMax))) {
+    res.status(400).json({ error: `Reel price must be between ₹${num(price.reelPriceMin)} and ₹${num(price.reelPriceMax)}` }); return;
   }
-  if (sc > 0 && (pricePerStory < num(slab.storySlabMin) || pricePerStory > num(slab.storySlabMax))) {
-    res.status(400).json({ error: `Story price must be between ₹${num(slab.storySlabMin)} and ₹${num(slab.storySlabMax)}` }); return;
+  if (sc > 0 && (pricePerStory < num(price.storyPriceMin) || pricePerStory > num(price.storyPriceMax))) {
+    res.status(400).json({ error: `Story price must be between ₹${num(price.storyPriceMin)} and ₹${num(price.storyPriceMax)}` }); return;
   }
-  if (pc > 0 && (pricePerPost < num(slab.postSlabMin) || pricePerPost > num(slab.postSlabMax))) {
-    res.status(400).json({ error: `Post price must be between ₹${num(slab.postSlabMin)} and ₹${num(slab.postSlabMax)}` }); return;
+  if (pc > 0 && (pricePerPost < num(price.postPriceMin) || pricePerPost > num(price.postPriceMax))) {
+    res.status(400).json({ error: `Post price must be between ₹${num(price.postPriceMin)} and ₹${num(price.postPriceMax)}` }); return;
   }
 
   // Idempotency: reject duplicate request within 30 seconds
@@ -888,7 +895,9 @@ router.post("/brand/requests", requireBrand, async (req: Request, res: Response)
      deliveryWindowDays ? parseInt(deliveryWindowDays) : null,
      aboutText,
      aboutText, reelScript?.trim() ?? null, storyScript?.trim() ?? null, postContent?.trim() ?? null,
-     slab.reelSlabMin, slab.reelSlabMax, slab.storySlabMin, slab.storySlabMax, slab.postSlabMin, slab.postSlabMax,
+     // Record the CURRENT range this request was validated against (so counter-offers
+     // in this chain bound to the up-to-date range, not the stale unlock snapshot).
+     price.reelPriceMin, price.reelPriceMax, price.storyPriceMin, price.storyPriceMax, price.postPriceMin, price.postPriceMax,
      total, postedBy]
   );
   // Notify creator about new deal request
