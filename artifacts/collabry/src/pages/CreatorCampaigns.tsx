@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { useLocation, useSearch } from "wouter";
+import AdBanner from "@/components/AdBanner";
 import { useServerTime } from "@/hooks/useServerTime";
 import {
   Megaphone, Gift, Clock, Users, CheckCircle, XCircle,
@@ -486,7 +487,17 @@ export default function CreatorCampaigns() {
               <p className="text-white/75 text-sm font-semibold mb-1" style={{ fontFamily: POPPINS }}>No paid campaigns right now</p>
               <p className="text-white/70 text-xs" style={{ fontFamily: POPPINS }}>Check back soon — new campaigns are added regularly</p>
             </div>
-          ) : paid.map(c => <CampaignCard key={c.id} c={c} onClick={() => navigate(`/home-creator/campaigns/${c.id}`)} />)
+          ) : (
+            <>
+              {paid.map((c, i) => (
+                <Fragment key={c.id}>
+                  <CampaignCard c={c} onClick={() => navigate(`/home-creator/campaigns/${c.id}`)} />
+                  {i === 1 && <AdBanner className="my-1" />}
+                </Fragment>
+              ))}
+              {paid.length < 2 && <AdBanner className="my-1" />}
+            </>
+          )
         )}
 
         {tab === 1 && (
@@ -497,7 +508,17 @@ export default function CreatorCampaigns() {
               <p className="text-white/75 text-sm font-semibold mb-1" style={{ fontFamily: POPPINS }}>No barter campaigns available</p>
               <p className="text-white/70 text-xs" style={{ fontFamily: POPPINS }}>Barter = receive a product in exchange for content</p>
             </div>
-          ) : barter.map(c => <BarterCard key={c.id} c={c} onClick={() => navigate(`/home-creator/barter/${c.id}`)} />)
+          ) : (
+            <>
+              {barter.map((c, i) => (
+                <Fragment key={c.id}>
+                  <BarterCard c={c} onClick={() => navigate(`/home-creator/barter/${c.id}`)} />
+                  {i === 1 && <AdBanner className="my-1" />}
+                </Fragment>
+              ))}
+              {barter.length < 2 && <AdBanner className="my-1" />}
+            </>
+          )
         )}
 
         {tab === 2 && (

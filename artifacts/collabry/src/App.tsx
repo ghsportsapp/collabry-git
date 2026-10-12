@@ -61,6 +61,7 @@ const AdminDeals = lazy(() => import("@/pages/AdminDeals"));
 const CreatorSignup = lazy(() => import("@/pages/CreatorSignup"));
 const CreatorLogin = lazy(() => import("@/pages/CreatorLogin"));
 const HomeCreator = lazy(() => import("@/pages/HomeCreator"));
+const ExploreBrands = lazy(() => import("@/pages/ExploreBrands"));
 const CreatorEarningsHistory = lazy(() => import("@/pages/CreatorEarningsHistory"));
 const CreatorProfile = lazy(() => import("@/pages/CreatorProfile"));
 const CreatorNotifications = lazy(() => import("@/pages/CreatorNotifications"));
@@ -158,6 +159,7 @@ function Router() {
       <Route path="/signup-creator" component={CreatorSignup} />
       <Route path="/login-creator" component={CreatorLogin} />
       <Route path="/home-creator" component={HomeCreator} />
+      <Route path="/explore-brands" component={ExploreBrands} />
       <Route path="/home-creator/earnings" component={CreatorEarningsHistory} />
       <Route path="/home-creator/profile" component={CreatorProfile} />
       <Route path="/home-creator/notifications" component={CreatorNotifications} />

@@ -13,6 +13,7 @@ import { useLandingContent } from "@/hooks/useLandingContent";
 import { useCreatorLandingContent } from "@/hooks/useCreatorLandingContent";
 import { useSupportEmail } from "@/hooks/useSupportEmail";
 import { CreatorLayout, PINK, BG, POPPINS } from "@/components/CreatorNavLayout";
+import AdBanner from "@/components/AdBanner";
 import PaymentCelebrationPopup from "@/components/PaymentCelebrationPopup";
 
 const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
@@ -341,6 +342,9 @@ function ActiveHome({ home, token, onNavigate, onLocked, content }: { home: any;
       {/* Complete Profile */}
       <CompleteProfileSection incomplete={incomplete} onNavigate={onNavigate} />
 
+      {/* Advertisement banners */}
+      <AdBanner />
+
       {/* Did you know how brands find you */}
       <BrandsSection open={open} setOpen={setOpen} />
 
@@ -470,6 +474,9 @@ function PendingHome({ home, token, onNavigate, onLocked, content }: { home: any
 
       {/* Complete Profile checklist */}
       <CompleteProfileSection incomplete={incomplete} onNavigate={onNavigate} />
+
+      {/* Advertisement banners */}
+      <AdBanner />
 
       <BrandsSection open={open} setOpen={setOpen} />
       <div id="fun-questions-section"><FunQuestionsSection token={token} onToast={msg => setToast(msg)} /></div>
