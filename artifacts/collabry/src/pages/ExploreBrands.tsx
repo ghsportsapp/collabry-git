@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { useCreatorAuth } from "@/contexts/CreatorAuthContext";
 import { CreatorLayout, POPPINS, PINK } from "@/components/CreatorNavLayout";
@@ -13,10 +13,19 @@ export default function ExploreBrands() {
   const { creatorId, loading } = useCreatorAuth();
   const [, navigate] = useLocation();
   const ads = useAds();
+  const targetAdId = new URLSearchParams(useSearch()).get("ad");
 
   useEffect(() => {
     if (!loading && !creatorId) navigate("/login-creator");
   }, [loading, creatorId, navigate]);
+
+  // After the list renders, jump (near-instant) to the clicked ad. Not found →
+  // stay at the top, silently. "instant" overrides the global smooth scroll.
+  useEffect(() => {
+    if (!targetAdId || !ads || ads.length === 0) return;
+    const el = document.getElementById(`ad-${targetAdId}`);
+    if (el) el.scrollIntoView({ block: "start", behavior: "instant" as ScrollBehavior });
+  }, [ads, targetAdId]);
 
   if (loading || !creatorId) return null;
 
@@ -40,9 +49,9 @@ export default function ExploreBrands() {
           <p className="text-white/50 text-sm text-center py-16">Nothing to explore right now — check back soon.</p>
         ) : (
           <div className="space-y-6">
-            {ads.map(ad => (
-              <div key={ad.id} className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                <AdImage ad={ad} rounded="rounded-xl" />
+            {ads.map((ad, i) => (
+              <div key={ad.id} id={`ad-${ad.id}`} className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", scrollMarginTop: 72 }}>
+                <AdImage ad={ad} rounded="rounded-xl" priority={i === 0} />
                 <div className="px-1 pt-3.5">
                   {ad.headline && <h2 className="text-white font-bold text-[15px] mb-1.5 leading-snug">{ad.headline}</h2>}
                   {ad.bodyText && <p className="text-white/60 text-[13px] leading-relaxed whitespace-pre-line">{ad.bodyText}</p>}

@@ -21,10 +21,12 @@ export interface Ad {
 
 /* A 16:9 image with the "Ad" pill overlaid bottom-right. Reused by the scroller
    cards and the /explore-brands detail cards so the look can't drift. */
-export function AdImage({ ad, rounded = "rounded-2xl", onClick }: {
+export function AdImage({ ad, rounded = "rounded-2xl", onClick, priority = false }: {
   ad: Ad;
   rounded?: string;
   onClick?: () => void;
+  /** First visible banner → load eagerly with high priority; others stay lazy. */
+  priority?: boolean;
 }) {
   return (
     <div
@@ -32,7 +34,15 @@ export function AdImage({ ad, rounded = "rounded-2xl", onClick }: {
       className={`relative w-full overflow-hidden ${rounded} ${onClick ? "cursor-pointer" : ""}`}
       style={{ aspectRatio: "16 / 9", background: "rgba(255,255,255,0.05)" }}
     >
-      <img src={resolveImg(ad.imageUrl)} alt={ad.headline || ""} loading="lazy" className="w-full h-full object-cover" />
+      <img
+        src={resolveImg(ad.imageUrl)}
+        alt={ad.headline || ""}
+        width={800}
+        height={450}
+        loading={priority ? "eager" : "lazy"}
+        {...((priority ? { fetchpriority: "high" } : {}) as any)}
+        className="w-full h-full object-cover"
+      />
       <span
         className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md text-[11px] font-semibold text-white"
         style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }}
@@ -88,12 +98,18 @@ export default function AdBanner({ className = "" }: { className?: string }) {
 
   return (
     <div
-      className={`flex gap-2.5 overflow-x-auto px-4 lg:px-0 ad-scroll ${className}`}
+      className={`flex items-start gap-2.5 overflow-x-auto px-4 lg:px-0 ${className}`}
       style={{ scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch" }}
     >
-      {ads.map(ad => (
-        <div key={ad.id} className="flex-shrink-0" style={{ width: "44%", maxWidth: 340, scrollSnapAlign: "start" }}>
-          <AdImage ad={ad} onClick={() => navigate("/explore-brands")} />
+      {ads.map((ad, i) => (
+        // Mobile: ~44% so ~2 full cards + a peek. Desktop (lg): fixed-width cards
+        // so the row renders and scrolls in the wide 1280px container too.
+        <div
+          key={ad.id}
+          className="shrink-0 w-[44%] max-w-[340px] lg:w-[300px] lg:max-w-none"
+          style={{ scrollSnapAlign: "start" }}
+        >
+          <AdImage ad={ad} priority={i === 0} onClick={() => navigate(`/explore-brands?ad=${encodeURIComponent(ad.id)}`)} />
         </div>
       ))}
     </div>

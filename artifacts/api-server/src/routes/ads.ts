@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireAdmin } from "../middleware/requireAdmin";
 import { requireCreator } from "../middleware/requireCreator";
+import { tryDeleteByStoredPath } from "../lib/storage";
 
 /* Advertisement banners (Batch 1): admin CRUD + reorder, and a creator-auth read.
    Managed by raw SQL against the "Advertisement" table created in
@@ -74,10 +75,14 @@ router.patch("/admin/ads/:id", requireAdmin, async (req: Request, res: Response)
   res.json(r.rows[0]);
 });
 
-// ── Admin: delete ad ────────────────────────────────────────────────────────
+// ── Admin: delete ad (also purges the image from object storage) ────────────
 router.delete("/admin/ads/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
-  const r = await pool.query(`DELETE FROM "Advertisement" WHERE id = $1 RETURNING id`, [req.params["id"]]);
+  const r = await pool.query(`DELETE FROM "Advertisement" WHERE id = $1 RETURNING "imageUrl"`, [req.params["id"]]);
   if (r.rows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
+  // Best-effort storage cleanup — the key is derivable from the stored public URL
+  // (see tryDeleteByStoredPath). A failed destroy must NOT fail the row delete.
+  const imageUrl = r.rows[0].imageUrl as string | null;
+  if (imageUrl) { void tryDeleteByStoredPath(imageUrl).catch(() => {}); }
   res.json({ ok: true });
 });
 
