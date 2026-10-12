@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useCreatorAuth } from "@/contexts/CreatorAuthContext";
 
@@ -44,16 +44,36 @@ export function AdImage({ ad, rounded = "rounded-2xl", onClick }: {
 }
 
 export function useAds(): Ad[] | null {
-  const { apiFetch } = useCreatorAuth();
+  const { apiFetch, loading } = useCreatorAuth();
+
+  // apiFetch's identity changes every time the auth token refreshes — its dep is
+  // [accessToken] and it calls setAccessToken() itself on a 401. If the fetch
+  // effect depended on apiFetch it would re-run right after the first successful
+  // paint and wipe the banner. Keep apiFetch in a ref so the effect never
+  // depends on it, and run the fetch exactly once (after auth init).
+  const apiFetchRef = useRef(apiFetch);
+  apiFetchRef.current = apiFetch;
+
   const [ads, setAds] = useState<Ad[] | null>(null);
+  const fetchedRef = useRef(false);
+
   useEffect(() => {
+    if (loading || fetchedRef.current) return; // wait for auth; then fetch once, ever
+    fetchedRef.current = true;
     let alive = true;
-    apiFetch("/api/ads")
-      .then(r => (r.ok ? r.json() : []))
-      .then(d => { if (alive) setAds(Array.isArray(d) ? d : []); })
-      .catch(() => { if (alive) setAds([]); });
+    apiFetchRef.current("/api/ads")
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!alive) return;
+        // Only a valid array replaces state. Never reset already-loaded ads to
+        // null/[] on a bad response — keep the last good list.
+        if (Array.isArray(d)) setAds(d);
+        else setAds(prev => (prev && prev.length ? prev : []));
+      })
+      .catch(() => { if (alive) setAds(prev => (prev && prev.length ? prev : [])); });
     return () => { alive = false; };
-  }, [apiFetch]);
+  }, [loading]); // loading flips true→false once; fetchedRef guards against any further run
+
   return ads;
 }
 
