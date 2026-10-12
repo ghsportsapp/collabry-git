@@ -78,6 +78,7 @@ const AdminLandingVideos = lazy(() => import("@/pages/AdminLandingVideos"));
 const WhiteGloveService = lazy(() => import("@/pages/WhiteGloveService"));
 const WhiteGloveThankYou = lazy(() => import("@/pages/WhiteGloveThankYou"));
 const AdminWhiteGlove = lazy(() => import("@/pages/AdminWhiteGlove"));
+const AdminAdvertisements = lazy(() => import("@/pages/AdminAdvertisements"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function AR({ path, component: Comp }: { path: string; component: React.ComponentType<any> }) {
@@ -141,6 +142,7 @@ function Router() {
       <AR path="/admin-collabryangad/about-us" component={AdminAboutUs} />
       <AR path="/admin-collabryangad/contact-us" component={AdminAboutUs} />
       <AR path="/admin-collabryangad/white-glove" component={AdminWhiteGlove} />
+      <AR path="/admin-collabryangad/advertisement" component={AdminAdvertisements} />
 
       <Route path="/brand" component={BrandLandingPage} />
       <Route path="/creator" component={CreatorLandingPage} />
