@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { ArrowLeft, Plus, Trash2, Save, ChevronUp, ChevronDown, X, Upload, Pencil } from "lucide-react";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { goBack } from "@/lib/adminReturnTo";
+import AdvertiseBrandEditor from "@/components/AdvertiseBrandEditor";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -56,6 +57,7 @@ export default function AdminAdvertisements() {
   const [ads, setAds] = useState<Ad[] | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [editing, setEditing] = useState<Ad | "new" | null>(null);
+  const [tab, setTab] = useState<"banners" | "page">("banners");
 
   const showToast = (msg: string, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000); };
 
@@ -98,24 +100,41 @@ export default function AdminAdvertisements() {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3 mb-6">
+      <div className="flex items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3">
           <button onClick={() => goBack(navigate, "/admin-collabryangad")} title="Back" className="text-white/70 hover:text-white">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
             <h1 className="text-white font-bold text-lg">Advertisement</h1>
-            <p className="text-white/50 text-xs">Creator-facing ad banners. Order here controls the feed order everywhere.</p>
+            <p className="text-white/50 text-xs">Creator ad banners + the public /advertise-your-brand page content.</p>
           </div>
         </div>
-        <button onClick={() => setEditing("new")}
-          className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-xl text-white font-semibold"
-          style={{ background: PINK }}>
-          <Plus className="w-4 h-4" /> Add ad
-        </button>
+        {tab === "banners" && (
+          <button onClick={() => setEditing("new")}
+            className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-xl text-white font-semibold"
+            style={{ background: PINK }}>
+            <Plus className="w-4 h-4" /> Add ad
+          </button>
+        )}
       </div>
 
-      {ads === null ? (
+      {/* Tabs: ad banners (creator feed) vs the /advertise-your-brand page content */}
+      <div className="flex gap-2 mb-6">
+        {([["banners", "Ad Banners"], ["page", "Advertise Page"]] as const).map(([key, lbl]) => (
+          <button key={key} onClick={() => setTab(key)}
+            className="px-4 py-2 rounded-full text-xs font-semibold transition-colors"
+            style={tab === key
+              ? { background: PINK, color: "#fff" }
+              : { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.1)" }}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {tab === "page" && <AdvertiseBrandEditor onToast={showToast} />}
+
+      {tab === "banners" && (ads === null ? (
         <div className="space-y-3">{[0, 1, 2].map(i => <div key={i} className="h-28 rounded-2xl animate-pulse" style={{ background: "rgba(255,255,255,0.04)" }} />)}</div>
       ) : ads.length === 0 ? (
         <p className="text-white/50 text-sm text-center py-16">No ads yet. Click "Add ad" to create one.</p>
@@ -151,7 +170,7 @@ export default function AdminAdvertisements() {
             </div>
           ))}
         </div>
-      )}
+      ))}
 
       {editing && (
         <AdEditor

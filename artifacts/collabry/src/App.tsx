@@ -77,6 +77,8 @@ const CreatorLandingPage = lazy(() => import("@/pages/CreatorLandingPage"));
 const AdminCreatorLandingEditor = lazy(() => import("@/pages/AdminCreatorLandingEditor"));
 const AdminLandingVideos = lazy(() => import("@/pages/AdminLandingVideos"));
 const WhiteGloveService = lazy(() => import("@/pages/WhiteGloveService"));
+const AdvertiseBrand = lazy(() => import("@/pages/AdvertiseBrand"));
+const AdvertiseBrandThankYou = lazy(() => import("@/pages/AdvertiseBrandThankYou"));
 const WhiteGloveThankYou = lazy(() => import("@/pages/WhiteGloveThankYou"));
 const AdminWhiteGlove = lazy(() => import("@/pages/AdminWhiteGlove"));
 const AdminAdvertisements = lazy(() => import("@/pages/AdminAdvertisements"));
@@ -175,6 +177,8 @@ function Router() {
       <Route path="/contact-us" component={AboutUsPage} />
       <Route path="/white-glove-service" component={WhiteGloveService} />
       <Route path="/white-glove-service/thank-you" component={WhiteGloveThankYou} />
+      <Route path="/advertise-your-brand" component={AdvertiseBrand} />
+      <Route path="/advertise-your-brand/thank-you" component={AdvertiseBrandThankYou} />
       <Route component={NotFound} />
     </Switch>
   );

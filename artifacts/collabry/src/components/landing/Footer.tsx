@@ -72,6 +72,10 @@ export default function Footer() {
             className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
             About Us
           </a>
+          <Link href="/advertise-your-brand" onClick={() => window.scrollTo(0, 0)}
+            className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
+            Advertise Your Brand
+          </Link>
           <Link href="/privacy-policies"
             className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
             Privacy Policy

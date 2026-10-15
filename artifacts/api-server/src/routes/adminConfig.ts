@@ -684,4 +684,171 @@ router.patch("/admin/white-glove", requireAdmin, async (req: Request, res: Respo
   res.json({ ok: true });
 });
 
+/* ── Advertise Your Brand page content ─────────────────── */
+const ADVERTISE_BRAND_KEY = "advertise_brand_content";
+
+interface AdvPointS { title: string; desc: string }
+interface AdvPlanS {
+  id: string; name: string; desc: string;
+  months: number; mrp: number; price: number;
+  badge: string; perks: string[]; buttonLabel: string;
+}
+interface AdvFounderS { name: string; designation: string; image: string }
+interface AdvertiseBrandContent {
+  heroTag: string;
+  heroLine1: string; heroLine2: string; heroSub: string;
+  includedLine1: string; includedLine2: string; includedSub: string;
+  points: AdvPointS[];
+  pricingLine1: string; pricingLine2: string;
+  plans: AdvPlanS[];
+  pricingNote: string;
+  thankYouMessage: string;
+  founderHeading: string; founderSubheading: string;
+  founders: AdvFounderS[];
+  footerNote: string;
+}
+
+const ADVERTISE_BRAND_DEFAULT: AdvertiseBrandContent = {
+  heroTag: "Advertise · reach creators who convert",
+  heroLine1: "Advertise your brand.",
+  heroLine2: "Reach creators who convert.",
+  heroSub: "Feature your brand across Collabry — in creator feeds, on campaign pages and on a dedicated brand page. We place it where creators and their audiences actually look, so the right people discover you.",
+  includedLine1: "One ad package.",
+  includedLine2: "Everything your brand needs.",
+  includedSub: "Every plan includes the same full-funnel brand placement across Collabry — only the duration and price change.",
+  points: [
+    { title: "Premium feed placement", desc: "Your brand shows in the creator ad scroller on Home and Campaigns, in display order." },
+    { title: "Dedicated brand page", desc: "A full Explore-Brands card with your headline, image and story that creators can tap into." },
+    { title: "Always-on visibility", desc: "Your placement runs for the whole term — seen by every creator who opens the app." },
+    { title: "Creative help", desc: "We help size and polish your 16:9 banner so it looks sharp on every device." },
+    { title: "Priority positioning", desc: "Longer plans get front-of-feed ordering, so your brand is seen first." },
+    { title: "Audience relevance", desc: "Placed in front of the creators most relevant to your brand and category." },
+    { title: "Live placement visibility", desc: "Know your placement is live and where it appears across the app." },
+    { title: "Dedicated support", desc: "A point of contact to update your creative or swap your message any time during the term." },
+  ],
+  pricingLine1: "Choose how long you run.",
+  pricingLine2: "The longer you go, the less you pay.",
+  plans: [
+    { id: "m1", name: "1 Month", desc: "A focused one-month brand push.", months: 1, mrp: 18000, price: 12000, badge: "", perks: [], buttonLabel: "Get started" },
+    { id: "m3", name: "3 Months", desc: "Sustained visibility for steady growth.", months: 3, mrp: 54000, price: 30000, badge: "Most popular", perks: ["Lower per-month rate", "Priority feed positioning"], buttonLabel: "Choose 3 Months" },
+    { id: "m6", name: "6 Months", desc: "Best value for always-on brand presence.", months: 6, mrp: 108000, price: 54000, badge: "", perks: ["Lowest per-month rate", "Front-of-feed priority"], buttonLabel: "Get started" },
+  ],
+  pricingNote: "Our team reaches out within 24 hours to set up your placement.",
+  thankYouMessage: "Thank you for choosing to advertise with Collabry. Our team will set up your brand placement and reach out shortly to finalise the creative and go live. Welcome aboard.",
+  founderHeading: "From Founder to Founder",
+  founderSubheading: "We built the audience you want to reach.",
+  founders: [
+    { name: "Navneet", designation: "Founder", image: "" },
+    { name: "Angad", designation: "Co-founder", image: "" },
+    { name: "Nikhil Goel", designation: "Co-founder", image: "" },
+  ],
+  footerNote: "A Krida Ventures Company · Gurugram, Haryana",
+};
+
+function cleanAdvPoints(input: unknown): AdvPointS[] {
+  if (!Array.isArray(input)) return ADVERTISE_BRAND_DEFAULT.points;
+  const points = input
+    .filter((p): p is AdvPointS => !!p && typeof p.title === "string" && typeof p.desc === "string")
+    .map(p => ({ title: p.title.trim(), desc: p.desc.trim() }))
+    .filter(p => p.title.length > 0 || p.desc.length > 0);
+  return points.length > 0 ? points : ADVERTISE_BRAND_DEFAULT.points;
+}
+
+function cleanAdvPlans(input: unknown): AdvPlanS[] {
+  if (!Array.isArray(input)) return ADVERTISE_BRAND_DEFAULT.plans;
+  const plans = input
+    .filter((p): p is AdvPlanS => !!p && typeof p.name === "string")
+    .map((p, i) => ({
+      id: typeof p.id === "string" && p.id.trim() ? p.id.trim() : ADVERTISE_BRAND_DEFAULT.plans[i]?.id ?? `plan-${i + 1}`,
+      name: p.name.trim(),
+      desc: typeof p.desc === "string" ? p.desc.trim() : "",
+      months: Number.isFinite(Number(p.months)) && Number(p.months) > 0 ? Math.round(Number(p.months)) : 1,
+      mrp: Number.isFinite(Number(p.mrp)) && Number(p.mrp) >= 0 ? Number(p.mrp) : 0,
+      price: Number.isFinite(Number(p.price)) && Number(p.price) >= 0 ? Number(p.price) : 0,
+      badge: typeof p.badge === "string" ? p.badge.trim() : "",
+      perks: Array.isArray(p.perks) ? p.perks.filter((x: unknown): x is string => typeof x === "string").map(x => x.trim()).filter(Boolean) : [],
+      buttonLabel: typeof p.buttonLabel === "string" && p.buttonLabel.trim()
+        ? p.buttonLabel.trim()
+        : (ADVERTISE_BRAND_DEFAULT.plans[i]?.buttonLabel ?? "Get started"),
+    }))
+    .filter(p => p.name.length > 0);
+  return plans.length > 0 ? plans : ADVERTISE_BRAND_DEFAULT.plans;
+}
+
+function cleanAdvFounders(input: unknown): AdvFounderS[] {
+  if (!Array.isArray(input)) return ADVERTISE_BRAND_DEFAULT.founders;
+  return input
+    .filter((f): f is AdvFounderS => !!f && typeof f.name === "string")
+    .map(f => ({
+      name: f.name.trim(),
+      designation: typeof f.designation === "string" ? f.designation.trim() : "",
+      image: typeof f.image === "string" ? f.image.trim() : "",
+    }))
+    .filter(f => f.name.length > 0 || f.designation.length > 0 || f.image.length > 0);
+}
+
+async function getAdvertiseBrand(): Promise<AdvertiseBrandContent> {
+  const result = await pool.query(`SELECT value FROM "PlatformConfig" WHERE key=$1`, [ADVERTISE_BRAND_KEY]);
+  if (result.rows.length > 0) {
+    try {
+      const p = JSON.parse(result.rows[0].value) as Partial<AdvertiseBrandContent>;
+      const str = (v: unknown, d: string) => (typeof v === "string" && v.trim() ? v : d);
+      return {
+        heroTag: str(p.heroTag, ADVERTISE_BRAND_DEFAULT.heroTag),
+        heroLine1: str(p.heroLine1, ADVERTISE_BRAND_DEFAULT.heroLine1),
+        heroLine2: str(p.heroLine2, ADVERTISE_BRAND_DEFAULT.heroLine2),
+        heroSub: str(p.heroSub, ADVERTISE_BRAND_DEFAULT.heroSub),
+        includedLine1: str(p.includedLine1, ADVERTISE_BRAND_DEFAULT.includedLine1),
+        includedLine2: str(p.includedLine2, ADVERTISE_BRAND_DEFAULT.includedLine2),
+        includedSub: str(p.includedSub, ADVERTISE_BRAND_DEFAULT.includedSub),
+        points: cleanAdvPoints(p.points),
+        pricingLine1: str(p.pricingLine1, ADVERTISE_BRAND_DEFAULT.pricingLine1),
+        pricingLine2: str(p.pricingLine2, ADVERTISE_BRAND_DEFAULT.pricingLine2),
+        plans: cleanAdvPlans(p.plans),
+        pricingNote: str(p.pricingNote, ADVERTISE_BRAND_DEFAULT.pricingNote),
+        thankYouMessage: str(p.thankYouMessage, ADVERTISE_BRAND_DEFAULT.thankYouMessage),
+        founderHeading: str(p.founderHeading, ADVERTISE_BRAND_DEFAULT.founderHeading),
+        founderSubheading: str(p.founderSubheading, ADVERTISE_BRAND_DEFAULT.founderSubheading),
+        founders: Array.isArray(p.founders) ? cleanAdvFounders(p.founders) : ADVERTISE_BRAND_DEFAULT.founders,
+        footerNote: str(p.footerNote, ADVERTISE_BRAND_DEFAULT.footerNote),
+      };
+    } catch { return ADVERTISE_BRAND_DEFAULT; }
+  }
+  return ADVERTISE_BRAND_DEFAULT;
+}
+
+router.get("/advertise-brand", async (_req: Request, res: Response): Promise<void> => {
+  res.set("Cache-Control", "no-store");
+  res.json(await getAdvertiseBrand());
+});
+
+router.patch("/admin/advertise-brand", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const b = req.body as Partial<AdvertiseBrandContent>;
+  const str = (v: unknown, d: string) => (typeof v === "string" && v.trim() ? v.trim() : d);
+  const payload: AdvertiseBrandContent = {
+    heroTag: str(b.heroTag, ADVERTISE_BRAND_DEFAULT.heroTag),
+    heroLine1: str(b.heroLine1, ADVERTISE_BRAND_DEFAULT.heroLine1),
+    heroLine2: str(b.heroLine2, ADVERTISE_BRAND_DEFAULT.heroLine2),
+    heroSub: str(b.heroSub, ADVERTISE_BRAND_DEFAULT.heroSub),
+    includedLine1: str(b.includedLine1, ADVERTISE_BRAND_DEFAULT.includedLine1),
+    includedLine2: str(b.includedLine2, ADVERTISE_BRAND_DEFAULT.includedLine2),
+    includedSub: str(b.includedSub, ADVERTISE_BRAND_DEFAULT.includedSub),
+    points: cleanAdvPoints(b.points),
+    pricingLine1: str(b.pricingLine1, ADVERTISE_BRAND_DEFAULT.pricingLine1),
+    pricingLine2: str(b.pricingLine2, ADVERTISE_BRAND_DEFAULT.pricingLine2),
+    plans: cleanAdvPlans(b.plans),
+    pricingNote: str(b.pricingNote, ADVERTISE_BRAND_DEFAULT.pricingNote),
+    thankYouMessage: str(b.thankYouMessage, ADVERTISE_BRAND_DEFAULT.thankYouMessage),
+    founderHeading: str(b.founderHeading, ADVERTISE_BRAND_DEFAULT.founderHeading),
+    founderSubheading: str(b.founderSubheading, ADVERTISE_BRAND_DEFAULT.founderSubheading),
+    founders: Array.isArray(b.founders) ? cleanAdvFounders(b.founders) : ADVERTISE_BRAND_DEFAULT.founders,
+    footerNote: str(b.footerNote, ADVERTISE_BRAND_DEFAULT.footerNote),
+  };
+  await pool.query(
+    `INSERT INTO "PlatformConfig" (id,key,value,description,"updatedAt") VALUES (gen_random_uuid(),$1,$2,$3,NOW()) ON CONFLICT (key) DO UPDATE SET value=$2,"updatedAt"=NOW()`,
+    [ADVERTISE_BRAND_KEY, JSON.stringify(payload), "Advertise Your Brand page content"]
+  );
+  res.json({ ok: true });
+});
+
 export default router;
