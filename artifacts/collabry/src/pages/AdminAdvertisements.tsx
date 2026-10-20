@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
-import { ArrowLeft, Plus, Trash2, Save, ChevronUp, ChevronDown, X, Upload, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, ChevronUp, ChevronDown, X, Upload, Pencil, Download } from "lucide-react";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { goBack } from "@/lib/adminReturnTo";
 import AdvertiseBrandEditor from "@/components/AdvertiseBrandEditor";
@@ -28,10 +28,28 @@ interface Ad {
   imageUrl: string;
   headline: string;
   bodyText: string;
+  brandName?: string | null;
   displayOrder: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+interface LeadBrand { adId: string; brandName: string; imageUrl: string; total: number; unread: number; lastAt: string }
+interface Lead { id: string; name: string; email: string; contact: string; createdAt: string }
+
+function downloadLeadsCsv(brandName: string, leads: Lead[]) {
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const header = ["Name", "Email", "Contact", "Date"].map(esc).join(",");
+  const rows = leads.map(l => [l.name, l.email, l.contact, new Date(l.createdAt).toLocaleString("en-IN")].map(esc).join(","));
+  const csv = "﻿" + [header, ...rows].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${(brandName || "brand").replace(/[^\w.-]+/g, "_")}-leads.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 /* 16:9 card preview with the "Ad" overlay our UI adds (admins do NOT bake it in). */
@@ -57,7 +75,9 @@ export default function AdminAdvertisements() {
   const [ads, setAds] = useState<Ad[] | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [editing, setEditing] = useState<Ad | "new" | null>(null);
-  const [tab, setTab] = useState<"banners" | "page">("banners");
+  const [tab, setTab] = useState<"banners" | "page" | "leads">("banners");
+  const [leadBrands, setLeadBrands] = useState<LeadBrand[] | null>(null);
+  const [detail, setDetail] = useState<{ adId: string; brandName: string; leads: Lead[] } | null>(null);
 
   const showToast = (msg: string, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000); };
 
@@ -70,6 +90,30 @@ export default function AdminAdvertisements() {
   }, [adminFetch]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Leads list (for the Form Details tab + the unread badge). Degrades to [] if
+  // the migration hasn't run yet — never blocks the page.
+  const loadLeads = useCallback(async () => {
+    try { const r = await adminFetch("/api/admin/ad-leads"); setLeadBrands(r.ok ? await r.json() : []); }
+    catch { setLeadBrands([]); }
+  }, [adminFetch]);
+
+  useEffect(() => { loadLeads(); }, [loadLeads]);
+
+  const totalUnread = (leadBrands ?? []).reduce((s, b) => s + (b.unread || 0), 0);
+
+  const openBrand = async (b: LeadBrand) => {
+    setDetail({ adId: b.adId, brandName: b.brandName, leads: [] });
+    try {
+      const r = await adminFetch(`/api/admin/ad-leads/${b.adId}`);
+      if (r.ok) { const d = await r.json(); setDetail({ adId: b.adId, brandName: d.brandName ?? b.brandName, leads: d.leads ?? [] }); }
+    } catch { /* keep the empty detail */ }
+    if (b.unread > 0) {
+      // Optimistically clear the badge + tab total, then mark read server-side.
+      setLeadBrands(prev => (prev ?? []).map(x => x.adId === b.adId ? { ...x, unread: 0 } : x));
+      adminFetch(`/api/admin/ad-leads/${b.adId}/mark-read`, { method: "POST" }).catch(() => {});
+    }
+  };
 
   const toggleActive = async (ad: Ad) => {
     const r = await adminFetch(`/api/admin/ads/${ad.id}`, { method: "PATCH", body: JSON.stringify({ isActive: !ad.isActive }) });
@@ -86,7 +130,7 @@ export default function AdminAdvertisements() {
   const remove = async (ad: Ad) => {
     if (!window.confirm("Delete this ad? This cannot be undone.")) return;
     const r = await adminFetch(`/api/admin/ads/${ad.id}`, { method: "DELETE" });
-    if (r.ok) { setAds(prev => (prev ?? []).filter(a => a.id !== ad.id)); showToast("Deleted"); }
+    if (r.ok) { setAds(prev => (prev ?? []).filter(a => a.id !== ad.id)); loadLeads(); showToast("Deleted"); }
     else showToast("Failed to delete", false);
   };
 
@@ -119,20 +163,95 @@ export default function AdminAdvertisements() {
         )}
       </div>
 
-      {/* Tabs: ad banners (creator feed) vs the /advertise-your-brand page content */}
+      {/* Tabs: ad banners · advertise-page content · lead form details */}
       <div className="flex gap-2 mb-6">
-        {([["banners", "Ad Banners"], ["page", "Advertise Page"]] as const).map(([key, lbl]) => (
-          <button key={key} onClick={() => setTab(key)}
-            className="px-4 py-2 rounded-full text-xs font-semibold transition-colors"
+        {([["banners", "Ad Banners"], ["page", "Advertise Page"], ["leads", "Form Details"]] as const).map(([key, lbl]) => (
+          <button key={key} onClick={() => { setTab(key); if (key === "leads") setDetail(null); }}
+            className="relative px-4 py-2 rounded-full text-xs font-semibold transition-colors"
             style={tab === key
               ? { background: PINK, color: "#fff" }
               : { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.1)" }}>
             {lbl}
+            {key === "leads" && totalUnread > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-white flex items-center justify-center"
+                style={{ background: "#ef4444" }}>
+                {totalUnread}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
       {tab === "page" && <AdvertiseBrandEditor onToast={showToast} />}
+
+      {tab === "leads" && (detail ? (
+        <div>
+          <button onClick={() => setDetail(null)}
+            className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg text-white/80 hover:text-white mb-4"
+            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}>
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to brands
+          </button>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h2 className="text-white font-semibold text-base truncate">{detail.brandName} <span className="text-white/40 font-normal text-sm">· {detail.leads.length} lead{detail.leads.length === 1 ? "" : "s"}</span></h2>
+            <button onClick={() => downloadLeadsCsv(detail.brandName, detail.leads)} disabled={detail.leads.length === 0}
+              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg text-white font-semibold disabled:opacity-40"
+              style={{ background: PINK }}>
+              <Download className="w-3.5 h-3.5" /> Download
+            </button>
+          </div>
+          {detail.leads.length === 0 ? (
+            <p className="text-white/50 text-sm text-center py-10">No leads for this brand.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl" style={card}>
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="text-white/40 text-[11px] uppercase tracking-wide" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                    <th className="px-4 py-3 font-semibold">Name</th>
+                    <th className="px-4 py-3 font-semibold">Email</th>
+                    <th className="px-4 py-3 font-semibold">Contact</th>
+                    <th className="px-4 py-3 font-semibold whitespace-nowrap">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.leads.map((l, i) => (
+                    <tr key={l.id} style={{ borderTop: i === 0 ? "none" : "1px solid rgba(255,255,255,0.05)" }}>
+                      <td className="px-4 py-3 text-white">{l.name || "—"}</td>
+                      <td className="px-4 py-3 text-white/70 break-all">{l.email || "—"}</td>
+                      <td className="px-4 py-3 text-white/70 whitespace-nowrap">{l.contact || "—"}</td>
+                      <td className="px-4 py-3 text-white/50 whitespace-nowrap">{new Date(l.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : leadBrands === null ? (
+        <div className="space-y-3">{[0, 1, 2].map(i => <div key={i} className="h-20 rounded-2xl animate-pulse" style={{ background: "rgba(255,255,255,0.04)" }} />)}</div>
+      ) : leadBrands.length === 0 ? (
+        <p className="text-white/50 text-sm text-center py-16">No leads yet. Creators who submit the "Get more details" form on Explore Brands show up here.</p>
+      ) : (
+        <div className="space-y-3">
+          {leadBrands.map(b => (
+            <button key={b.adId} onClick={() => openBrand(b)}
+              className="w-full text-left rounded-2xl p-3 flex items-center gap-3 transition-colors hover:bg-white/[0.02]" style={card}>
+              <div className="w-20 flex-shrink-0">
+                <AdPreview src={b.imageUrl} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-semibold text-sm truncate">{b.brandName || "Untitled"}</p>
+                <p className="text-white/50 text-xs mt-0.5">{b.total} lead{b.total === 1 ? "" : "s"}</p>
+              </div>
+              {b.unread > 0 && (
+                <span className="flex items-center gap-1.5 flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                  style={{ background: "rgba(239,68,68,0.14)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#ef4444" }} /> {b.unread} new
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      ))}
 
       {tab === "banners" && (ads === null ? (
         <div className="space-y-3">{[0, 1, 2].map(i => <div key={i} className="h-28 rounded-2xl animate-pulse" style={{ background: "rgba(255,255,255,0.04)" }} />)}</div>
@@ -195,6 +314,7 @@ function AdEditor({ ad, adminFetch, onClose, onSaved, onError }: {
   const [imageUrl, setImageUrl] = useState(ad?.imageUrl ?? "");
   const [headline, setHeadline] = useState(ad?.headline ?? "");
   const [bodyText, setBodyText] = useState(ad?.bodyText ?? "");
+  const [brandName, setBrandName] = useState(ad?.brandName ?? "");
   const [isActive, setIsActive] = useState(ad?.isActive ?? true);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -221,7 +341,7 @@ function AdEditor({ ad, adminFetch, onClose, onSaved, onError }: {
     if (!imageUrl) { setErr("A 16:9 image is required."); return; }
     setSaving(true);
     try {
-      const body = JSON.stringify({ imageUrl, headline, bodyText, isActive });
+      const body = JSON.stringify({ imageUrl, headline, bodyText, brandName, isActive });
       const r = ad
         ? await adminFetch(`/api/admin/ads/${ad.id}`, { method: "PATCH", body })
         : await adminFetch("/api/admin/ads", { method: "POST", body });
@@ -253,6 +373,8 @@ function AdEditor({ ad, adminFetch, onClose, onSaved, onError }: {
         </label>
 
         <div className="space-y-3">
+          <div><label className={labelClass}>Brand Name (short — shown to creators & used for leads/CSV)</label>
+            <input className={inputClass} value={brandName} onChange={e => setBrandName(e.target.value)} placeholder="Optional — falls back to the headline" /></div>
           <div><label className={labelClass}>Headline</label>
             <input className={inputClass} value={headline} onChange={e => setHeadline(e.target.value)} placeholder="Short title" /></div>
           <div><label className={labelClass}>Body text</label>

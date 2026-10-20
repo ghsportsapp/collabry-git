@@ -17,6 +17,7 @@ export interface Ad {
   headline: string;
   bodyText: string;
   order: number;
+  brandName?: string | null;
 }
 
 /* A 16:9 image with the "Ad" pill overlaid bottom-right. Reused by the scroller

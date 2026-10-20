@@ -12,13 +12,30 @@ const router: IRouter = Router();
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
+/* "brandName" is added by migration 003. Until it's applied the column doesn't
+   exist, so we (a) read it via to_jsonb(row)->>'brandName' (NULL instead of an
+   error) and (b) only write it when this cached check confirms it exists. */
+let _hasBrand = false;
+async function hasBrandNameCol(): Promise<boolean> {
+  if (_hasBrand) return true;
+  try {
+    const r = await pool.query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name='Advertisement' AND column_name='brandName' LIMIT 1`,
+    );
+    if (r.rows.length > 0) _hasBrand = true;
+    return _hasBrand;
+  } catch { return false; }
+}
+
 // ── Creator read: active ads in feed order ──────────────────────────────────
 // Used by the creator banner scroller and /explore-brands (Batch 2).
 router.get("/ads", requireCreator, async (_req: Request, res: Response): Promise<void> => {
   res.set("Cache-Control", "no-store");
   const r = await pool.query(
-    `SELECT id, "imageUrl", headline, "bodyText", "displayOrder" AS "order"
-       FROM "Advertisement"
+    `SELECT id, "imageUrl", headline, "bodyText",
+            to_jsonb(a)->>'brandName' AS "brandName",
+            "displayOrder" AS "order"
+       FROM "Advertisement" a
       WHERE "isActive" = true
       ORDER BY "displayOrder" ASC, "createdAt" ASC`,
   );
@@ -28,8 +45,10 @@ router.get("/ads", requireCreator, async (_req: Request, res: Response): Promise
 // ── Admin: list all ads (active + inactive) in order ────────────────────────
 router.get("/admin/ads", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(
-    `SELECT id, "imageUrl", headline, "bodyText", "displayOrder", "isActive", "createdAt", "updatedAt"
-       FROM "Advertisement"
+    `SELECT id, "imageUrl", headline, "bodyText",
+            to_jsonb(a)->>'brandName' AS "brandName",
+            "displayOrder", "isActive", "createdAt", "updatedAt"
+       FROM "Advertisement" a
       ORDER BY "displayOrder" ASC, "createdAt" ASC`,
   );
   res.json(r.rows);
@@ -41,34 +60,41 @@ router.post("/admin/ads", requireAdmin, async (req: Request, res: Response): Pro
   if (!imageUrl) { res.status(400).json({ error: "imageUrl is required" }); return; }
   const headline = str(req.body?.headline);
   const bodyText = str(req.body?.bodyText);
+  const brandName = str(req.body?.brandName);
   const isActive = req.body?.isActive === undefined ? true : !!req.body.isActive;
-  const r = await pool.query(
-    `INSERT INTO "Advertisement" ("imageUrl", headline, "bodyText", "displayOrder", "isActive")
-     VALUES ($1, $2, $3,
-       COALESCE((SELECT MAX("displayOrder") + 1 FROM "Advertisement"), 0),
-       $4)
-     RETURNING id, "imageUrl", headline, "bodyText", "displayOrder", "isActive", "createdAt", "updatedAt"`,
-    [imageUrl, headline, bodyText, isActive],
-  );
+  const hasBrand = await hasBrandNameCol();
+  const orderExpr = `COALESCE((SELECT MAX("displayOrder") + 1 FROM "Advertisement"), 0)`;
+  const ret = `RETURNING id, "imageUrl", headline, "bodyText", ${hasBrand ? '"brandName"' : 'NULL::text AS "brandName"'}, "displayOrder", "isActive", "createdAt", "updatedAt"`;
+  const r = hasBrand
+    ? await pool.query(
+        `INSERT INTO "Advertisement" ("imageUrl", headline, "bodyText", "brandName", "displayOrder", "isActive")
+         VALUES ($1, $2, $3, $4, ${orderExpr}, $5) ${ret}`,
+        [imageUrl, headline, bodyText, brandName || null, isActive])
+    : await pool.query(
+        `INSERT INTO "Advertisement" ("imageUrl", headline, "bodyText", "displayOrder", "isActive")
+         VALUES ($1, $2, $3, ${orderExpr}, $4) ${ret}`,
+        [imageUrl, headline, bodyText, isActive]);
   res.json(r.rows[0]);
 });
 
 // ── Admin: update ad (any subset of fields) ─────────────────────────────────
 router.patch("/admin/ads/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const b = req.body ?? {};
+  const hasBrand = await hasBrandNameCol();
   const sets: string[] = [];
   const vals: unknown[] = [];
   const add = (col: string, v: unknown) => { vals.push(v); sets.push(`"${col}" = $${vals.length}`); };
   if (typeof b.imageUrl === "string" && b.imageUrl.trim()) add("imageUrl", b.imageUrl.trim());
   if (typeof b.headline === "string") add("headline", b.headline.trim());
   if (typeof b.bodyText === "string") add("bodyText", b.bodyText.trim());
+  if (typeof b.brandName === "string" && hasBrand) add("brandName", b.brandName.trim() || null);
   if (typeof b.isActive === "boolean") add("isActive", b.isActive);
   if (sets.length === 0) { res.status(400).json({ error: "No fields to update" }); return; }
   vals.push(req.params["id"]);
   const r = await pool.query(
     `UPDATE "Advertisement" SET ${sets.join(", ")}, "updatedAt" = NOW()
       WHERE id = $${vals.length}
-      RETURNING id, "imageUrl", headline, "bodyText", "displayOrder", "isActive", "createdAt", "updatedAt"`,
+      RETURNING id, "imageUrl", headline, "bodyText", ${hasBrand ? '"brandName"' : 'NULL::text AS "brandName"'}, "displayOrder", "isActive", "createdAt", "updatedAt"`,
     vals,
   );
   if (r.rows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
