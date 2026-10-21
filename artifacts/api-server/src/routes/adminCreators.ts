@@ -103,9 +103,12 @@ router.get("/admin/creators", requireAdmin, async (req: Request, res: Response):
 //
 // Gated by requireAdminSecret rather than the no-op requireAdmin: this returns
 // every active creator's phone number and email in a single response.
-router.get("/admin/creators/export", requireAdminSecret, async (_req: Request, res: Response): Promise<void> => {
-  // Deliberately unpaginated, and independent of whichever status filter the
-  // Users List happens to be showing: the export is always every ACTIVE creator.
+router.get("/admin/creators/export", requireAdminSecret, async (req: Request, res: Response): Promise<void> => {
+  // Deliberately unpaginated. Exports ACTIVE creators by default; ?status=REJECTED
+  // exports rejected creators instead — same columns/format, independent of the
+  // Users List's current filter pill.
+  const wantRejected = String(req.query["status"] ?? "").toUpperCase() === "REJECTED";
+  const statusVal = wantRejected ? "REJECTED" : "ACTIVE";
   const result = await pool.query(
     `SELECT c."fullName", c."instagramHandle", c."followerCount", c.phone, c.email,
             c."reelPriceMin", c."reelPriceMax",
@@ -124,8 +127,9 @@ router.get("/admin/creators/export", requireAdminSecret, async (_req: Request, r
                gender (NULL) falling through csvCell to an empty cell. */
             c.gender
      FROM "Creator" c
-     WHERE c.status = 'ACTIVE'
-     ORDER BY c."createdAt" DESC`
+     WHERE c.status = $1
+     ORDER BY c."createdAt" DESC`,
+    [statusVal]
   );
 
   const lines = [
@@ -153,7 +157,7 @@ router.get("/admin/creators/export", requireAdminSecret, async (_req: Request, r
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="collabry_active_creators_${today}.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="collabry_${wantRejected ? "rejected" : "active"}_creators_${today}.csv"`);
   res.send(csv);
 });
 

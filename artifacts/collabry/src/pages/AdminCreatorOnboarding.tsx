@@ -101,6 +101,8 @@ export default function AdminCreatorOnboarding() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [askSecret, setAskSecret] = useState(false);
   const [secretInput, setSecretInput] = useState("");
+  // Which set the current/pending export targets (ACTIVE default, or REJECTED).
+  const [exportStatus, setExportStatus] = useState<"ACTIVE" | "REJECTED">("ACTIVE");
 
   // ── Signup Config state ──
   const [configData, setConfigData] = useState<Record<string, any>>({});
@@ -305,11 +307,11 @@ export default function AdminCreatorOnboarding() {
   // ── CSV export (ACTIVE creators only, always — never the current filter) ──
   // The passphrase is typed by the admin rather than shipped in the bundle, and
   // held only for this browser session so repeat exports don't re-prompt.
-  const runExport = useCallback(async (secret: string) => {
+  const runExport = useCallback(async (secret: string, status: "ACTIVE" | "REJECTED" = "ACTIVE") => {
     setExporting(true);
     setExportError(null);
     try {
-      const r = await adminFetch("/api/admin/creators/export", { headers: { "x-admin-secret": secret } });
+      const r = await adminFetch(`/api/admin/creators/export${status === "REJECTED" ? "?status=REJECTED" : ""}`, { headers: { "x-admin-secret": secret } });
       if (r.status === 401) {
         sessionStorage.removeItem(EXPORT_SECRET_KEY);
         setAskSecret(true);
@@ -330,7 +332,7 @@ export default function AdminCreatorOnboarding() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = suggested ?? "collabry_active_creators.csv";
+      a.download = suggested ?? `collabry_${status === "REJECTED" ? "rejected" : "active"}_creators.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -346,8 +348,19 @@ export default function AdminCreatorOnboarding() {
   }, [adminFetch]);
 
   const onDownloadCsv = useCallback(() => {
+    setExportStatus("ACTIVE");
     const cached = sessionStorage.getItem(EXPORT_SECRET_KEY);
-    if (cached) { runExport(cached); return; }
+    if (cached) { runExport(cached, "ACTIVE"); return; }
+    setExportError(null);
+    setSecretInput("");
+    setAskSecret(true);
+  }, [runExport]);
+
+  // Rejected equivalent — same passphrase flow, same CSV builder, status=REJECTED.
+  const onDownloadRejectedCsv = useCallback(() => {
+    setExportStatus("REJECTED");
+    const cached = sessionStorage.getItem(EXPORT_SECRET_KEY);
+    if (cached) { runExport(cached, "REJECTED"); return; }
     setExportError(null);
     setSecretInput("");
     setAskSecret(true);
@@ -951,13 +964,13 @@ export default function AdminCreatorOnboarding() {
               placeholder="Passphrase"
               value={secretInput}
               onChange={e => { setSecretInput(e.target.value); setExportError(null); }}
-              onKeyDown={e => { if (e.key === "Enter" && secretInput.trim()) runExport(secretInput); }}
+              onKeyDown={e => { if (e.key === "Enter" && secretInput.trim()) runExport(secretInput, exportStatus); }}
             />
             {exportError && <p className="text-red-400 text-xs mt-2">{exportError}</p>}
             <div className="flex gap-3 mt-5">
               <button onClick={() => { setAskSecret(false); setSecretInput(""); setExportError(null); }}
                 className="flex-1 py-2.5 rounded-xl border border-white/15 text-white/80 text-sm">Cancel</button>
-              <button onClick={() => runExport(secretInput)} disabled={exporting || !secretInput.trim()}
+              <button onClick={() => runExport(secretInput, exportStatus)} disabled={exporting || !secretInput.trim()}
                 className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50" style={{ background: "#E14F69" }}>
                 {exporting ? "Exporting..." : "Download CSV"}
               </button>
@@ -1063,6 +1076,15 @@ export default function AdminCreatorOnboarding() {
                   style={{ background: "#E14F69" }}>
                   {exporting ? "Exporting..." : "Download CSV"}
                 </button>
+                {/* Rejected equivalent — shown on the Rejected filter; exports rejected creators. */}
+                {ulStatus === "REJECTED" && (
+                  <button onClick={onDownloadRejectedCsv} disabled={exporting}
+                    title="Export all rejected creators as CSV"
+                    className="flex-shrink-0 text-xs px-3 py-2.5 rounded-lg font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                    style={{ background: "#E14F69" }}>
+                    {exporting ? "Exporting..." : "Download CSV"}
+                  </button>
+                )}
               </div>
               <div className="flex flex-wrap gap-1 mt-2">
                 {["ALL","ACTIVE","REJECTED","SUSPENDED","BANNED"].map(s => (
