@@ -105,7 +105,17 @@ export async function getSignedUploadUrl(input: {
       ContentType: input.contentType,
       ...(input.visibility === "public" ? { ACL: "public-read" as const } : {}),
     }),
-    { expiresIn: input.expiresSeconds ?? 15 * 60 }
+    {
+      expiresIn: input.expiresSeconds ?? 15 * 60,
+      // Keep x-amz-acl a SIGNED HEADER instead of letting the presigner hoist it
+      // into the query string. Linode ignores a query-param ACL (the object
+      // would upload private), and a hoisted ACL also makes the client's
+      // x-amz-acl request header unsigned → 403. Unhoisted, it lands in
+      // X-Amz-SignedHeaders and the client replays `x-amz-acl: public-read`.
+      ...(input.visibility === "public"
+        ? { unhoistableHeaders: new Set(["x-amz-acl"]) }
+        : {}),
+    }
   );
   const objectPath =
     input.visibility === "public"

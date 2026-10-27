@@ -130,8 +130,10 @@ export async function uploadBannerVideo(
     objectPath: string;
   };
 
-  // The URL is signed with ContentType + public-read ACL, so the PUT must
-  // replay both headers for the signature to match.
+  // The presign signs `x-amz-acl` as a signed header, so the PUT MUST replay
+  // `x-amz-acl: public-read` with that exact value or the signature won't match
+  // (and the object must be public to stream back). Content-Type is unsigned
+  // but harmless to send.
   const put = await fetch(uploadURL, {
     method: "PUT",
     headers: { "Content-Type": prepared.contentType, "x-amz-acl": "public-read" },
