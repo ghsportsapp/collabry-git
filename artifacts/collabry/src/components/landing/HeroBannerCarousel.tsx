@@ -168,50 +168,53 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
                   backgroundColor: BG,
                 }}
               >
-                {/* MOBILE media (hidden on desktop): 3:4, object-cover. */}
-                {mobileVideo ? (
+                {/* MOBILE (hidden on desktop): the 3:4 image is ALWAYS the base
+                    layer, so a real on-brand frame is visible no matter what. A
+                    video, if any, sits on top and covers it once playing; if it
+                    can't autoplay/load, the image underneath stays — never black. */}
+                <img
+                  src={banner.imageUrl}
+                  alt={banner.altText}
+                  decoding="async"
+                  loading={i === 0 ? "eager" : "lazy"}
+                  draggable={false}
+                  className="lg:hidden absolute inset-0 w-full h-full select-none object-cover object-center"
+                />
+                {mobileVideo && (
                   <video
                     ref={(el) => { mobileVideoRefs.current[i] = el; }}
-                    className="lg:hidden w-full h-full object-cover"
-                    poster={banner.mobilePosterUrl}
+                    className="lg:hidden absolute inset-0 w-full h-full object-cover"
+                    poster={banner.mobilePosterUrl || banner.imageUrl}
                     muted
                     loop
                     playsInline
                     preload="none"
                     aria-label={banner.altText}
-                  />
-                ) : (
-                  <img
-                    src={banner.imageUrl}
-                    alt={banner.altText}
-                    decoding="async"
-                    loading={i === 0 ? "eager" : "lazy"}
-                    draggable={false}
-                    className="lg:hidden w-full h-full select-none object-cover object-center"
                   />
                 )}
 
-                {/* DESKTOP media (hidden on mobile): 16:9 when the slide has its
-                    own desktop media; otherwise the mobile image, contained. */}
-                {desktopVideo ? (
+                {/* DESKTOP (hidden on mobile): same pattern. The base image fills
+                    (object-cover) whenever the slide has its own desktop image or
+                    a desktop video; a legacy slide with neither keeps the old
+                    contained look. The video, if any, overlays and covers it. */}
+                <img
+                  src={desktopImg}
+                  alt={banner.altText}
+                  decoding="async"
+                  loading={i === 0 ? "eager" : "lazy"}
+                  draggable={false}
+                  className={`hidden lg:block absolute inset-0 w-full h-full select-none object-center ${desktopImgIsOwn || desktopVideo ? "object-cover" : "object-contain"}`}
+                />
+                {desktopVideo && (
                   <video
                     ref={(el) => { desktopVideoRefs.current[i] = el; }}
-                    className="hidden lg:block w-full h-full object-cover"
-                    poster={banner.desktopPosterUrl}
+                    className="hidden lg:block absolute inset-0 w-full h-full object-cover"
+                    poster={banner.desktopPosterUrl || desktopImg}
                     muted
                     loop
                     playsInline
                     preload="none"
                     aria-label={banner.altText}
-                  />
-                ) : (
-                  <img
-                    src={desktopImg}
-                    alt={banner.altText}
-                    decoding="async"
-                    loading={i === 0 ? "eager" : "lazy"}
-                    draggable={false}
-                    className={`hidden lg:block w-full h-full select-none object-center ${desktopImgIsOwn ? "object-cover" : "object-contain"}`}
                   />
                 )}
               </div>
