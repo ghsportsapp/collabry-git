@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Save, Eye, Upload, ArrowLeft, Plus, Trash2, AlertCircle, Image } from "lucide-react";
 import { BRAND_DEFAULTS, BRAND_LANDING_UPDATE_CHANNEL, writeBrandLandingCache } from "@/hooks/useBrandLandingContent";
 import { prepareBannerImage, prepareWideBannerImage } from "@/lib/bannerImage";
+import { prepareBannerVideo, uploadBannerVideo, purgeBannerMedia } from "@/lib/bannerVideo";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
@@ -21,7 +22,7 @@ interface StatCard { value: string; label: string; }
 interface CollabMode { num: string; title: string; desc: string; steps: string[]; }
 interface ComparisonRow { feature: string; old: string; collabry: string; }
 interface TeamMember { name: string; role: string; emoji?: string; color: string; image?: string; }
-interface HeroBanner { imageUrl: string; altText: string; blurData?: string; desktopImageUrl?: string; desktopBlurData?: string; }
+interface HeroBanner { imageUrl: string; altText: string; blurData?: string; desktopImageUrl?: string; desktopBlurData?: string; mobileVideoUrl?: string; mobilePosterUrl?: string; desktopVideoUrl?: string; desktopPosterUrl?: string; }
 
 const EDITOR_CACHE_KEY = "collabry_brand_editor_v1";
 const BANNERS_KEY = "brand.hero.banners";
@@ -179,6 +180,63 @@ export default function AdminBrandLandingEditor() {
     updateJsonArray(BANNERS_KEY, b);
   };
 
+  /* Optional VIDEO per device. Validated + poster-captured client-side, then
+     streamed DIRECTLY to storage via a presigned PUT (zero VPS load). Replacing
+     a video purges the old video + poster so storage never collects orphans. */
+  const setBannerVideo = async (i: number, device: "mobile" | "desktop", file: File) => {
+    setBannerError(null);
+    setBannerBusy(true);
+    try {
+      const prepared = await prepareBannerVideo(file);
+      if ("error" in prepared) { setBannerError(prepared.error); return; }
+
+      let uploaded: { videoUrl: string; posterUrl: string };
+      try { uploaded = await uploadBannerVideo(prepared); }
+      catch (e) { setBannerError((e as Error).message); return; }
+
+      const prev = banners[i];
+      const oldVideo = device === "mobile" ? prev?.mobileVideoUrl : prev?.desktopVideoUrl;
+      const oldPoster = device === "mobile" ? prev?.mobilePosterUrl : prev?.desktopPosterUrl;
+
+      const b = banners.map((bn, idx) => {
+        if (idx !== i) return bn;
+        return device === "mobile"
+          ? { ...bn, mobileVideoUrl: uploaded.videoUrl, mobilePosterUrl: uploaded.posterUrl }
+          : { ...bn, desktopVideoUrl: uploaded.videoUrl, desktopPosterUrl: uploaded.posterUrl };
+      });
+      updateJsonArray(BANNERS_KEY, b);
+      if (oldVideo || oldPoster) void purgeBannerMedia([oldVideo, oldPoster]);
+    } finally {
+      setBannerBusy(false);
+    }
+  };
+
+  const removeBannerVideo = (i: number, device: "mobile" | "desktop") => {
+    const prev = banners[i];
+    const oldVideo = device === "mobile" ? prev?.mobileVideoUrl : prev?.desktopVideoUrl;
+    const oldPoster = device === "mobile" ? prev?.mobilePosterUrl : prev?.desktopPosterUrl;
+    const b = banners.map((bn, idx) => {
+      if (idx !== i) return bn;
+      if (device === "mobile") {
+        const { mobileVideoUrl, mobilePosterUrl, ...rest } = bn as HeroBanner;
+        void mobileVideoUrl; void mobilePosterUrl;
+        return rest;
+      }
+      const { desktopVideoUrl, desktopPosterUrl, ...rest } = bn as HeroBanner;
+      void desktopVideoUrl; void desktopPosterUrl;
+      return rest;
+    });
+    updateJsonArray(BANNERS_KEY, b);
+    if (oldVideo || oldPoster) void purgeBannerMedia([oldVideo, oldPoster]);
+  };
+
+  // Remove a whole slide, purging any videos + posters it carried.
+  const removeBanner = (i: number) => {
+    const b = banners[i];
+    updateJsonArray(BANNERS_KEY, banners.filter((_, idx) => idx !== i));
+    if (b) void purgeBannerMedia([b.mobileVideoUrl, b.mobilePosterUrl, b.desktopVideoUrl, b.desktopPosterUrl]);
+  };
+
   const saveAll = async (): Promise<boolean> => {
     setSaving(true);
     const items = Object.values(content);
@@ -302,10 +360,12 @@ export default function AdminBrandLandingEditor() {
 
             <h4 className="text-white/90 text-xs font-semibold uppercase tracking-wider mt-6 mb-1">Hero Banners</h4>
             <p className="text-[#9CA3AF] text-xs mb-3">
-              Up to {MAX_BANNERS} slides. Each needs a square (1:1) <strong>mobile</strong> image; you can also add
-              an optional 16:9 <strong>desktop</strong> image that shows full-width with the headline + button
-              overlaid on desktop. Max 5 MB each, converted to WebP. Slides with no desktop image keep the current
-              desktop look. With no banners the hero keeps its text-only layout.
+              Up to {MAX_BANNERS} slides. Each needs a square (1:1) <strong>mobile</strong> image (max 5 MB, WebP);
+              you can also add an optional 16:9 <strong>desktop</strong> image that shows full-width with the
+              headline + button overlaid on desktop. Each slide can additionally play a <strong>video</strong> in
+              place of the image — a 3:4 mobile and/or 16:9 desktop MP4 (H.264), max 50 MB. Videos autoplay muted,
+              looped, with no controls; the first frame shows instantly. The image is the fallback whenever no video
+              is set. With no banners the hero keeps its text-only layout.
             </p>
 
             {banners.map((banner, i) => (
@@ -329,7 +389,7 @@ export default function AdminBrandLandingEditor() {
                     />
                   </div>
                   <button
-                    onClick={() => updateJsonArray(BANNERS_KEY, banners.filter((_, idx) => idx !== i))}
+                    onClick={() => removeBanner(i)}
                     className="text-red-400 hover:text-red-300 p-2"
                     title="Remove banner"
                   >
@@ -355,6 +415,48 @@ export default function AdminBrandLandingEditor() {
                   </label>
                   {banner.desktopImageUrl && (
                     <button onClick={() => removeBannerDesktop(i)} className="text-white/40 hover:text-red-400 text-xs">Remove</button>
+                  )}
+                </div>
+
+                {/* Optional MOBILE video (3:4) — plays in place of the mobile image */}
+                <div className="mt-3 flex items-center gap-3">
+                  {banner.mobileVideoUrl ? (
+                    <video src={banner.mobileVideoUrl} poster={banner.mobilePosterUrl} muted playsInline className="w-16 rounded-md object-cover border border-white/10" style={{ aspectRatio: "3 / 4" }} />
+                  ) : (
+                    <div className="w-16 rounded-md border border-dashed border-white/15 flex items-center justify-center text-[10px] text-white/40" style={{ aspectRatio: "3 / 4" }}>3:4</div>
+                  )}
+                  <label className="text-[#E14F69] text-xs cursor-pointer hover:text-[#d4156b]">
+                    {bannerBusy ? "Uploading…" : banner.mobileVideoUrl ? "Replace mobile video" : "Upload mobile video (3:4 MP4, ≤50 MB, optional)"}
+                    <input
+                      type="file"
+                      accept="video/mp4"
+                      className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) setBannerVideo(i, "mobile", f); e.target.value = ""; }}
+                    />
+                  </label>
+                  {banner.mobileVideoUrl && (
+                    <button onClick={() => removeBannerVideo(i, "mobile")} className="text-white/40 hover:text-red-400 text-xs">Remove</button>
+                  )}
+                </div>
+
+                {/* Optional DESKTOP video (16:9) — plays in place of the desktop image */}
+                <div className="mt-3 flex items-center gap-3">
+                  {banner.desktopVideoUrl ? (
+                    <video src={banner.desktopVideoUrl} poster={banner.desktopPosterUrl} muted playsInline className="w-28 rounded-md object-cover border border-white/10" style={{ aspectRatio: "16 / 9" }} />
+                  ) : (
+                    <div className="w-28 rounded-md border border-dashed border-white/15 flex items-center justify-center text-[10px] text-white/40" style={{ aspectRatio: "16 / 9" }}>16:9</div>
+                  )}
+                  <label className="text-[#E14F69] text-xs cursor-pointer hover:text-[#d4156b]">
+                    {bannerBusy ? "Uploading…" : banner.desktopVideoUrl ? "Replace desktop video" : "Upload desktop video (16:9 MP4, ≤50 MB, optional)"}
+                    <input
+                      type="file"
+                      accept="video/mp4"
+                      className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) setBannerVideo(i, "desktop", f); e.target.value = ""; }}
+                    />
+                  </label>
+                  {banner.desktopVideoUrl && (
+                    <button onClick={() => removeBannerVideo(i, "desktop")} className="text-white/40 hover:text-red-400 text-xs">Remove</button>
                   )}
                 </div>
               </div>

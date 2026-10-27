@@ -7,18 +7,25 @@ const BG = "#0A0A0F";
 const POPPINS = "'Poppins', sans-serif";
 
 export interface HeroBanner {
-  imageUrl: string;        // MOBILE image (1:1) — also the desktop fallback
+  imageUrl: string;          // MOBILE image (base) — also the desktop image fallback
   altText: string;
   blurData?: string;
   desktopImageUrl?: string;  // optional DESKTOP image (16:9, full-bleed)
   desktopBlurData?: string;
+  // Optional VIDEO per device. When present it plays in place of the image at
+  // that breakpoint; the poster shows instantly while/if it loads. Everything
+  // stays backward compatible — image-only banners render exactly as before.
+  mobileVideoUrl?: string;   // MOBILE video (3:4)
+  mobilePosterUrl?: string;
+  desktopVideoUrl?: string;  // DESKTOP video (16:9)
+  desktopPosterUrl?: string;
 }
 
 interface Props {
   banners: HeroBanner[];
   ctaLabel: string;
   ctaLink: string;
-  /** Headline shown in the desktop overlay (over slides that have a desktop image). */
+  /** Headline shown in the desktop overlay (over slides that have desktop media). */
   overlayHeading?: ReactNode;
   /** Tells the page whether the active slide uses the full-bleed desktop layout,
    *  so it can hide the duplicate headline that sits below on desktop. */
@@ -26,72 +33,102 @@ interface Props {
 }
 
 /** Drops anything unusable so a malformed stored value can't take the page
- *  down. Also tells the page whether to keep its own inline CTA. */
+ *  down. Every slide still needs a mobile image (the universal base/fallback);
+ *  videos are additive. */
 export function normalizeBanners(value: unknown): HeroBanner[] {
   return Array.isArray(value) ? (value as HeroBanner[]).filter((b) => b?.imageUrl) : [];
 }
 
-/* Mobile: a strict 1:1 square sized off viewport height, so it renders wider
-   than the screen and pans sideways (UNCHANGED). Desktop: a slide WITH a desktop
-   image shows it full-width at 16:9 (object-cover, no pillarbox) with the
-   headline+CTA overlaid; a slide WITHOUT one keeps the old contained-square
-   600px band so existing banners never shift or crop. */
-const MOBILE_BOX = "w-[66vh] h-[66vh]";
+const hasDesktopMedia = (b?: HeroBanner) => !!(b?.desktopImageUrl || b?.desktopVideoUrl);
+
 const ARROW =
-  "absolute top-1/2 -translate-y-1/2 z-20 w-9 h-9 lg:w-11 lg:h-11 rounded-full flex items-center justify-center transition-colors hover:bg-black/70 cursor-pointer";
+  "absolute top-1/2 -translate-y-1/2 z-30 w-9 h-9 lg:w-11 lg:h-11 rounded-full flex items-center justify-center transition-colors hover:bg-black/70 cursor-pointer";
+
+// Black scrim, both breakpoints, over image AND video: a top band so the
+// floating header stays legible and a stronger bottom band for the overlaid
+// headline + CTA. Pure CSS layer — nothing is baked into the media.
+const SCRIM =
+  "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 60%, rgba(0,0,0,0.72) 100%)";
+
+/** Tracks the lg breakpoint so only the video for the *visible* device of the
+ *  active slide ever plays. */
+function useIsDesktop(): boolean {
+  const [is, setIs] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const on = () => setIs(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return is;
+}
 
 export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlayHeading, onActiveDesktopChange }: Props) {
   const [active, setActive] = useState(0);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const isDesktop = useIsDesktop();
+  const mobileVideoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+  const desktopVideoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 
   const items = normalizeBanners(banners);
   // Clamp rather than track in an effect — a banner deleted in admin arrives
   // via polling and can leave `active` past the end of the list.
   const current = items.length > 0 ? Math.min(active, items.length - 1) : 0;
-  const currentHasDesktop = items.length > 0 && !!items[current]?.desktopImageUrl;
+  const currentHasDesktop = items.length > 0 && hasDesktopMedia(items[current]);
 
-  /* The mobile square is deliberately wider than the viewport, and a scroll
-     container starts parked at its left edge — which is what made the image
-     read as left-cropped. Park it mid-track instead. No-op on desktop, where
-     the track doesn't overflow and the distance is 0. */
-  const centerScroll = (behavior: ScrollBehavior) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ left: (el.scrollWidth - el.clientWidth) / 2, behavior });
-  };
-
-  useEffect(() => { centerScroll("auto"); }, [items.length]);
   // Let the page hide its below-the-fold headline on desktop for overlay slides.
   useEffect(() => { onActiveDesktopChange?.(currentHasDesktop); }, [currentHasDesktop, onActiveDesktopChange]);
+
+  // Play only the active slide's video for the current breakpoint; pause and
+  // rewind everything else. Non-active videos keep preload="none", so nothing
+  // downloads until a slide is actually shown.
+  useEffect(() => {
+    items.forEach((_, i) => {
+      const mv = mobileVideoRefs.current[i];
+      const dv = desktopVideoRefs.current[i];
+      const activeEl = isDesktop ? dv : mv;
+      const offBreakpoint = isDesktop ? mv : dv;
+      if (offBreakpoint) { try { offBreakpoint.pause(); } catch { /* ignore */ } }
+      if (i === current && activeEl) {
+        activeEl.muted = true;
+        const p = activeEl.play();
+        if (p && typeof p.catch === "function") p.catch(() => { /* autoplay blocked — poster stays */ });
+      } else if (activeEl) {
+        try { activeEl.pause(); activeEl.currentTime = 0; } catch { /* ignore */ }
+      }
+    });
+  }, [current, isDesktop, items.length]);
 
   if (items.length === 0) return null;
 
   const multiple = items.length > 1;
-  const desktopBox = currentHasDesktop ? "lg:w-full lg:h-auto lg:aspect-[16/9]" : "lg:w-full lg:h-[600px]";
+  // Mobile is a full-width 3:4 portrait. Desktop: a slide WITH desktop media
+  // fills a 16:9 band; one without keeps the old contained 600px band so legacy
+  // image-only banners never shift.
+  const box = `relative w-full aspect-[3/4] ${currentHasDesktop ? "lg:aspect-[16/9]" : "lg:aspect-auto lg:h-[600px]"}`;
 
-  const show = (index: number) => {
-    setActive(index);
-    centerScroll("smooth");
-  };
+  const show = (index: number) => setActive(index);
   const step = (delta: number) => show((current + delta + items.length) % items.length);
 
   return (
     <section className="relative" style={{ background: BG }}>
       <div className="relative">
-        {/* Pans on mobile where the square overflows; nothing to pan on desktop. */}
+        {/* Slides cross-fade by opacity at every width — no horizontal scroll,
+            so there is no swipe/pan gesture on mobile. */}
         <div
-          ref={scrollRef}
-          className="overflow-x-auto lg:overflow-x-hidden"
-          style={{ touchAction: "pan-x", overscrollBehaviorX: "contain" }}
+          className={box}
+          onClick={() => { if (!isDesktop && multiple) step(1); }}
         >
-          <div className={`relative ${MOBILE_BOX} ${desktopBox}`}>
-            {items.map((banner, i) => (
+          {items.map((banner, i) => {
+            const mobileVideo = banner.mobileVideoUrl;
+            const desktopVideo = banner.desktopVideoUrl;
+            const desktopImg = banner.desktopImageUrl || banner.imageUrl;
+            const desktopImgIsOwn = !!banner.desktopImageUrl;
+            return (
               <div
                 key={i}
-                /* Blur-up placeholder. Fit tracks the image's fit at each
-                   breakpoint so it can't bleed across pillarbox bars. Desktop
-                   slides with their own 16:9 image cover the band. */
-                className={`absolute inset-0 overflow-hidden transition-opacity duration-300 bg-cover bg-top ${banner.desktopImageUrl ? "lg:bg-cover lg:bg-center lg:bg-no-repeat" : "lg:bg-contain lg:bg-center lg:bg-no-repeat"}`}
+                className="absolute inset-0 overflow-hidden transition-opacity duration-300 bg-cover bg-center bg-no-repeat"
                 style={{
                   opacity: i === current ? 1 : 0,
                   pointerEvents: i === current ? "auto" : "none",
@@ -99,33 +136,64 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
                   backgroundColor: BG,
                 }}
               >
-                <picture>
-                  {banner.desktopImageUrl && (
-                    <source media="(min-width: 1024px)" srcSet={banner.desktopImageUrl} />
-                  )}
+                {/* MOBILE media (hidden on desktop): 3:4, object-cover. */}
+                {mobileVideo ? (
+                  <video
+                    ref={(el) => { mobileVideoRefs.current[i] = el; }}
+                    className="lg:hidden w-full h-full object-cover"
+                    poster={banner.mobilePosterUrl}
+                    muted
+                    loop
+                    playsInline
+                    preload="none"
+                    aria-label={banner.altText}
+                  />
+                ) : (
                   <img
                     src={banner.imageUrl}
                     alt={banner.altText}
                     decoding="async"
                     loading={i === 0 ? "eager" : "lazy"}
-                    fetchPriority={i === 0 ? "high" : "auto"}
                     draggable={false}
-                    /* Mobile keeps the top-anchored crop + 1.06 push-in (clears
-                       the transparent header). Desktop: a desktop image covers
-                       the 16:9 band; without one, the square is contained as
-                       before. */
-                    className={`w-full h-full select-none object-cover object-[center_top] scale-[1.06] origin-top lg:object-center lg:scale-100 lg:origin-center ${banner.desktopImageUrl ? "lg:object-cover" : "lg:object-contain"}`}
+                    className="lg:hidden w-full h-full select-none object-cover object-center"
                   />
-                </picture>
+                )}
+
+                {/* DESKTOP media (hidden on mobile): 16:9 when the slide has its
+                    own desktop media; otherwise the mobile image, contained. */}
+                {desktopVideo ? (
+                  <video
+                    ref={(el) => { desktopVideoRefs.current[i] = el; }}
+                    className="hidden lg:block w-full h-full object-cover"
+                    poster={banner.desktopPosterUrl}
+                    muted
+                    loop
+                    playsInline
+                    preload="none"
+                    aria-label={banner.altText}
+                  />
+                ) : (
+                  <img
+                    src={desktopImg}
+                    alt={banner.altText}
+                    decoding="async"
+                    loading={i === 0 ? "eager" : "lazy"}
+                    draggable={false}
+                    className={`hidden lg:block w-full h-full select-none object-center ${desktopImgIsOwn ? "object-cover" : "object-contain"}`}
+                  />
+                )}
               </div>
-            ))}
-          </div>
+            );
+          })}
+
+          {/* CSS scrim over the media, both breakpoints. */}
+          <div className="absolute inset-0 z-10 pointer-events-none" style={{ background: SCRIM }} />
         </div>
 
         {multiple && (
           <>
             <button
-              onClick={() => step(-1)}
+              onClick={(e) => { e.stopPropagation(); step(-1); }}
               aria-label="Previous banner"
               className={`${ARROW} left-3`}
               style={{ background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.15)" }}
@@ -133,7 +201,7 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
               <ChevronLeft className="w-5 h-5 text-white" />
             </button>
             <button
-              onClick={() => step(1)}
+              onClick={(e) => { e.stopPropagation(); step(1); }}
               aria-label="Next banner"
               className={`${ARROW} right-3`}
               style={{ background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.15)" }}
@@ -143,15 +211,12 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
           </>
         )}
 
-        {/* Desktop overlay — only for slides with a 16:9 desktop image. Headline
-            + CTA centred in the lower third over a subtle bottom scrim (no box).
-            pointer-events-none so the arrows underneath stay clickable; the
-            button opts back in. Hidden on mobile (layout unchanged there). */}
+        {/* Desktop overlay — only for slides with desktop media. Headline + CTA
+            centred in the lower third, above the shared scrim. pointer-events-none
+            so the arrows underneath stay clickable; the button opts back in.
+            Hidden on mobile (the headline + CTA live below there). */}
         {currentHasDesktop && (
-          <div
-            className="hidden lg:flex absolute inset-0 z-10 flex-col items-center justify-end text-center px-6 pb-14 pointer-events-none"
-            style={{ background: "linear-gradient(to bottom, transparent 55%, rgba(0,0,0,0.55) 100%)" }}
-          >
+          <div className="hidden lg:flex absolute inset-0 z-20 flex-col items-center justify-end text-center px-6 pb-14 pointer-events-none">
             {overlayHeading && <div className="max-w-[900px] mb-5" style={{ textShadow: "0 2px 12px rgba(0,0,0,0.5)" }}>{overlayHeading}</div>}
             <Link href={ctaLink}>
               <button
@@ -165,7 +230,7 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
         )}
       </div>
 
-      {/* Below-image controls. Dots stay at every width; the CTA button is the
+      {/* Below-media controls. Dots stay at every width; the CTA button is the
           mobile/fallback one — hidden on desktop when the overlay already shows it. */}
       <div className="flex flex-col items-center gap-3 px-5 pt-4 lg:gap-4">
         {multiple && (
