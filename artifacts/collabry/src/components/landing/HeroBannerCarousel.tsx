@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -80,6 +80,24 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
   // Let the page hide its below-the-fold headline on desktop for overlay slides.
   useEffect(() => { onActiveDesktopChange?.(currentHasDesktop); }, [currentHasDesktop, onActiveDesktopChange]);
 
+  // Kept in a ref so the interaction listeners below always target whatever
+  // slide/breakpoint is active right now, without re-subscribing.
+  const stateRef = useRef({ current, isDesktop });
+  stateRef.current = { current, isDesktop };
+
+  // Start the active slide's video. Set `muted` as a PROPERTY (not just the
+  // attribute) before play() so autoplay is allowed, and swallow a rejected
+  // promise — if playback is blocked the crisp poster simply stays (no spinner,
+  // no blur). Returns nothing; safe to call repeatedly.
+  const playActiveVideo = useCallback(() => {
+    const { current: cur, isDesktop: desk } = stateRef.current;
+    const el = desk ? desktopVideoRefs.current[cur] : mobileVideoRefs.current[cur];
+    if (!el) return;
+    el.muted = true;
+    const p = el.play();
+    if (p && typeof p.catch === "function") p.catch(() => { /* blocked — poster stays */ });
+  }, []);
+
   // Play only the active slide's video for the current breakpoint; pause and
   // rewind everything else. Non-active videos keep preload="none", so nothing
   // downloads until a slide is actually shown.
@@ -87,18 +105,30 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
     items.forEach((_, i) => {
       const mv = mobileVideoRefs.current[i];
       const dv = desktopVideoRefs.current[i];
-      const activeEl = isDesktop ? dv : mv;
       const offBreakpoint = isDesktop ? mv : dv;
-      if (offBreakpoint) { try { offBreakpoint.pause(); } catch { /* ignore */ } }
-      if (i === current && activeEl) {
-        activeEl.muted = true;
-        const p = activeEl.play();
-        if (p && typeof p.catch === "function") p.catch(() => { /* autoplay blocked — poster stays */ });
-      } else if (activeEl) {
-        try { activeEl.pause(); activeEl.currentTime = 0; } catch { /* ignore */ }
+      if (offBreakpoint) { try { offBreakpoint.pause(); offBreakpoint.currentTime = 0; } catch { /* ignore */ } }
+      if (i !== current) {
+        const el = isDesktop ? dv : mv;
+        if (el) { try { el.pause(); el.currentTime = 0; } catch { /* ignore */ } }
       }
     });
-  }, [current, isDesktop, items.length]);
+    playActiveVideo();
+  }, [current, isDesktop, items.length, playActiveVideo]);
+
+  // Autoplay retry: if the browser blocked muted autoplay, the first user
+  // gesture (tap/scroll) kicks the active video into playing. No-op once it is
+  // already playing, so leaving these registered is harmless.
+  useEffect(() => {
+    const retry = () => playActiveVideo();
+    window.addEventListener("pointerdown", retry, { passive: true });
+    window.addEventListener("touchstart", retry, { passive: true });
+    window.addEventListener("scroll", retry, { passive: true });
+    return () => {
+      window.removeEventListener("pointerdown", retry);
+      window.removeEventListener("touchstart", retry);
+      window.removeEventListener("scroll", retry);
+    };
+  }, [playActiveVideo]);
 
   if (items.length === 0) return null;
 
@@ -128,11 +158,13 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
             return (
               <div
                 key={i}
-                className="absolute inset-0 overflow-hidden transition-opacity duration-300 bg-cover bg-center bg-no-repeat"
+                /* Solid backdrop only — NO blur-up placeholder. The real media
+                   (sharp image, or crisp poster + video) renders directly, so
+                   nothing is ever gated on a load event or shows as a blur. */
+                className="absolute inset-0 overflow-hidden transition-opacity duration-300"
                 style={{
                   opacity: i === current ? 1 : 0,
                   pointerEvents: i === current ? "auto" : "none",
-                  backgroundImage: banner.blurData ? `url(${banner.blurData})` : undefined,
                   backgroundColor: BG,
                 }}
               >
