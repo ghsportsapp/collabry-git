@@ -3,6 +3,7 @@ import { pool } from "@workspace/db";
 import { requireBrand } from "../middleware/requireBrand";
 import { requireAdmin } from "../middleware/requireAdmin";
 import { createNotification } from "../lib/notifications";
+import { readCommissionRate, payoutAfterCommission } from "../lib/creatorPayout";
 import { createPopup } from "../lib/popups";
 import { addBrandSSE, removeBrandSSE } from "../lib/sseManager";
 import { verifyToken, getAccessSecret } from "../lib/auth";
@@ -912,6 +913,9 @@ router.post("/brand/requests", requireBrand, async (req: Request, res: Response)
     emailParams: {
       brand_name: brandName,
       amount: Math.round(total),
+      // What the creator receives after commission — the figure the WhatsApp
+      // template quotes (4automationcreatordeal {{3}}).
+      payout: payoutAfterCommission(total, await readCommissionRate()),
       product_description: (productDescription as string | undefined)?.trim() || (productRequired ? "See deal chat for details." : "No product for this deal."),
       script,
     },

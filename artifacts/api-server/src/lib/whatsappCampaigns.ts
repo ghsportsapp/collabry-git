@@ -134,17 +134,19 @@ const SIMPLE: Record<string, WhatsAppCampaign> = {
   DEAL_FINAL_INACTIVITY_ESCALATED: { campaign: "Deal Overdue-Brand", param2: COUNTERPARTY },
 
   // 4automationcreatordeal (2026-10, replaces "Deal Request Received-Creator"):
-  // {{1}} creator, {{2}} brand, {{3}} deal amount — confirmed by Navneet. The
-  // send site (brandSearch.ts) already supplies brand_name and amount.
-  REQUEST_RECEIVED: { campaign: "4automationcreatordeal", param2: "brand_name", param3: "amount" },
+  // {{1}} creator, {{2}} brand, {{3}} the creator's payout after commission
+  // (Navneet, 2026-10-28). Plain number — the ₹ is in the template. The send
+  // site (brandSearch.ts) supplies brand_name and payout.
+  REQUEST_RECEIVED: { campaign: "4automationcreatordeal", param2: "brand_name", param3: "payout" },
   // {{1}} brand name, {{2}} credits — confirmed by Navneet. The admin
   // credit-adjustment route already supplies `credits` in emailParams.
   ADMIN_GIFT_RECEIVED: { campaign: "Brand Credits Added-Brand", param2: "credits" },
   // 3automationcreatorscampaign (2026-10, replaces "Campaign Application
-  // Approved-Creator"): {{1}} creator, {{2}} brand, {{3}} deal amount —
-  // confirmed by Navneet. The select routes in campaigns.ts supply brand_name
-  // and amount (pricePerCreator, or the product value for barter).
-  CAMPAIGN_SELECTED: { campaign: "3automationcreatorscampaign", param2: "brand_name", param3: "amount" },
+  // Approved-Creator"): {{1}} creator, {{2}} brand, {{3}} the creator's payout
+  // after commission (Navneet, 2026-10-28). Plain number — the ₹ is in the
+  // template. The select routes in campaigns.ts supply brand_name and payout
+  // (pricePerCreator less commission; the product value for barter).
+  CAMPAIGN_SELECTED: { campaign: "3automationcreatorscampaign", param2: "brand_name", param3: "payout" },
   // Campaign-level, so these lost their second param too — verified live.
   BARTER_CREATOR_CONFIRMED: { campaign: "Barter Participation Confirmed-Brand" },
   BARTER_CREATOR_CONFIRMED_PAID: { campaign: "Campaign Participation Confirmed-Brand" },
@@ -264,12 +266,12 @@ export function resolveWhatsAppCampaign(
   if (type === "DEAL_COMPLETED") {
     const barter = dealSource === "BARTER";
     // The creator's paid message is 5automationdealcompleted ({{1}} creator,
-    // {{2}} amount). Its copy is ₹ + payout wording, so Navneet asked for it on
+    // {{2}} payout after commission). Its copy is ₹ + payout wording, so Navneet asked for it on
     // paid deals only — barter creators keep the existing barter campaign.
     if (userType === "CREATOR") {
       return barter
         ? { campaign: "Deal Completed Barter-Creator", param2: COUNTERPARTY }
-        : { campaign: "5automationdealcompleted", param2: "amount" };
+        : { campaign: "5automationdealcompleted", param2: "payout" };
     }
     return { campaign: barter ? "Deal Completed Barter-Brand" : "Deal Completed-Brand", param2: COUNTERPARTY };
   }

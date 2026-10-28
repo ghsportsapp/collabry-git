@@ -42,6 +42,7 @@ import { requireCreator } from "../middleware/requireCreator";
 import { broadcastToAllCreators } from "../lib/sseManager";
 import { createPopup } from "../lib/popups";
 import { createNotification } from "../lib/notifications";
+import { payoutAfterCommission } from "../lib/creatorPayout";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -836,7 +837,7 @@ router.post("/brand/campaigns/:id/applications/:appId/select", requireBrand, asy
       title: "You've Been Selected 🎉",
       body: `A brand selected you for "${c.name}". Respond now to continue.`,
       relatedEntityType: "CAMPAIGN", relatedEntityId: campaignId,
-      emailParams: { campaign_name: c.name, brand_name: c.brandName ?? selectBrandName, amount: Math.round(Number(c.pricePerCreator) || 0) },
+      emailParams: { campaign_name: c.name, brand_name: c.brandName ?? selectBrandName, payout: payoutAfterCommission(Number(c.pricePerCreator) || 0, parseFloat(c.commissionRateAtCreation ?? "5") || 5) },
     }).catch(() => {});
     await createPopup({
       userId: creatorId, userType: "CREATOR", type: "CAMPAIGN_SELECTED",
@@ -1184,7 +1185,8 @@ router.post("/brand/barter/:id/applications/:appId/select", requireBrand, async 
     title: "You've Been Selected 🎉",
     body: `A brand selected you for "${b.name}". Respond now to continue.`,
     relatedEntityType: "BARTER_CAMPAIGN", relatedEntityId: String(req.params["id"]),
-    emailParams: { campaign_name: b.name, brand_name: b.brandName ?? barterBrandName, amount: Math.round(Number(b.productValueInr) || 0) },
+    // Barter pays in product, not cash, so there is no commission to take off.
+    emailParams: { campaign_name: b.name, brand_name: b.brandName ?? barterBrandName, payout: Math.round(Number(b.productValueInr) || 0) },
   }).catch(() => {});
   await createPopup({
     userId: creatorId, userType: "CREATOR", type: "CAMPAIGN_SELECTED",

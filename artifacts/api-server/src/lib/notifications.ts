@@ -136,6 +136,8 @@ async function getDealMeta(dealId: string): Promise<DealMeta> {
   try {
     const r = await pool.query(
       `SELECT d."totalAgreedValue"::text AS amount,
+              COALESCE(d."creatorPayout",
+                       d."totalAgreedValue" * (1 - COALESCE(d."commissionRateLocked", d."commissionRate", 5) / 100.0))::text AS payout,
               d.source                    AS source,
               b."brandName"  AS brand_name,
               c."fullName"   AS creator_name,
@@ -155,6 +157,8 @@ async function getDealMeta(dealId: string): Promise<DealMeta> {
     if (row.creator_name) params["creator_name"] = row.creator_name;
     if (row.campaign_name) params["campaign_name"] = row.campaign_name;
     if (row.amount != null) params["amount"] = Math.round(Number(row.amount));
+    // Creator's take-home after commission — what creator-facing WhatsApp quotes.
+    if (row.payout != null) params["payout"] = Math.round(Number(row.payout));
     return { params, source: row.source ?? null };
   } catch (err) {
     logger.debug({ err, dealId }, "Deal email-params lookup failed");
