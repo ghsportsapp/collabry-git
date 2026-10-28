@@ -6,6 +6,8 @@ import { startDealPipelineJob } from "./lib/jobs/dealPipeline";
 import { startShippingCron } from "./lib/jobs/shippingCron";
 import { startDealExpiryJob } from "./lib/jobs/dealExpiry";
 import { startApplicantNotificationJob } from "./lib/jobs/applicantNotification";
+import { startBrandSignupFollowupJob } from "./lib/jobs/brandSignupFollowup";
+import { startDealExpiringSoonJob } from "./lib/jobs/dealExpiringSoon";
 import { initMatchmakingTables } from "./routes/matchmaking";
 import { activateAllCreditHoldCampaigns } from "./lib/creditHoldActivation";
 import { pool } from "@workspace/db";
@@ -271,6 +273,8 @@ async function bootstrap() {
     startShippingCron();
     startDealExpiryJob();
     startApplicantNotificationJob();
+    startBrandSignupFollowupJob();
+    startDealExpiringSoonJob();
     activateAllCreditHoldCampaigns().catch(e => { logger.error({ err: e }, "startup credit-hold sweep failed"); });
   });
 }

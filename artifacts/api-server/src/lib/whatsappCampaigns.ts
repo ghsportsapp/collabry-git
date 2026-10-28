@@ -26,37 +26,49 @@
 //   param2 absent          -> single-param template
 //   param2: null           -> two-param, {{2}} unconfirmed, never sends
 //   param2: "counterparty" -> {{2}} = creator_name (to brand) / brand_name (to creator)
+//   param2: "self"         -> {{2}} = the recipient's own name, i.e. {{1}} repeated
 //   param2: "key"          -> {{2}} = params[key]
+//   param3                 -> same, for {{3}}; its presence marks a three-param template
 
 /** Sentinel for "the other party's name" — see the rule above. */
 export const COUNTERPARTY = "counterparty";
 
+/** Sentinel for "the recipient's own name again" — the same value as {{1}}. */
+export const SELF = "self";
+
 /**
  * Brand-signup welcome campaign.
  *
- * Replaces "Brand Welcome-Brand", which sent this message from launch until
- * 2026-09-23. Navneet rebuilt it as an AiSensy flow on template
- * `brand_automation_free_collab` and wrapped it in a Live API campaign of the
- * same name; his generated snippet confirms one templateParam, which is the
- * shape this type already sent, so nothing downstream changes.
+ * Replaces "Brand Welcome-Brand" (launch -> 2026-09-23), which was itself
+ * replaced by `brand_automation_free_collab`. Navneet's 2026-10 batch swaps it
+ * again for `1automation_brandsignup`, a two-param template where BOTH params
+ * are the brand's name (confirmed by Navneet — it is not credits).
  *
  * This is a SWAP, not an addition — WELCOME_CREDITS resolves to exactly one
  * campaign, so a brand can never receive both the old and new message.
  *
  * The env override exists because a campaign name that AiSensy can't resolve
  * is not a no-op: the send throws and the brand gets no welcome at all. If the
- * flow misbehaves, set AISENSY_BRAND_WELCOME_CAMPAIGN=Brand Welcome-Brand to
- * fall back, which takes a pm2 reload rather than a redeploy.
+ * flow misbehaves, set AISENSY_BRAND_WELCOME_CAMPAIGN=brand_automation_free_collab
+ * to fall back, which takes a pm2 reload rather than a redeploy. Any override
+ * is sent single-param, since every earlier welcome campaign took one.
  */
-const BRAND_WELCOME_DEFAULT = "brand_automation_free_collab";
+const BRAND_WELCOME_DEFAULT = "1automation_brandsignup";
 
 export function brandWelcomeCampaign(): string {
   return process.env["AISENSY_BRAND_WELCOME_CAMPAIGN"]?.trim() || BRAND_WELCOME_DEFAULT;
 }
 
+function brandWelcome(): WhatsAppCampaign {
+  const campaign = brandWelcomeCampaign();
+  return campaign === BRAND_WELCOME_DEFAULT ? { campaign, param2: SELF } : { campaign };
+}
+
 export interface WhatsAppCampaign {
   campaign: string;
   param2?: string | null;
+  /** Three-param templates only. Same resolution as param2; null = unconfirmed, never sends. */
+  param3?: string | null;
 }
 
 type UserType = "BRAND" | "CREATOR";
@@ -66,7 +78,7 @@ const SIMPLE: Record<string, WhatsAppCampaign> = {
   // ── Live now (single-param templates) ──────────────────────────────────
   CREATOR_WELCOME: { campaign: "Creator Welcome-Creator" },
   // Resolved at call time by resolveWhatsAppCampaign() — see brandWelcomeCampaign().
-  WELCOME_CREDITS: { campaign: BRAND_WELCOME_DEFAULT },
+  WELCOME_CREDITS: { campaign: BRAND_WELCOME_DEFAULT, param2: SELF },
   KYC_APPROVED: { campaign: "Creator KYC Verified-Creator" },
   KYC_REJECTED: { campaign: "Creator KYC Rejected-Creator" },
   CREATOR_APPROVED: { campaign: "Creator Profile Approved-Creator" },
@@ -85,7 +97,9 @@ const SIMPLE: Record<string, WhatsAppCampaign> = {
 
   DEAL_CONCEPT_SUBMITTED: { campaign: "Concept Submitted-Brand", param2: COUNTERPARTY },
   DEAL_CONCEPT_RESUBMITTED: { campaign: "Concept Resubmitted-Brand", param2: COUNTERPARTY },
-  DEAL_CONCEPT_APPROVED: { campaign: "Concept Approved-Creator", param2: COUNTERPARTY },
+  // creator_concept_video_approved (2026-10): {{1}} creator, {{2}} brand,
+  // {{3}} brand again — confirmed by Navneet, no due date in this one.
+  DEAL_CONCEPT_APPROVED: { campaign: "creator_concept_video_approved", param2: COUNTERPARTY, param3: COUNTERPARTY },
   DEAL_CONCEPT_REVISION_REQUESTED: { campaign: "Concept Revision-Creator", param2: COUNTERPARTY },
 
   DEAL_CONTENT_SUBMITTED: { campaign: "Final Video Uploaded-Brand", param2: COUNTERPARTY },
@@ -119,13 +133,18 @@ const SIMPLE: Record<string, WhatsAppCampaign> = {
   DEAL_FINAL_INACTIVITY_WARNING: { campaign: "Deal Video Pending Day7-Creator", param2: COUNTERPARTY },
   DEAL_FINAL_INACTIVITY_ESCALATED: { campaign: "Deal Overdue-Brand", param2: COUNTERPARTY },
 
-  REQUEST_RECEIVED: { campaign: "Deal Request Received-Creator", param2: COUNTERPARTY },
+  // 4automationcreatordeal (2026-10, replaces "Deal Request Received-Creator"):
+  // {{1}} creator, {{2}} brand, {{3}} deal amount — confirmed by Navneet. The
+  // send site (brandSearch.ts) already supplies brand_name and amount.
+  REQUEST_RECEIVED: { campaign: "4automationcreatordeal", param2: "brand_name", param3: "amount" },
   // {{1}} brand name, {{2}} credits — confirmed by Navneet. The admin
   // credit-adjustment route already supplies `credits` in emailParams.
   ADMIN_GIFT_RECEIVED: { campaign: "Brand Credits Added-Brand", param2: "credits" },
-  // Single-param as of 2026-08-03 — this template changed after the export,
-  // same as the campaign-level ones. Verified against the live API.
-  CAMPAIGN_SELECTED: { campaign: "Campaign Application Approved-Creator" },
+  // 3automationcreatorscampaign (2026-10, replaces "Campaign Application
+  // Approved-Creator"): {{1}} creator, {{2}} brand, {{3}} deal amount —
+  // confirmed by Navneet. The select routes in campaigns.ts supply brand_name
+  // and amount (pricePerCreator, or the product value for barter).
+  CAMPAIGN_SELECTED: { campaign: "3automationcreatorscampaign", param2: "brand_name", param3: "amount" },
   // Campaign-level, so these lost their second param too — verified live.
   BARTER_CREATOR_CONFIRMED: { campaign: "Barter Participation Confirmed-Brand" },
   BARTER_CREATOR_CONFIRMED_PAID: { campaign: "Campaign Participation Confirmed-Brand" },
@@ -144,6 +163,13 @@ const SIMPLE: Record<string, WhatsAppCampaign> = {
   BARTER_ON_HOLD: { campaign: "Barter On Hold-Brand" },
   BARTER_REJECTED: { campaign: "Barter Rejected-Brand" },
   BARTER_TOP_UP_NEEDED: { campaign: "Barter Balance Low-Brand" },
+
+  // ── Added 2026-10 with Navneet's "new 8 campaigns" batch ───────────────
+  // Brand follow-up two days after signup — fired by jobs/brandSignupFollowup.ts.
+  BRAND_SIGNUP_FOLLOWUP: { campaign: "2automationfollowupbrand" },
+  // Creator reminder two days before the deal deadline — fired by
+  // jobs/dealExpiringSoon.ts. Deal message, so {{2}} is the brand's name.
+  DEAL_EXPIRING_SOON: { campaign: "2_days_left_in_deal_creator", param2: COUNTERPARTY },
 };
 
 // Types whose campaign differs by recipient.
@@ -207,7 +233,8 @@ export interface CampaignContext {
 // AWB-wrong timeout, templates 55/56 — and "No Response" is a product issue
 // left unresolved, our product-issue timeout, templates 57/58.
 //
-// 69/70 are admin cancellations, which have no WhatsApp campaign.
+// 69 (brand) is handled above as brand_refund_processed; 70 (creator side of
+// the admin cancellation) has no WhatsApp campaign.
 const CANCELLED_BY_TEMPLATE: Record<number, string> = {
   49: "Deal Cancelled Shipping-Creator",
   50: "Deal Cancelled Shipping-Brand",
@@ -219,6 +246,13 @@ const CANCELLED_BY_TEMPLATE: Record<number, string> = {
   72: "Deal Cancelled Concept-Creator",
 };
 
+/**
+ * The admin "refund brand" route (dealPipeline.ts) cancels the deal with Brevo
+ * template 69 to the brand. That is the one DEAL_CANCELLED that gets
+ * "brand_refund_processed" — a single-param template, so no {{2}}.
+ */
+const ADMIN_REFUND_BRAND_TEMPLATE = 69;
+
 export function resolveWhatsAppCampaign(
   type: string,
   userType: UserType,
@@ -229,9 +263,15 @@ export function resolveWhatsAppCampaign(
   // dealCompletedTemplateId() makes for email. Campaigns 71-74.
   if (type === "DEAL_COMPLETED") {
     const barter = dealSource === "BARTER";
-    return userType === "CREATOR"
-      ? { campaign: barter ? "Deal Completed Barter-Creator" : "Deal Completed-Creator", param2: COUNTERPARTY }
-      : { campaign: barter ? "Deal Completed Barter-Brand" : "Deal Completed-Brand", param2: COUNTERPARTY };
+    // The creator's paid message is 5automationdealcompleted ({{1}} creator,
+    // {{2}} amount). Its copy is ₹ + payout wording, so Navneet asked for it on
+    // paid deals only — barter creators keep the existing barter campaign.
+    if (userType === "CREATOR") {
+      return barter
+        ? { campaign: "Deal Completed Barter-Creator", param2: COUNTERPARTY }
+        : { campaign: "5automationdealcompleted", param2: "amount" };
+    }
+    return { campaign: barter ? "Deal Completed Barter-Brand" : "Deal Completed-Brand", param2: COUNTERPARTY };
   }
   // Deal going live. The creator's copy differs for campaign vs direct deals;
   // the brand gets one campaign, and that one is single-param (verified live).
@@ -243,6 +283,9 @@ export function resolveWhatsAppCampaign(
     };
   }
   if (type === "DEAL_CANCELLED") {
+    if (emailTemplateId === ADMIN_REFUND_BRAND_TEMPLATE && userType === "BRAND") {
+      return { campaign: "brand_refund_processed" };
+    }
     const campaign = emailTemplateId ? CANCELLED_BY_TEMPLATE[emailTemplateId] : undefined;
     return campaign ? { campaign, param2: COUNTERPARTY } : null;
   }
@@ -255,8 +298,8 @@ export function resolveWhatsAppCampaign(
   }
   // Resolved here rather than read off SIMPLE, because SIMPLE is frozen when
   // this module first loads and the campaign name is an env-time decision.
-  // Single-param either way, so the {{1}} = brand name path below is unchanged.
-  if (type === "WELCOME_CREDITS") return { campaign: brandWelcomeCampaign() };
+  // Two-param on the default campaign (brand name twice), single-param on an env override.
+  if (type === "WELCOME_CREDITS") return brandWelcome();
   if (BY_USER_TYPE[type]) return BY_USER_TYPE[type][userType] ?? null;
   return SIMPLE[type] ?? null;
 }

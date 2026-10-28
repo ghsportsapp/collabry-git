@@ -8,7 +8,7 @@ import { resolveEmailTemplate, type ResolvedTemplate } from "./brevoTemplates";
 import { sendEmail } from "./email";
 import { shouldEmailNotification, renderNotificationEmail } from "./notificationEmail";
 import { isWhatsAppEnabled, sendWhatsApp, toWhatsAppNumber } from "./aisensy";
-import { resolveWhatsAppCampaign, COUNTERPARTY } from "./whatsappCampaigns";
+import { resolveWhatsAppCampaign, COUNTERPARTY, SELF } from "./whatsappCampaigns";
 
 export type NotifUserType = "BRAND" | "CREATOR";
 
@@ -308,37 +308,51 @@ async function dispatchWhatsApp(n: CreateNotifInput): Promise<void> {
   const greeting = (n.userType === "BRAND" ? name : name?.split(/\s+/)[0]) || "there";
 
   const templateParams: string[] = [greeting];
-  // `param2` present means a two-param template. null = we don't yet know what
-  // {{2}} is, so sending would fill it with the wrong value.
-  if ("param2" in camp) {
-    if (!camp.param2) {
-      logger.debug(
-        { userId: n.userId, type: n.type, campaign: camp.campaign },
-        "Skipping WhatsApp — awaiting approved template body for {{2}}"
-      );
-      return;
-    }
+  // `param2`/`param3` present means a two-/three-param template. null = we
+  // don't yet know what the slot is, so sending would fill it with the wrong
+  // value.
+  const extraSlots: Array<string | null> = [];
+  if ("param2" in camp) extraSlots.push(camp.param2 ?? null);
+  if ("param3" in camp) {
+    if (!("param2" in camp)) extraSlots.push(null); // {{3}} without {{2}} is malformed
+    extraSlots.push(camp.param3 ?? null);
+  }
+  if (extraSlots.length > 0) {
     // Same enrichment the email path does: most deal call sites never pass
     // brand_name/creator_name explicitly, they come from the Deal row. Without
     // this the counterparty lookup below would miss on nearly every deal.
     const params = { ...meta.params, ...n.emailParams };
-    // "the other party" resolves against the recipient: a brand hears about the
-    // creator, a creator hears about the brand.
-    const key =
-      camp.param2 === COUNTERPARTY
-        ? n.userType === "BRAND"
-          ? "creator_name"
-          : "brand_name"
-        : camp.param2;
-    const value = params[key];
-    if (value == null) {
-      logger.debug(
-        { userId: n.userId, type: n.type, campaign: camp.campaign, param: key },
-        "Skipping WhatsApp — {{2}} param missing"
-      );
-      return;
+    for (const [i, slot] of extraSlots.entries()) {
+      if (!slot) {
+        logger.debug(
+          { userId: n.userId, type: n.type, campaign: camp.campaign },
+          `Skipping WhatsApp — awaiting approved template body for {{${i + 2}}}`
+        );
+        return;
+      }
+      // The recipient's own name again — same value as {{1}}.
+      if (slot === SELF) {
+        templateParams.push(greeting);
+        continue;
+      }
+      // "the other party" resolves against the recipient: a brand hears about
+      // the creator, a creator hears about the brand.
+      const key =
+        slot === COUNTERPARTY
+          ? n.userType === "BRAND"
+            ? "creator_name"
+            : "brand_name"
+          : slot;
+      const value = params[key];
+      if (value == null) {
+        logger.debug(
+          { userId: n.userId, type: n.type, campaign: camp.campaign, param: key },
+          `Skipping WhatsApp — {{${i + 2}}} param missing`
+        );
+        return;
+      }
+      templateParams.push(String(value));
     }
-    templateParams.push(String(value));
   }
 
   const submittedMessageId = await sendWhatsApp({

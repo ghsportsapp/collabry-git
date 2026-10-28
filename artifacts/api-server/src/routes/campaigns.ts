@@ -821,6 +821,8 @@ router.post("/brand/campaigns/:id/applications/:appId/select", requireBrand, asy
     const newStatus = newFilled >= (c.slotCount as number) ? "HIDDEN" : "LIVE";
     await client.query(`UPDATE "Campaign" SET "slotsFilled"=$1,status=$2 WHERE id=$3`, [newFilled, newStatus, campaignId]);
     await client.query("COMMIT");
+    // The WhatsApp template names the brand; the Campaign row doesn't carry it.
+    const selectBrandName = ((await pool.query(`SELECT "brandName" FROM "Brand" WHERE id=$1`, [brandId]).catch(() => ({ rows: [] as any[] }))).rows[0]?.brandName as string | undefined) ?? "A brand";
     await notify(creatorId, "CREATOR", `You've been selected for "${c.name}"!`,
       `${c.brandName ?? "A brand"} has selected you for "${c.name}". Please confirm your participation within 48 hours.`);
     await notify(brandId, "BRAND", "Selection Sent",
@@ -834,7 +836,7 @@ router.post("/brand/campaigns/:id/applications/:appId/select", requireBrand, asy
       title: "You've Been Selected 🎉",
       body: `A brand selected you for "${c.name}". Respond now to continue.`,
       relatedEntityType: "CAMPAIGN", relatedEntityId: campaignId,
-      emailParams: { campaign_name: c.name },
+      emailParams: { campaign_name: c.name, brand_name: c.brandName ?? selectBrandName, amount: Math.round(Number(c.pricePerCreator) || 0) },
     }).catch(() => {});
     await createPopup({
       userId: creatorId, userType: "CREATOR", type: "CAMPAIGN_SELECTED",
@@ -1171,6 +1173,7 @@ router.post("/brand/barter/:id/applications/:appId/select", requireBrand, async 
   const newFilled = (b.slotsFilled as number) + 1;
   const newStatus = newFilled >= (b.slotCount as number) ? "HIDDEN" : "LIVE";
   await pool.query(`UPDATE "BarterCampaign" SET "slotsFilled"=$1,status=$2 WHERE id=$3`, [newFilled, newStatus, req.params["id"]]);
+  const barterBrandName = ((await pool.query(`SELECT "brandName" FROM "Brand" WHERE id=$1`, [brandId]).catch(() => ({ rows: [] as any[] }))).rows[0]?.brandName as string | undefined) ?? "A brand";
   await notify(creatorId, "CREATOR", "You've Been Selected — Confirm Within 48 Hours",
     `${b.brandName ?? "A brand"} selected you for barter campaign "${b.name}". You will receive ${b.productName} (₹${b.productValueInr}) for creating ${b.contentType} content. Please confirm within 48 hours.`);
   if (newStatus === "HIDDEN") await notify(brandId, "BRAND", "Campaign Full — All Slots Reserved",
@@ -1181,7 +1184,7 @@ router.post("/brand/barter/:id/applications/:appId/select", requireBrand, async 
     title: "You've Been Selected 🎉",
     body: `A brand selected you for "${b.name}". Respond now to continue.`,
     relatedEntityType: "BARTER_CAMPAIGN", relatedEntityId: String(req.params["id"]),
-    emailParams: { campaign_name: b.name },
+    emailParams: { campaign_name: b.name, brand_name: b.brandName ?? barterBrandName, amount: Math.round(Number(b.productValueInr) || 0) },
   }).catch(() => {});
   await createPopup({
     userId: creatorId, userType: "CREATOR", type: "CAMPAIGN_SELECTED",
