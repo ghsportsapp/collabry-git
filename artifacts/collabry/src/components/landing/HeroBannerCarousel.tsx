@@ -141,6 +141,13 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
   const show = (index: number) => setActive(index);
   const step = (delta: number) => show((current + delta + items.length) % items.length);
 
+  // The active slide buffers eagerly; the next one grabs metadata so switching
+  // is snappy; the rest stay idle. Combined with play()-on-active, only the
+  // shown video actually downloads — but every <video> still gets a real src.
+  const nextIndex = (current + 1) % items.length;
+  const preloadFor = (i: number): "auto" | "metadata" | "none" =>
+    i === current ? "auto" : i === nextIndex ? "metadata" : "none";
+
   return (
     <section className="relative" style={{ background: BG }}>
       <div className="relative">
@@ -184,11 +191,12 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
                   <video
                     ref={(el) => { mobileVideoRefs.current[i] = el; }}
                     className="lg:hidden absolute inset-0 w-full h-full object-cover"
+                    src={mobileVideo}
                     poster={banner.mobilePosterUrl || banner.imageUrl}
                     muted
                     loop
                     playsInline
-                    preload="none"
+                    preload={preloadFor(i)}
                     aria-label={banner.altText}
                   />
                 )}
@@ -209,11 +217,12 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
                   <video
                     ref={(el) => { desktopVideoRefs.current[i] = el; }}
                     className="hidden lg:block absolute inset-0 w-full h-full object-cover"
+                    src={desktopVideo}
                     poster={banner.desktopPosterUrl || desktopImg}
                     muted
                     loop
                     playsInline
-                    preload="none"
+                    preload={preloadFor(i)}
                     aria-label={banner.altText}
                   />
                 )}
