@@ -44,11 +44,19 @@ const hasDesktopMedia = (b?: HeroBanner) => !!(b?.desktopImageUrl || b?.desktopV
 const ARROW =
   "absolute top-1/2 -translate-y-1/2 z-30 w-9 h-9 lg:w-11 lg:h-11 rounded-full flex items-center justify-center transition-colors hover:bg-black/70 cursor-pointer";
 
-// Black scrim, both breakpoints, over image AND video: a top band so the
-// floating header stays legible and a stronger bottom band for the overlaid
-// headline + CTA. Pure CSS layer — nothing is baked into the media.
-const SCRIM =
-  "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 60%, rgba(0,0,0,0.72) 100%)";
+// Black scrims, both breakpoints, over image AND video. Two separate eased
+// bands — nothing is baked into the media:
+//  - TOP: keeps the floating header logo/icons legible. Strong at the very top,
+//    ~0.55 by 40% of the band, fading to transparent. Fixed height so it covers
+//    the whole header zone (~140px mobile, ~160px desktop, set on the element).
+//  - BOTTOM: makes the overlaid headline + CTA readable. ~0.9 at the bottom
+//    fading up, taller band (~45% mobile, ~40% desktop, set on the element).
+// Each uses 5 eased stops so the fade is smooth with no visible banding/hard
+// edge.
+const SCRIM_TOP =
+  "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.72) 20%, rgba(0,0,0,0.55) 40%, rgba(0,0,0,0.25) 70%, rgba(0,0,0,0) 100%)";
+const SCRIM_BOTTOM =
+  "linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.78) 18%, rgba(0,0,0,0.55) 40%, rgba(0,0,0,0.25) 68%, rgba(0,0,0,0) 100%)";
 
 /** Tracks the lg breakpoint so only the video for the *visible* device of the
  *  active slide ever plays. */
@@ -85,23 +93,64 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
   const stateRef = useRef({ current, isDesktop });
   stateRef.current = { current, isDesktop };
 
-  // Start the active slide's video. Set `muted` as a PROPERTY (not just the
-  // attribute) before play() so autoplay is allowed, and swallow a rejected
-  // promise — if playback is blocked the crisp poster simply stays (no spinner,
-  // no blur). Returns nothing; safe to call repeatedly.
-  const playActiveVideo = useCallback(() => {
+  // The carousel root — watched by an IntersectionObserver so the video pauses
+  // when the hero scrolls out of view.
+  const carouselRef = useRef<HTMLDivElement | null>(null);
+
+  // Whether the active slide's video (for the current breakpoint) has crossfaded
+  // in. Drives the video's opacity; reset to false on every slide/breakpoint
+  // change so each slide starts on its image. Once true it stays true for the
+  // life of that activation, so a loop restart never flips back to the image.
+  const [videoRevealed, setVideoRevealed] = useState(false);
+
+  // play() gating. The active video is held paused on its first frame until the
+  // 2s minimum-image phase elapses (wantPlay), and is never played while the
+  // hero is scrolled away (inView) or the tab is hidden (pageVisible). Refs, not
+  // state, so the listeners read the latest values without re-subscribing.
+  const wantPlayRef = useRef(false);
+  const inViewRef = useRef(true);
+  const pageVisibleRef = useRef(typeof document !== "undefined" ? !document.hidden : true);
+
+  // The <video> for the active slide at the current breakpoint, or null when the
+  // active slide is image-only here.
+  const activeVideoEl = useCallback((): HTMLVideoElement | null => {
     const { current: cur, isDesktop: desk } = stateRef.current;
-    const el = desk ? desktopVideoRefs.current[cur] : mobileVideoRefs.current[cur];
+    return (desk ? desktopVideoRefs.current[cur] : mobileVideoRefs.current[cur]) ?? null;
+  }, []);
+
+  // Start the active slide's video — but only once we actually want it playing
+  // (past the 2s image phase) and the hero is both on-screen and in a visible
+  // tab. Set `muted` as a PROPERTY (not just the attribute) before play() so
+  // autoplay is allowed, and swallow a rejected promise — if playback is blocked
+  // the image simply stays until the next interaction retry. Safe to call
+  // repeatedly; a no-op before the 2s mark.
+  const playActiveVideo = useCallback(() => {
+    if (!wantPlayRef.current || !inViewRef.current || !pageVisibleRef.current) return;
+    const el = activeVideoEl();
     if (!el) return;
     el.muted = true;
     const p = el.play();
-    if (p && typeof p.catch === "function") p.catch(() => { /* blocked — poster stays */ });
-  }, []);
+    if (p && typeof p.catch === "function") p.catch(() => { /* blocked — image stays */ });
+  }, [activeVideoEl]);
 
-  // Play only the active slide's video for the current breakpoint; pause and
-  // rewind everything else. Non-active videos keep preload="none", so nothing
-  // downloads until a slide is actually shown.
+  // Pause the active video without disturbing its position or the reveal — used
+  // when the hero leaves the viewport or the tab is hidden.
+  const pauseActiveVideo = useCallback(() => {
+    const el = activeVideoEl();
+    if (el) { try { el.pause(); } catch { /* ignore */ } }
+  }, [activeVideoEl]);
+
+  // Per-activation orchestration. Runs on every slide/breakpoint change:
+  //  - reset the new slide to image-visible (video opacity 0, currentTime 0);
+  //  - pause/rewind every other and off-breakpoint video;
+  //  - hold the active video on its first frame for a 2s minimum, then play();
+  //  - crossfade the video in only once it is genuinely playing.
   useEffect(() => {
+    setVideoRevealed(false);
+    wantPlayRef.current = false;
+
+    // Pause the off-breakpoint and non-active videos; rewind them so a later
+    // visit starts clean.
     items.forEach((_, i) => {
       const mv = mobileVideoRefs.current[i];
       const dv = desktopVideoRefs.current[i];
@@ -112,12 +161,41 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
         if (el) { try { el.pause(); el.currentTime = 0; } catch { /* ignore */ } }
       }
     });
-    playActiveVideo();
-  }, [current, isDesktop, items.length, playActiveVideo]);
 
-  // Autoplay retry: if the browser blocked muted autoplay, the first user
-  // gesture (tap/scroll) kicks the active video into playing. No-op once it is
-  // already playing, so leaving these registered is harmless.
+    const el = activeVideoEl();
+    if (!el) return; // image-only slide at this breakpoint — nothing to reveal.
+
+    // Start from the first frame, held paused, while the image shows.
+    try { el.pause(); el.currentTime = 0; } catch { /* ignore */ }
+
+    let revealed = false;
+    let minElapsed = false;
+    let playing = el.readyState >= 3 && !el.paused;
+    const tryReveal = () => {
+      if (!revealed && minElapsed && playing) { revealed = true; setVideoRevealed(true); }
+    };
+    // `playing` fires on real playback start (first frame on screen) and on each
+    // loop restart — the guard above makes the later ones no-ops.
+    const onPlaying = () => { playing = true; tryReveal(); };
+    el.addEventListener("playing", onPlaying);
+
+    const timer = window.setTimeout(() => {
+      minElapsed = true;
+      wantPlayRef.current = true;
+      playActiveVideo();     // play from frame 0 (or wait for in-view/visible).
+      tryReveal();           // in case it was already playing.
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timer);
+      el.removeEventListener("playing", onPlaying);
+    };
+  }, [current, isDesktop, items.length, activeVideoEl, playActiveVideo]);
+
+  // Autoplay retry: if the browser blocked muted autoplay at the 2s mark, the
+  // first user gesture (tap/scroll) kicks the active video into playing. No-op
+  // before the 2s mark or once already playing, so leaving these registered is
+  // harmless.
   useEffect(() => {
     const retry = () => playActiveVideo();
     window.addEventListener("pointerdown", retry, { passive: true });
@@ -129,6 +207,33 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
       window.removeEventListener("scroll", retry);
     };
   }, [playActiveVideo]);
+
+  // Pause when the hero scrolls out of view; resume (without re-showing the
+  // image) when it returns.
+  useEffect(() => {
+    const node = carouselRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        const visible = entry.isIntersecting && entry.intersectionRatio >= 0.25;
+        inViewRef.current = visible;
+        if (visible) playActiveVideo(); else pauseActiveVideo();
+      },
+      { threshold: 0.25 }
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [playActiveVideo, pauseActiveVideo]);
+
+  // Pause on tab hide, resume on return — mirrors the in-view behaviour.
+  useEffect(() => {
+    const onVis = () => {
+      pageVisibleRef.current = !document.hidden;
+      if (document.hidden) pauseActiveVideo(); else playActiveVideo();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [playActiveVideo, pauseActiveVideo]);
 
   if (items.length === 0) return null;
 
@@ -154,6 +259,7 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
         {/* Slides cross-fade by opacity at every width — no horizontal scroll,
             so there is no swipe/pan gesture on mobile. */}
         <div
+          ref={carouselRef}
           className={box}
           onClick={() => { if (!isDesktop && multiple) step(1); }}
         >
@@ -191,6 +297,7 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
                   <video
                     ref={(el) => { mobileVideoRefs.current[i] = el; }}
                     className="lg:hidden absolute inset-0 w-full h-full object-cover"
+                    style={{ opacity: i === current && videoRevealed ? 1 : 0, transition: "opacity 400ms ease" }}
                     src={mobileVideo}
                     poster={banner.mobilePosterUrl || banner.imageUrl}
                     muted
@@ -217,6 +324,7 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
                   <video
                     ref={(el) => { desktopVideoRefs.current[i] = el; }}
                     className="hidden lg:block absolute inset-0 w-full h-full object-cover"
+                    style={{ opacity: i === current && videoRevealed ? 1 : 0, transition: "opacity 400ms ease" }}
                     src={desktopVideo}
                     poster={banner.desktopPosterUrl || desktopImg}
                     muted
@@ -230,8 +338,18 @@ export default function HeroBannerCarousel({ banners, ctaLabel, ctaLink, overlay
             );
           })}
 
-          {/* CSS scrim over the media, both breakpoints. */}
-          <div className="absolute inset-0 z-10 pointer-events-none" style={{ background: SCRIM }} />
+          {/* CSS scrims over the media (image AND video), both breakpoints.
+              Above the media at z-10 but below the header (floating, higher z)
+              and the headline overlay (z-20); non-interactive so taps pass
+              through to the slide/arrows. */}
+          <div
+            className="absolute top-0 left-0 right-0 z-10 pointer-events-none h-[140px] lg:h-[160px]"
+            style={{ background: SCRIM_TOP }}
+          />
+          <div
+            className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none h-[45%] lg:h-[40%]"
+            style={{ background: SCRIM_BOTTOM }}
+          />
         </div>
 
         {multiple && (
