@@ -177,7 +177,6 @@ export default function CreatorSignup() {
   const [submitting, setSubmitting] = useState(false);
   const [allCategories, setAllCategories] = useState<any[]>([]);
   const [allSlabs, setAllSlabs] = useState<any[]>([]);
-  const [detectedSlab, setDetectedSlab] = useState<any | null>(null);
   const [loadingSlabs, setLoadingSlabs] = useState(false);
   const [signupConfig, setSignupConfig] = useState<SignupConfig>({});
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
@@ -319,16 +318,6 @@ export default function CreatorSignup() {
       }
     }).catch(() => {});
   }, []);
-
-  // Detect slab
-  useEffect(() => {
-    if (!form.followerCount || allSlabs.length === 0) return;
-    const cnt = parseInt(form.followerCount);
-    if (isNaN(cnt)) return;
-    const found = allSlabs.find(s => s.minFollowers <= cnt && (s.maxFollowers === null || s.maxFollowers >= cnt));
-    setDetectedSlab(found ?? null);
-    if (found) setForm(f => ({ ...f, selectedSlabId: found.id, selectedSlabLabel: found.label }));
-  }, [form.followerCount, allSlabs]);
 
   const checkHandle = useCallback((h: string) => {
     if (!h.trim() || !IG_HANDLE_RE.test(h)) { setHandleAvailable(null); setCheckingHandle(false); return; }
@@ -1040,20 +1029,18 @@ export default function CreatorSignup() {
                     <div className="space-y-2" data-field="selectedSlabId">
                       {eligibleSlabs.map((slab: any) => {
                         const isSelected = form.selectedSlabId === slab.id;
-                        const isSuggested = detectedSlab?.id === slab.id;
                         return (
                           <button key={slab.id} type="button" onClick={() => setForm(f => ({ ...f, selectedSlabId: slab.id, selectedSlabLabel: slab.label }))}
                             className="w-full text-left p-4 rounded-xl transition-all"
                             style={{
                               background: isSelected ? "rgba(240,24,122,0.14)" : "rgba(255,255,255,0.04)",
-                              border: `1.5px solid ${isSelected ? "#E14F69" : isSuggested ? "rgba(240,24,122,0.35)" : "rgba(255,255,255,0.10)"}`,
+                              border: `1.5px solid ${isSelected ? "#E14F69" : "rgba(255,255,255,0.10)"}`,
                               boxShadow: isSelected ? "0 0 14px 0 rgba(240,24,122,0.25)" : "none",
                             }}>
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-0.5">
                                   <span className="text-white font-semibold text-sm">{slab.label}</span>
-                                  {isSuggested && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(240,24,122,0.20)", color: "#E14F69" }}>Suggested</span>}
                                 </div>
                                 <span className="text-white/70 text-xs block mb-1.5">
                                   {fmtK(slab.minFollowers)}{slab.maxFollowers ? `–${fmtK(slab.maxFollowers)}` : "+"} followers
@@ -1074,10 +1061,6 @@ export default function CreatorSignup() {
                       })}
                     </div>
                     {errors.selectedSlabId && <p className="text-red-400 text-xs mt-1">{errors.selectedSlabId}</p>}
-                    {form.selectedSlabId && (() => {
-                      const slab = allSlabs.find(s => s.id === form.selectedSlabId);
-                      return slab?.disclaimerRecommended ? <p className="text-white/70 text-xs mt-2 italic">{slab.disclaimerRecommended}</p> : null;
-                    })()}
                   </div>
                 )}
                 <p className="text-white/70 text-xs">Pricing is locked for 14 days after first edit.</p>
