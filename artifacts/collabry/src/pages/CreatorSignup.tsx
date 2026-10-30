@@ -486,11 +486,9 @@ export default function CreatorSignup() {
 
   const next = () => {
     if (!validate(step)) return;
-    if (step === 5 && detectedSlab && form.selectedSlabId) {
-      const selIdx = eligibleSlabs.findIndex(s => s.id === form.selectedSlabId);
-      const sugIdx = eligibleSlabs.findIndex(s => s.id === detectedSlab.id);
-      if (selIdx > sugIdx) { setShowHigherSlabModal(true); return; }
-    }
+    // On the pricing step, confirm the chosen pricing before moving on — for
+    // ANY tier, not just higher-than-suggested ones (no nudge toward suggested).
+    if (step === 5 && form.selectedSlabId) { setShowHigherSlabModal(true); return; }
     setStep(s => s + 1);
   };
   const prev = () => setStep(s => s - 1);
@@ -575,24 +573,21 @@ export default function CreatorSignup() {
       {showHigherSlabModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.80)" }}>
           <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: "#100814", border: "1px solid rgba(240,24,122,0.25)" }}>
-            <h3 className="text-white font-bold text-base mb-3">Are you sure?</h3>
-            <p className="text-amber-400 text-sm leading-relaxed mb-5">
-              ⚠ Most deals on our platform happen in the suggested <strong>{detectedSlab?.label}</strong> tier for your follower range. Also, your pricing is locked for 14 days after signup — you won't be able to change it during this period.
+            <h3 className="text-white font-bold text-base mb-3">Confirm your pricing</h3>
+            <p className="text-white/75 text-sm leading-relaxed mb-5">
+              Creators set their pricing based on their followers and engagement. We hope you've picked the pricing that best fits your profile — if not, you can still change it.
             </p>
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => { setShowHigherSlabModal(false); setStep(s => s + 1); }}
                 className="w-full py-3 rounded-full text-white font-semibold text-sm transition-all"
                 style={{ background: "#E14F69" }}>
-                Yes, I'm sure
+                Confirm this pricing
               </button>
               <button
-                onClick={() => {
-                  if (detectedSlab) setForm(f => ({ ...f, selectedSlabId: detectedSlab.id, selectedSlabLabel: detectedSlab.label }));
-                  setShowHigherSlabModal(false);
-                }}
+                onClick={() => setShowHigherSlabModal(false)}
                 className="w-full py-3 rounded-full text-white/80 text-sm border border-white/20 hover:bg-white/5 transition-colors">
-                No, select suggested price
+                Change
               </button>
             </div>
           </div>
@@ -1039,11 +1034,9 @@ export default function CreatorSignup() {
                 </div>
                 {loadingSlabs ? <div className="text-white/70 text-sm text-center py-4">Loading tiers...</div> : (
                   <div>
-                    {detectedSlab && (
-                      <div className="p-3 rounded-xl mb-3" style={{ background: "#F0187A", boxShadow: "0 0 6px 1px rgba(255,255,255,0.70)" }}>
-                        <p className="text-white text-xs">Based on your {parseInt(form.followerCount || "0").toLocaleString("en-IN")} followers, we suggest the <strong>{detectedSlab.label}</strong> tier — most deals on our platform for creators in your range are made here.</p>
-                      </div>
-                    )}
+                    <div className="p-3 rounded-xl mb-3" style={{ background: "#F0187A", boxShadow: "0 0 6px 1px rgba(255,255,255,0.70)" }}>
+                      <p className="text-white text-xs">We suggest creators choose their pricing based on their followers and engagement. Below are the default price ranges for every tier — you can select whichever fits your profile.</p>
+                    </div>
                     <div className="space-y-2" data-field="selectedSlabId">
                       {eligibleSlabs.map((slab: any) => {
                         const isSelected = form.selectedSlabId === slab.id;
@@ -1081,18 +1074,6 @@ export default function CreatorSignup() {
                       })}
                     </div>
                     {errors.selectedSlabId && <p className="text-red-400 text-xs mt-1">{errors.selectedSlabId}</p>}
-                    {detectedSlab && form.selectedSlabId && (() => {
-                      const selIdx = eligibleSlabs.findIndex(s => s.id === form.selectedSlabId);
-                      const sugIdx = eligibleSlabs.findIndex(s => s.id === detectedSlab.id);
-                      if (selIdx > sugIdx) {
-                        return (
-                          <div className="p-3 rounded-xl mt-2" style={{ background: "rgba(251,191,36,0.07)", border: "1px solid rgba(251,191,36,0.25)" }}>
-                            <p className="text-amber-400 text-xs leading-relaxed">⚠ Most deals on our platform happen in the suggested <strong>{detectedSlab.label}</strong> tier for your follower range. Also, your pricing is locked for 14 days after signup — you won't be able to change it during this period.</p>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
                     {form.selectedSlabId && (() => {
                       const slab = allSlabs.find(s => s.id === form.selectedSlabId);
                       return slab?.disclaimerRecommended ? <p className="text-white/70 text-xs mt-2 italic">{slab.disclaimerRecommended}</p> : null;
