@@ -9,6 +9,15 @@ import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
 import UnlockCelebration from "@/components/UnlockCelebration";
+import { districtsForState } from "@/data/indiaStatesDistricts";
+
+/** Union of districts across the selected states — drives the dependent
+ *  City / District filter (empty until at least one state is chosen). */
+function citiesForStates(states: string[]): string[] {
+  const set = new Set<string>();
+  states.forEach(st => districtsForState(st).forEach(d => set.add(d)));
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
 
 const CARD_BG = "#2D0D1F";
 const CARD_BOTTOM_BG = "#430B26";
@@ -48,10 +57,11 @@ interface Filters {
   creatorGenders: string[];
   audienceAges: string[]; audienceLocations: string[];
   creatorStates: string[];
+  creatorCities: string[];
 }
 const EMPTY_FILTERS: Filters = {
   slabIds: [], categoryIds: [], creatorAges: [],
-  creatorGenders: [], audienceAges: [], audienceLocations: [], creatorStates: [],
+  creatorGenders: [], audienceAges: [], audienceLocations: [], creatorStates: [], creatorCities: [],
 };
 
 function formatFollowers(n: number): string {
@@ -107,7 +117,9 @@ export default function BrandSearch() {
   const [page, setPage] = useState(cached?.page ?? 1);
   const [totalPages, setTotalPages] = useState(cached?.totalPages ?? 1);
   const [total, setTotal] = useState(cached?.total ?? 0);
-  const [filters, setFilters] = useState<Filters>(cached?.filters ?? EMPTY_FILTERS);
+  // Merge over EMPTY_FILTERS so a cache written by an older deploy (before a new
+  // filter field existed) can never leave an array undefined.
+  const [filters, setFilters] = useState<Filters>(cached?.filters ? { ...EMPTY_FILTERS, ...cached.filters } : EMPTY_FILTERS);
   const [openPill, setOpenPill] = useState<string | null>(null);
   const [unlockModal, setUnlockModal] = useState<CreatorPartial | null>(null);
   const [unlocking, setUnlocking] = useState(false);
@@ -133,6 +145,7 @@ export default function BrandSearch() {
     filters.audienceAges.forEach(a => p.append("audienceAge", a));
     filters.audienceLocations.forEach(l => p.append("audienceLocation", l));
     filters.creatorStates.forEach(st => p.append("creatorState", st));
+    filters.creatorCities.forEach(ct => p.append("creatorCity", ct));
     return p.toString();
   }, [page, filters]);
 
@@ -241,7 +254,8 @@ export default function BrandSearch() {
   const activeFilterCount = useMemo(() =>
     filters.slabIds.length + filters.categoryIds.length + filters.creatorAges.length +
     filters.creatorGenders.length +
-    filters.audienceAges.length + filters.audienceLocations.length + filters.creatorStates.length,
+    filters.audienceAges.length + filters.audienceLocations.length + filters.creatorStates.length +
+    filters.creatorCities.length,
     [filters]
   );
 
@@ -289,6 +303,7 @@ export default function BrandSearch() {
     if (key === "audienceAge") return filters.audienceAges.length === 0 ? null : filters.audienceAges.length === 1 ? filters.audienceAges[0] : `${filters.audienceAges.length} selected`;
     if (key === "audienceLocation") return filters.audienceLocations.length === 0 ? null : filters.audienceLocations.length === 1 ? filters.audienceLocations[0] : `${filters.audienceLocations.length} selected`;
     if (key === "creatorState") return filters.creatorStates.length === 0 ? null : filters.creatorStates.length === 1 ? filters.creatorStates[0] : `${filters.creatorStates.length} selected`;
+    if (key === "creatorCity") return filters.creatorCities.length === 0 ? null : filters.creatorCities.length === 1 ? filters.creatorCities[0] : `${filters.creatorCities.length} selected`;
     return null;
   }
 
@@ -300,6 +315,7 @@ export default function BrandSearch() {
     { key: "audienceAge",      label: "Audience's Age",          icon: <Target size={13} color={PINK} /> },
     { key: "audienceLocation", label: "Audience's Location",     icon: <MapPin size={13} color={PINK} /> },
     { key: "creatorState",     label: "Creator's State / UT",    icon: <MapPin size={13} color={PINK} /> },
+    { key: "creatorCity",      label: "Creator's City / District", icon: <MapPin size={13} color={PINK} /> },
   ];
 
   function renderFilterContent(key: string) {
@@ -343,7 +359,22 @@ export default function BrandSearch() {
       <StateFilterPicker
         states={opts?.creatorStates ?? []}
         values={filters.creatorStates}
-        onToggle={v => { setFilters(f => ({ ...f, creatorStates: toggle(f.creatorStates, v) })); setPage(1); }} />
+        onToggle={v => {
+          setFilters(f => {
+            const creatorStates = toggle(f.creatorStates, v);
+            // Prune cities that no longer belong to the selected states.
+            const allowed = new Set(citiesForStates(creatorStates));
+            return { ...f, creatorStates, creatorCities: f.creatorCities.filter(c => allowed.has(c)) };
+          });
+          setPage(1);
+        }} />
+    );
+    if (key === "creatorCity") return (
+      <CityFilterPicker
+        cities={citiesForStates(filters.creatorStates)}
+        values={filters.creatorCities}
+        hasState={filters.creatorStates.length > 0}
+        onToggle={v => { setFilters(f => ({ ...f, creatorCities: toggle(f.creatorCities, v) })); setPage(1); }} />
     );
     return null;
   }
@@ -357,7 +388,8 @@ export default function BrandSearch() {
         : pd.key === "creatorGender" ? filters.creatorGenders.length > 0
         : pd.key === "audienceAge" ? filters.audienceAges.length > 0
         : pd.key === "audienceLocation" ? filters.audienceLocations.length > 0
-        : filters.creatorStates.length > 0;
+        : pd.key === "creatorState" ? filters.creatorStates.length > 0
+        : filters.creatorCities.length > 0;
 
       return (
         <FilterRow
@@ -876,6 +908,37 @@ function StateFilterPicker({ states, values, onToggle }: { states: string[]; val
             <button key={s} onClick={() => onToggle(s)}
               style={{ width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between", background: sel ? "rgba(240,24,122,0.10)" : "none", border: "none", cursor: "pointer", fontSize: 12, fontFamily: POPPINS, color: sel ? PINK : "rgba(255,255,255,0.80)" }}>
               {s}
+              {sel && <Check size={13} color={PINK} />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CityFilterPicker({ cities, values, hasState, onToggle }: { cities: string[]; values: string[]; hasState: boolean; onToggle: (v: string) => void }) {
+  const [search, setSearch] = useState("");
+  if (!hasState) {
+    return <p style={{ color: "rgba(255,255,255,0.70)", fontSize: 12, padding: "8px 10px", fontFamily: POPPINS }}>Select a state first</p>;
+  }
+  const filtered = cities.filter(c => c.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div>
+      <div className="px-1 pb-2">
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search city or district…"
+          className="w-full px-3 py-1.5 rounded-lg text-xs text-white outline-none placeholder:text-white/70"
+          style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)", fontFamily: POPPINS }} />
+      </div>
+      <div className="max-h-44 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <p style={{ color: "rgba(255,255,255,0.70)", fontSize: 12, padding: "8px 10px", fontFamily: POPPINS }}>No match</p>
+        ) : filtered.map(c => {
+          const sel = values.includes(c);
+          return (
+            <button key={c} onClick={() => onToggle(c)}
+              style={{ width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between", background: sel ? "rgba(240,24,122,0.10)" : "none", border: "none", cursor: "pointer", fontSize: 12, fontFamily: POPPINS, color: sel ? PINK : "rgba(255,255,255,0.80)" }}>
+              {c}
               {sel && <Check size={13} color={PINK} />}
             </button>
           );

@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { Users, BarChart2, Calendar, UserCheck, Target, MapPin, ChevronDown, Check } from "lucide-react";
 import { POPPINS, PINK } from "@/components/BrandLayout";
+import { districtsForState } from "@/data/indiaStatesDistricts";
+
+/** Union of districts across the selected states (deduped, sorted). Drives the
+ *  dependent City / District filter — empty until at least one state is picked. */
+function citiesForStates(states: string[]): string[] {
+  const set = new Set<string>();
+  states.forEach(st => districtsForState(st).forEach(d => set.add(d)));
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
 
 /* The brand search filter bar, lifted so the campaign applicant lists can use
    the identical control. Same seven filters, same option source
@@ -17,11 +26,12 @@ export interface CreatorFilters {
   audienceAges: string[];
   audienceLocations: string[];
   creatorStates: string[];
+  creatorCities: string[];
 }
 
 export const EMPTY_CREATOR_FILTERS: CreatorFilters = {
   slabIds: [], categoryIds: [], creatorAges: [],
-  creatorGenders: [], audienceAges: [], audienceLocations: [], creatorStates: [],
+  creatorGenders: [], audienceAges: [], audienceLocations: [], creatorStates: [], creatorCities: [],
 };
 
 export interface FilterOptions {
@@ -37,7 +47,7 @@ export interface FilterOptions {
 export function countActiveFilters(f: CreatorFilters): number {
   return f.slabIds.length + f.categoryIds.length + f.creatorAges.length +
     f.creatorGenders.length + f.audienceAges.length + f.audienceLocations.length +
-    f.creatorStates.length;
+    f.creatorStates.length + f.creatorCities.length;
 }
 
 /** Serialises to the same param names the search endpoint already accepts. */
@@ -50,6 +60,7 @@ export function creatorFilterParams(f: CreatorFilters): URLSearchParams {
   f.audienceAges.forEach(v => p.append("audienceAge", v));
   f.audienceLocations.forEach(v => p.append("audienceLocation", v));
   f.creatorStates.forEach(v => p.append("creatorState", v));
+  f.creatorCities.forEach(v => p.append("creatorCity", v));
   return p;
 }
 
@@ -178,6 +189,41 @@ function StateFilterPicker({ states, values, onToggle: onTog }: {
   );
 }
 
+// Dependent City / District picker. Shows the districts of the selected
+// state(s); until a state is chosen the list is empty and it prompts for one.
+function CityFilterPicker({ cities, values, hasState, onToggle: onTog }: {
+  cities: string[]; values: string[]; hasState: boolean; onToggle: (v: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  if (!hasState) {
+    return <p style={{ color: "rgba(255,255,255,0.70)", fontSize: 12, padding: "8px 10px", fontFamily: POPPINS }}>Select a state first</p>;
+  }
+  const filtered = cities.filter(c => c.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div>
+      <div className="px-1 pb-2">
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search city or district…"
+          className="w-full px-3 py-1.5 rounded-lg text-xs text-white outline-none placeholder:text-white/70"
+          style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)", fontFamily: POPPINS }} />
+      </div>
+      <div className="max-h-44 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <p style={{ color: "rgba(255,255,255,0.70)", fontSize: 12, padding: "8px 10px", fontFamily: POPPINS }}>No match</p>
+        ) : filtered.map(c => {
+          const sel = values.includes(c);
+          return (
+            <button key={c} onClick={() => onTog(c)}
+              style={{ width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between", background: sel ? "rgba(240,24,122,0.10)" : "none", border: "none", cursor: "pointer", fontSize: 12, fontFamily: POPPINS, color: sel ? PINK : "rgba(255,255,255,0.80)" }}>
+              {c}
+              {sel && <Check size={13} color={PINK} />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function CreatorFilterBar({ opts, filters, onChange }: {
   opts: FilterOptions | null;
   filters: CreatorFilters;
@@ -197,6 +243,7 @@ export default function CreatorFilterBar({ opts, filters, onChange }: {
     { key: "audienceAge",      label: "Audience's Age",       icon: <Target size={13} color={PINK} /> },
     { key: "audienceLocation", label: "Audience's Location",  icon: <MapPin size={13} color={PINK} /> },
     { key: "creatorState",     label: "Creator's State / UT", icon: <MapPin size={13} color={PINK} /> },
+    { key: "creatorCity",      label: "Creator's City / District", icon: <MapPin size={13} color={PINK} /> },
   ];
 
   function activeLabel(key: string): string | null {
@@ -208,6 +255,7 @@ export default function CreatorFilterBar({ opts, filters, onChange }: {
     if (key === "audienceAge") return many(filters.audienceAges.length, () => filters.audienceAges[0]!);
     if (key === "audienceLocation") return many(filters.audienceLocations.length, () => filters.audienceLocations[0]!);
     if (key === "creatorState") return many(filters.creatorStates.length, () => filters.creatorStates[0]!);
+    if (key === "creatorCity") return many(filters.creatorCities.length, () => filters.creatorCities[0]!);
     return null;
   }
 
@@ -252,7 +300,19 @@ export default function CreatorFilterBar({ opts, filters, onChange }: {
       <StateFilterPicker
         states={opts?.creatorStates ?? []}
         values={filters.creatorStates}
-        onToggle={v => set({ creatorStates: toggle(filters.creatorStates, v) })} />
+        onToggle={v => {
+          const nextStates = toggle(filters.creatorStates, v);
+          // Drop any selected city that no longer belongs to the chosen states.
+          const allowed = new Set(citiesForStates(nextStates));
+          set({ creatorStates: nextStates, creatorCities: filters.creatorCities.filter(c => allowed.has(c)) });
+        }} />
+    );
+    if (key === "creatorCity") return (
+      <CityFilterPicker
+        cities={citiesForStates(filters.creatorStates)}
+        values={filters.creatorCities}
+        hasState={filters.creatorStates.length > 0}
+        onToggle={v => set({ creatorCities: toggle(filters.creatorCities, v) })} />
     );
     return null;
   }

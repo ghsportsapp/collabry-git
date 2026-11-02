@@ -265,6 +265,15 @@ router.get("/brand/search/creators-all", requireBrand, async (req: Request, res:
     where.push(`(${conds.join(" OR ")})`);
   }
 
+  // Creator city / district (multi-select exact match). Dependent on state in
+  // the UI; here it is a plain filter. Creators with no city never match.
+  const cCities = req.query["creatorCity"] as string | string[] | undefined;
+  const cCityList = cCities ? (Array.isArray(cCities) ? cCities : [cCities]) : [];
+  if (cCityList.length > 0) {
+    const conds = cCityList.map(ct => { filterParams.push(ct); return `c."city" = $${filterParams.length}`; });
+    where.push(`(${conds.join(" OR ")})`);
+  }
+
   let orderBy = `c."followerCount" DESC`;
   if (sort === "newest") orderBy = `c."createdAt" DESC`;
   else if (sort === "rating") orderBy = `c."averageRating" DESC NULLS LAST`;

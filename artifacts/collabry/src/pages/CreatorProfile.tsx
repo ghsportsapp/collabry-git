@@ -5,6 +5,7 @@ import {
   Sparkles, CheckCircle, AlertCircle, Link as LinkIcon, MapPin,
 } from "lucide-react";
 import { useCreatorAuth } from "@/contexts/CreatorAuthContext";
+import { districtsForState } from "@/data/indiaStatesDistricts";
 import { CreatorLayout, PINK, BG, POPPINS } from "@/components/CreatorNavLayout";
 import MultiImageUpload from "@/components/MultiImageUpload";
 
@@ -101,6 +102,62 @@ function StateEditDropdown({ value, onChange }: { value: string; onChange: (v: s
                 style={{ color: s === value ? PINK : "rgba(255,255,255,0.90)", background: s === value ? "rgba(240,24,122,0.10)" : "transparent", fontFamily: POPPINS }}
                 onClick={() => { onChange(s); setOpen(false); setSearch(""); }}>
                 {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── City / District Dropdown (depends on the chosen state) ─── */
+function DistrictEditDropdown({ stateValue, value, onChange }: { stateValue: string; value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function handle(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+  const districts = districtsForState(stateValue);
+  const disabled = !stateValue || districts.length === 0;
+  const filtered = districts.filter(d => d.toLowerCase().includes(search.toLowerCase()));
+  return (
+    // Stable anchor so other screens (e.g. the "Add your city" popup) can scroll here.
+    <div id="city-district-field" data-section="city-district" ref={ref} className="relative">
+      <p className="text-white/70 text-[11px] mb-1.5 uppercase tracking-wider" style={{ fontFamily: POPPINS }}>City / District</p>
+      {value ? (
+        <div className="flex items-center gap-2 px-3.5 py-3 rounded-xl text-sm text-white cursor-pointer"
+          style={{ background: "rgba(240,24,122,0.10)", border: "1px solid rgba(240,24,122,0.35)" }}
+          onClick={() => { setOpen(o => !o); setSearch(""); }}>
+          <span className="flex-1">{value}</span>
+          <button type="button" className="text-white/70 hover:text-white transition-colors" onClick={e => { e.stopPropagation(); onChange(""); setOpen(false); }}>✕</button>
+        </div>
+      ) : (
+        <div className="px-3.5 py-3 rounded-xl text-sm"
+          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.70)", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1 }}
+          onClick={() => { if (!disabled) { setOpen(true); setSearch(""); } }}>
+          {disabled ? "Select your state first…" : "Select your city / district…"}
+        </div>
+      )}
+      {open && !disabled && (
+        <div className="absolute z-50 mt-1 w-full rounded-xl overflow-hidden shadow-2xl" style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.12)" }}>
+          <div className="p-2">
+            <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
+              className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none placeholder:text-white/70"
+              style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)", fontFamily: POPPINS }} />
+          </div>
+          <div className="max-h-44 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="px-4 py-2 text-sm text-white/70" style={{ fontFamily: POPPINS }}>No match</p>
+            ) : filtered.map(d => (
+              <button key={d} type="button"
+                className="w-full text-left px-4 py-2.5 text-sm transition-all"
+                style={{ color: d === value ? PINK : "rgba(255,255,255,0.90)", background: d === value ? "rgba(240,24,122,0.10)" : "transparent", fontFamily: POPPINS }}
+                onClick={() => { onChange(d); setOpen(false); setSearch(""); }}>
+                {d}
               </button>
             ))}
           </div>
@@ -226,7 +283,7 @@ function FunQuestionsSection({ token, onToast }: { token: string; onToast: (msg:
 ══════════════════════════════════════════════════════════════════ */
 
 interface EditState {
-  fullName: string; bio: string; youtubeHandle: string; otherSocialHandle: string; gender: string; state: string;
+  fullName: string; bio: string; youtubeHandle: string; otherSocialHandle: string; gender: string; state: string; city: string;
   phone: string;
   username: string;
   followerCount: string;
@@ -300,7 +357,7 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
 
   const [s, setS] = useState<EditState>({
     fullName: creator.fullName ?? "", bio: creator.bio ?? "",
-    gender: creator.gender ?? "", state: creator.state ?? "",
+    gender: creator.gender ?? "", state: creator.state ?? "", city: creator.city ?? "",
     phone: creator.phone ?? "",
     username: creator.instagramHandle ?? "",
     youtubeHandle: creator.youtubeHandle ?? "", otherSocialHandle: creator.otherSocialHandle ?? "",
@@ -349,7 +406,7 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
   const slabChanged = !pricingLocked && s.editSlabId !== "" && s.editSlabId !== resolvedOrigSlabId;
   // Follower-count and username changes require admin re-verification — pricing is direct
   const anyReview = followerChanged || usernameChanged;
-  const basicChanged = s.fullName !== creator.fullName || s.bio !== (creator.bio ?? "") || s.gender !== (creator.gender ?? "") || s.state !== (creator.state ?? "") || s.youtubeHandle !== (creator.youtubeHandle ?? "") || s.otherSocialHandle !== (creator.otherSocialHandle ?? "");
+  const basicChanged = s.fullName !== creator.fullName || s.bio !== (creator.bio ?? "") || s.gender !== (creator.gender ?? "") || s.state !== (creator.state ?? "") || s.city !== (creator.city ?? "") || s.youtubeHandle !== (creator.youtubeHandle ?? "") || s.otherSocialHandle !== (creator.otherSocialHandle ?? "");
   const phoneChanged = s.phone !== (creator.phone ?? "");
 
   const scrollToPwSection = () => setTimeout(() => {
@@ -398,7 +455,7 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
     }
     setSaving(true); setShowPopup(false);
     try {
-      if (basicChanged) await apiFetch(token, "/api/creator/profile/basic", { method: "PATCH", body: JSON.stringify({ fullName: s.fullName, bio: s.bio, gender: s.gender, state: s.state || null, youtubeHandle: s.youtubeHandle, otherSocialHandle: s.otherSocialHandle }) });
+      if (basicChanged) await apiFetch(token, "/api/creator/profile/basic", { method: "PATCH", body: JSON.stringify({ fullName: s.fullName, bio: s.bio, gender: s.gender, state: s.state || null, city: s.city || null, youtubeHandle: s.youtubeHandle, otherSocialHandle: s.otherSocialHandle }) });
       if (phoneChanged) {
         const pr = await apiFetch(token, "/api/creator/phone", { method: "PATCH", body: JSON.stringify({ phone: s.phone }) });
         if (!pr.ok) { const pd = await pr.json(); onToast(pd.error ?? "Failed to update phone"); setSaving(false); return; }
@@ -541,7 +598,8 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
               ))}
             </div>
           </div>
-          <StateEditDropdown value={s.state} onChange={v => upd("state", v)} />
+          <StateEditDropdown value={s.state} onChange={v => setS(prev => ({ ...prev, state: v, city: "" }))} />
+          <DistrictEditDropdown stateValue={s.state} value={s.city} onChange={v => upd("city", v)} />
           <div data-section="bio">
             <FieldLabel text="Bio (max 150)" />
             <textarea value={s.bio} onChange={e => upd("bio", e.target.value)} maxLength={150} placeholder="Tell brands about yourself..." rows={3}
@@ -1110,7 +1168,7 @@ export default function CreatorProfile() {
               {creator.state && (
                 <div className="flex items-center gap-1 mt-0.5">
                   <MapPin className="w-3 h-3 flex-shrink-0" style={{ color: PINK }} />
-                  <span className="text-xs font-medium" style={{ color: "rgba(255,255,255,0.85)", fontFamily: POPPINS }}>{creator.state}</span>
+                  <span className="text-xs font-medium" style={{ color: "rgba(255,255,255,0.85)", fontFamily: POPPINS }}>{creator.city ? `${creator.city}, ${creator.state}` : creator.state}</span>
                 </div>
               )}
             </div>
@@ -1189,7 +1247,7 @@ export default function CreatorProfile() {
             {[
               { label: "Gender", value: creator.gender || "—" },
               { label: "Age", value: creator.creatorAge ? `${creator.creatorAge} yrs` : (creator.age ? `${creator.age} yrs` : "—") },
-              { label: "Location", value: creator.state ? `${creator.state}` : "—" },
+              { label: "Location", value: creator.state ? (creator.city ? `${creator.city}, ${creator.state}` : creator.state) : "—" },
             ].map(({ label, value }) => (
               <div key={label}>
                 <p className="text-[10px] sm:text-xs mb-1" style={{ color: "rgba(255,255,255,0.70)", fontFamily: POPPINS }}>{label}</p>

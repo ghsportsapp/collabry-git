@@ -662,6 +662,8 @@ interface ResultFilters {
   cats?: string[];
   minScore?: number;
   slabId?: string | null;
+  states?: string[];
+  cities?: string[];
 }
 
 /** Matches the brand search page. */
@@ -779,6 +781,7 @@ async function runMatchmaking(req: Request, res: Response, readOnly: boolean): P
     const creatorsRes = await pool.query(
       `SELECT c.id, c."followerCount", c."audienceGenderFemale", c."audienceGenderMale",
               c."audienceAge", c."audienceLocation", c."contentType", c.gender,
+              c.state, c."city",
               c."campaignGoal", c."purchaseBehaviour",
               c."reelPriceMin", c."reelPriceMax", c."storyPriceMin", c."storyPriceMax",
               c."postPriceMin", c."postPriceMax", c."averageRating", c."ratingCount",
@@ -804,6 +807,7 @@ async function runMatchmaking(req: Request, res: Response, readOnly: boolean): P
       followerCount: number;
       audienceGenderFemale: number | null; audienceGenderMale: number | null;
       audienceAge: string | null; audienceLocation: string | null;
+      state: string | null; city: string | null;
       reelPriceMin: number | null; reelPriceMax: number | null;
       storyPriceMin: number | null; storyPriceMax: number | null;
       postPriceMin: number | null; postPriceMax: number | null;
@@ -923,6 +927,7 @@ async function runMatchmaking(req: Request, res: Response, readOnly: boolean): P
         followerCount: c.followerCount,
         audienceGenderFemale: c.audienceGenderFemale, audienceGenderMale: c.audienceGenderMale,
         audienceAge: c.audienceAge, audienceLocation: c.audienceLocation,
+        state: c.state ?? null, city: c.city ?? null,
         reelPriceMin: c.reelPriceMin ? parseFloat(c.reelPriceMin) : null,
         reelPriceMax: c.reelPriceMax ? parseFloat(c.reelPriceMax) : null,
         storyPriceMin: c.storyPriceMin ? parseFloat(c.storyPriceMin) : null,
@@ -994,6 +999,12 @@ async function runMatchmaking(req: Request, res: Response, readOnly: boolean): P
     }
     if (rf.cats && rf.cats.length > 0) {
       visible = visible.filter(c => c.categories.some(cat => rf.cats!.includes(cat.id)));
+    }
+    if (rf.states && rf.states.length > 0) {
+      visible = visible.filter(c => !!c.state && rf.states!.includes(c.state));
+    }
+    if (rf.cities && rf.cities.length > 0) {
+      visible = visible.filter(c => !!c.city && rf.cities!.includes(c.city));
     }
 
     const total = visible.length;

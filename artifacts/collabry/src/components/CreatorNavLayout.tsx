@@ -8,6 +8,7 @@ import { pushCreatorToast, CreatorToastHost } from "@/components/CreatorToast";
 import { usePopupQueue } from "@/hooks/usePopupQueue";
 import GlobalPopup from "@/components/GlobalPopup";
 import KycPopup from "@/components/KycPopup";
+import CityPromptPopup from "@/components/CityPromptPopup";
 import LockedFeatureModal from "@/components/LockedFeatureModal";
 
 function timeAgo(date: string) {
@@ -472,6 +473,8 @@ export function CreatorLayout({ status, children, onLocked }: { status: string; 
           ? <KycPopup popup={activePopup} onDismiss={dismiss} />
           : <GlobalPopup popup={activePopup} onDismiss={dismiss} creatorStatus={status} onLogout={clearAuth} />
       )}
+      {/* Once-per-session nudge for creators who haven't set their city/district yet. */}
+      <CityPromptPopup />
     </div>
   );
 }

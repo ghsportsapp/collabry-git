@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, Upload, X, Plus, AlertCircle, ChevronRight, ChevronLeft, Check, Info, Instagram } from "lucide-react";
 import { useCreatorAuth } from "@/contexts/CreatorAuthContext";
+import { districtsForState } from "@/data/indiaStatesDistricts";
 import MultiImageUpload from "@/components/MultiImageUpload";
 import { pixelTrack } from "@/lib/pixel";
 import { trackSignup, identifyUser } from "@/lib/analytics";
@@ -50,6 +51,7 @@ interface FormState {
   confirmPassword: string;
   gender: string;
   state: string;
+  city: string;
   bio: string;
   youtubeHandle: string;
   otherSocialHandle: string;
@@ -70,7 +72,7 @@ interface FormState {
 const EMPTY_FORM: FormState = {
   instagramHandle: "", profilePhotoUrl: "", followerCount: "",
   fullName: "", dateOfBirth: "", phone: "", email: "", password: "", confirmPassword: "",
-  gender: "", state: "", bio: "", youtubeHandle: "", otherSocialHandle: "",
+  gender: "", state: "", city: "", bio: "", youtubeHandle: "", otherSocialHandle: "",
   categories: [],
   audienceGenderFemale: "50", audienceGenderMale: "50", audienceAge: "", audienceLocation: "",
   contentType: "",
@@ -158,6 +160,66 @@ function StateDropdown({ value, onChange, error }: { value: string; onChange: (v
                 onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = s === value ? "rgba(240,24,122,0.12)" : "transparent"; }}
                 onClick={() => { onChange(s); setOpen(false); setSearch(""); }}>
                 {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {error && <p className="text-red-400 text-xs mt-1">{error}</p>}
+    </div>
+  );
+}
+
+// City / District dropdown — depends on the chosen state. Disabled until a state
+// is picked; its options are that state's districts. The parent resets the value
+// whenever the state changes, so a stale district can never survive.
+function DistrictDropdown({ stateValue, value, onChange, error }: { stateValue: string; value: string; onChange: (v: string) => void; error?: string }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function handle(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+  const districts = districtsForState(stateValue);
+  const disabled = !stateValue || districts.length === 0;
+  const filtered = districts.filter(d => d.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div data-field="city" ref={ref} className="relative">
+      <label className="block text-white text-sm font-medium mb-2">City / District <span className="text-[#E14F69]">*</span></label>
+      {value ? (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm text-white cursor-pointer"
+          style={{ background: "rgba(240,24,122,0.12)", border: "1px solid rgba(240,24,122,0.40)" }}
+          onClick={() => { setOpen(o => !o); setSearch(""); }}>
+          <span className="flex-1">{value}</span>
+          <button type="button" className="text-white/70 hover:text-white transition-colors" onClick={e => { e.stopPropagation(); onChange(""); setOpen(false); }}>✕</button>
+        </div>
+      ) : (
+        <div className="flex items-center px-4 py-3 rounded-xl text-sm"
+          style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${error ? "#f87171" : "rgba(255,255,255,0.14)"}`, color: "rgba(255,255,255,0.70)", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1 }}
+          onClick={() => { if (!disabled) { setOpen(true); setSearch(""); } }}>
+          {disabled ? "Select your state first…" : "Select your city / district…"}
+        </div>
+      )}
+      {open && !disabled && (
+        <div className="absolute z-50 mt-1 w-full rounded-xl overflow-hidden shadow-2xl" style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.12)" }}>
+          <div className="p-2">
+            <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search city or district…"
+              className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none placeholder:text-white/70"
+              style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)" }} />
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-white/70">No match</p>
+            ) : filtered.map(d => (
+              <button key={d} type="button"
+                className="w-full text-left px-4 py-2.5 text-sm transition-all"
+                style={{ color: d === value ? "#F0187A" : "rgba(255,255,255,0.90)", background: d === value ? "rgba(240,24,122,0.12)" : "transparent" }}
+                onMouseEnter={e => { if (d !== value) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.05)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = d === value ? "rgba(240,24,122,0.12)" : "transparent"; }}
+                onClick={() => { onChange(d); setOpen(false); setSearch(""); }}>
+                {d}
               </button>
             ))}
           </div>
@@ -444,6 +506,7 @@ export default function CreatorSignup() {
       if (imagesUploading) errs.images = "Please wait for image upload to finish";
       if (isFieldRequired("gender") && !form.gender) errs.gender = "Gender is required";
       if (!form.state) errs.state = "Please select your State / UT";
+      if (!form.city) errs.city = "Please select your City / District";
       if (isFieldRequired("bio") && !form.bio.trim()) errs.bio = "Bio is required";
       if (isFieldRequired("youtubeHandle") && !form.youtubeHandle.trim()) errs.youtubeHandle = "YouTube handle is required";
       if (isFieldRequired("otherSocialHandle") && !form.otherSocialHandle.trim()) errs.otherSocialHandle = "Other social handle is required";
@@ -504,6 +567,7 @@ export default function CreatorSignup() {
         dateOfBirth: form.dateOfBirth, phone: cleanPhone, email: form.email.trim().toLowerCase(), password: form.password,
         gender: form.gender || null,
         state: form.state || null,
+        city: form.city || null,
         bio: form.bio.trim() || undefined,
         youtubeHandle: form.youtubeHandle.trim() || undefined,
         otherSocialHandle: form.otherSocialHandle.trim() || undefined,
@@ -841,7 +905,8 @@ export default function CreatorSignup() {
                     {errors.gender && <p className="text-red-400 text-xs mt-1">{errors.gender}</p>}
                   </div>
                 )}
-                <StateDropdown value={form.state} onChange={v => setField("state", v)} error={errors.state} />
+                <StateDropdown value={form.state} onChange={v => { setField("state", v); setField("city", ""); }} error={errors.state} />
+                <DistrictDropdown stateValue={form.state} value={form.city} onChange={v => setField("city", v)} error={errors.city} />
                 {isFieldVisible("bio") && (
                   <div data-field="bio">
                     <label className="block text-white text-sm font-medium mb-1.5">
@@ -1106,6 +1171,7 @@ export default function CreatorSignup() {
                     ["Email", form.email],
                     isFieldVisible("gender") ? ["Gender", form.gender || "—"] : null,
                     ["State / UT", form.state || "—"],
+                    ["City / District", form.city || "—"],
                     isFieldVisible("bio") && form.bio ? ["Bio", form.bio] : null,
                     isFieldVisible("youtubeHandle") && form.youtubeHandle ? ["YouTube", form.youtubeHandle] : null,
                     isFieldVisible("otherSocialHandle") && form.otherSocialHandle ? ["Other Social", form.otherSocialHandle] : null,

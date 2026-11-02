@@ -77,7 +77,7 @@ router.post("/auth/creator/signup", async (req: Request, res: Response): Promise
     reelPriceMin, reelPriceMax, storyPriceMin, storyPriceMax, postPriceMin, postPriceMax,
     portfolio = [],
     bio, youtubeHandle: ytHandle, otherSocialHandle,
-    email, state,
+    email, state, city,
     customFieldValues = [],
   } = req.body as Record<string, any>;
 
@@ -174,10 +174,10 @@ router.post("/auth/creator/signup", async (req: Request, res: Response): Promise
         "campaignGoal",
         "purchaseBehaviour",
         "reelPriceMin", "reelPriceMax", "storyPriceMin", "storyPriceMax", "postPriceMin", "postPriceMax",
-        "passwordHash", images, state, "audienceType", status, "kycStatus", "averageRating", "ratingCount",
+        "passwordHash", images, state, "city", "audienceType", status, "kycStatus", "averageRating", "ratingCount",
         "hiddenFromSearch", "hiddenFromMatchmaking", "excludedFromMatchmaking",
         "createdAt", "updatedAt"
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,'','PENDING','NOT_SUBMITTED',0,0,false,false,false,NOW(),NOW())`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,'','PENDING','NOT_SUBMITTED',0,0,false,false,false,NOW(),NOW())`,
       [
         creatorId, cleanHandle, null, fullName.trim(), new Date(dateOfBirth), cleanPhone, gender?.trim() || null,
         cleanEmail, profilePhotoUrl || null, bio?.trim() || null, ytHandle?.trim() || null, otherSocialHandle?.trim() || null,
@@ -188,7 +188,7 @@ router.post("/auth/creator/signup", async (req: Request, res: Response): Promise
         parseFloat(reelPriceMin), parseFloat(reelPriceMax),
         parseFloat(storyPriceMin), parseFloat(storyPriceMax),
         parseFloat(postPriceMin), parseFloat(postPriceMax),
-        passwordHash, imagesArr, state?.trim() || null,
+        passwordHash, imagesArr, state?.trim() || null, city?.trim() || null,
       ]
     );
 

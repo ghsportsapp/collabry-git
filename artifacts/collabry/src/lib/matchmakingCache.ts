@@ -14,10 +14,12 @@ export interface FilterState {
   cats: string[];
   minScore: number;
   slabId: string | null;
+  states: string[];
+  cities: string[];
 }
 
 export const EMPTY_FILTER: FilterState = {
-  gender: "any", ages: [], cats: [], minScore: 0, slabId: null,
+  gender: "any", ages: [], cats: [], minScore: 0, slabId: null, states: [], cities: [],
 };
 
 /** Matches the search page. */
@@ -41,7 +43,10 @@ export function readMatchmakingCache(): MatchmakingCache | null {
     if (!raw) return null;
     const c = JSON.parse(raw) as MatchmakingCache;
     // Guard against a stale shape written by an earlier deploy.
-    return c?.filterState && typeof c.page === "number" ? c : null;
+    if (!c?.filterState || typeof c.page !== "number") return null;
+    // Backfill any filter field a pre-upgrade cache is missing, so no array is undefined.
+    c.filterState = { ...EMPTY_FILTER, ...c.filterState };
+    return c;
   } catch { return null; }
 }
 

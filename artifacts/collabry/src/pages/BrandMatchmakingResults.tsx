@@ -12,6 +12,15 @@ import {
   type FilterState, EMPTY_FILTER, MATCHMAKING_PAGE_SIZE as PAGE_SIZE,
   readMatchmakingCache, writeMatchmakingCache, clearMatchmakingCache,
 } from "@/lib/matchmakingCache";
+import { STATE_DISTRICTS, districtsForState } from "@/data/indiaStatesDistricts";
+
+const ALL_STATES = Object.keys(STATE_DISTRICTS);
+/** Union of districts across the selected states (dependent City / District filter). */
+function citiesForStates(states: string[]): string[] {
+  const set = new Set<string>();
+  states.forEach(st => districtsForState(st).forEach(d => set.add(d)));
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
 
 const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
 const CARD_BG = "#2D0D1F";
@@ -173,6 +182,39 @@ function FilterPanel({ filterState, setFilterState, categories, slabs, activeFil
             </div>
           </div>
         )}
+
+        {/* Creator State / UT — always available (not an admin scoring dimension) */}
+        <div>
+          <p className="text-white text-sm font-semibold mb-2.5" style={{ fontFamily: POPPINS }}>Creator State / UT</p>
+          <div className="flex flex-wrap gap-2">
+            {ALL_STATES.map(st =>
+              pill(st, local.states.includes(st), () =>
+                setLocal(p => {
+                  const states = p.states.includes(st) ? p.states.filter(x => x !== st) : [...p.states, st];
+                  // Drop cities that no longer belong to the selected states.
+                  const allowed = new Set(citiesForStates(states));
+                  return { ...p, states, cities: p.cities.filter(c => allowed.has(c)) };
+                })
+              )
+            )}
+          </div>
+        </div>
+
+        {/* Creator City / District — dependent on the state selection above */}
+        <div>
+          <p className="text-white text-sm font-semibold mb-2.5" style={{ fontFamily: POPPINS }}>Creator City / District</p>
+          {local.states.length === 0 ? (
+            <p className="text-white/60 text-xs" style={{ fontFamily: POPPINS }}>Select a state first</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {citiesForStates(local.states).map(c =>
+                pill(c, local.cities.includes(c), () =>
+                  setLocal(p => ({ ...p, cities: p.cities.includes(c) ? p.cities.filter(x => x !== c) : [...p.cities, c] }))
+                )
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Min score */}
         {hasScore && (

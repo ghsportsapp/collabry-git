@@ -108,5 +108,14 @@ export async function buildCreatorFilters(
     conditions.push(`(${ors.join(" OR ")})`);
   }
 
+  // Creator city / district — exact match. Dependent on state in the UI, but on
+  // the server it is just another OR-within/AND-across filter. Creators with no
+  // city set never match (expected — they simply don't surface under a city).
+  const cities = list(query["creatorCity"]);
+  if (cities.length > 0) {
+    const ors = cities.map(ct => `${alias}."city" = ${push(ct)}`);
+    conditions.push(`(${ors.join(" OR ")})`);
+  }
+
   return { conditions, params };
 }
