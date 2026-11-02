@@ -1648,6 +1648,7 @@ async function adminApplicantList(
   const filterSql = conditions.length ? ` AND ${conditions.join(" AND ")}` : "";
   const apps = await pool.query(
     `SELECT a.id, a.status, a."appliedAt", a."creatorId",
+            cr."instagramHandle",
             cr."profilePhotoUrl", cr."followerCount",
             cr."audienceGenderFemale", cr."audienceGenderMale", cr."audienceAge", cr."audienceLocation",
             EXTRACT(YEAR FROM AGE(cr."dateOfBirth"))::int as "creatorAge",

@@ -19,6 +19,9 @@ export interface ApplicantCategory { id?: string; name: string }
 export interface Applicant {
   id: string;
   creatorId?: string;
+  /** Admin-only: the brand list query never selects this, so it stays undefined
+   *  on the brand path and the handle is never shown to brands. */
+  instagramHandle?: string | null;
   followerCount: number | null;
   profilePhotoUrl?: string | null;
   audienceGenderFemale?: number | null;
@@ -70,10 +73,15 @@ function MetaRow({ icon: Icon, text }: { icon: React.ElementType; text: string }
   );
 }
 
-export default function ApplicantCard({ app, footer }: {
+export default function ApplicantCard({ app, footer, username, onUsernameClick }: {
   app: Applicant;
   /** Tab-specific actions (Shortlist, Unlock, Select…). Omitted = no action bar. */
   footer?: React.ReactNode;
+  /** Admin-only: the creator's @handle, shown at the top of the card. Brands
+   *  never pass this, so their view stays masked exactly as before. */
+  username?: string | null;
+  /** Makes the admin username clickable (opens the admin creator profile). */
+  onUsernameClick?: () => void;
 }) {
   const cats = app.categories ?? [];
   const totalAud = (app.audienceGenderFemale ?? 0) + (app.audienceGenderMale ?? 0);
@@ -84,6 +92,25 @@ export default function ApplicantCard({ app, footer }: {
   return (
     <div className="rounded-2xl overflow-hidden mb-3" style={{ background: CARD_BG, border: "1px solid rgba(255,255,255,0.15)" }}>
       <div className="p-4">
+        {/* Admin-only username. Brands never pass `username`, so this never
+            renders on the brand path (identity stays masked there). */}
+        {username && (
+          <div className="mb-3">
+            {onUsernameClick ? (
+              <button
+                type="button"
+                onClick={onUsernameClick}
+                className="text-sm font-semibold hover:underline"
+                style={{ color: PINK, fontFamily: POPPINS, background: "none", border: "none", padding: 0, cursor: "pointer" }}
+              >
+                @{username}
+              </button>
+            ) : (
+              <span className="text-sm font-semibold" style={{ color: PINK, fontFamily: POPPINS }}>@{username}</span>
+            )}
+          </div>
+        )}
+
         {/* Row 1: avatar + followers. No name/handle — masked until unlock. */}
         <div className="flex items-center gap-3 mb-3">
           <ApplicantAvatar photo={app.profilePhotoUrl} size={48} />

@@ -4,6 +4,7 @@ import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { useCampaignApplicants } from "@/hooks/useCampaignApplicants";
 import ApplicantCard, { type Applicant } from "@/components/ApplicantCard";
 import CreatorFilterBar, { type FilterOptions } from "@/components/CreatorFilterBar";
+import AdminCreatorProfileModal from "@/components/AdminCreatorProfileModal";
 import PaginationBar from "@/components/PaginationBar";
 import { POPPINS, PINK } from "@/components/BrandLayout";
 
@@ -24,6 +25,10 @@ export default function AdminCampaignApplicants({ kind, campaignId, campaignName
   const [tab, setTab] = useState(0); // 0 = All, 1 = Selected
   const [filterOpts, setFilterOpts] = useState<FilterOptions | null>(null);
   const [counts, setCounts] = useState<{ applied: number; selected: number } | null>(null);
+  // Creator profile opened on top of this list. Keeping this list mounted while
+  // the profile overlay shows preserves its filters, tab, page and scroll — so
+  // "back" returns to exactly the same state.
+  const [profileCreatorId, setProfileCreatorId] = useState<string | null>(null);
 
   const base = kind === "paid" ? "campaigns" : "barter";
 
@@ -106,12 +111,25 @@ export default function AdminCampaignApplicants({ kind, campaignId, campaignName
             </p>
           ) : (
             <>
-              {list.map(app => <ApplicantCard key={app.id} app={app} />)}
+              {list.map(app => (
+                <ApplicantCard
+                  key={app.id}
+                  app={app}
+                  username={app.instagramHandle}
+                  onUsernameClick={app.creatorId ? () => setProfileCreatorId(app.creatorId!) : undefined}
+                />
+              ))}
               <PaginationBar page={page} totalPages={totalPages} loading={loading} onChange={setPage} />
             </>
           )}
         </div>
       </div>
+
+      {/* Creator profile overlay — the list above stays mounted, so closing this
+          returns to it with filters, tab, page and scroll exactly as left. */}
+      {profileCreatorId && (
+        <AdminCreatorProfileModal creatorId={profileCreatorId} onBack={() => setProfileCreatorId(null)} />
+      )}
     </div>
   );
 }
