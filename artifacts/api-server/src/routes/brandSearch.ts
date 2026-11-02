@@ -10,6 +10,7 @@ import { verifyToken, getAccessSecret } from "../lib/auth";
 import { activateCreditHoldCampaigns } from "../lib/creditHoldActivation";
 import { logger } from "../lib/logger";
 import { fulfillWhiteGlovePurchase } from "./whiteGlove";
+import { fulfillAdvertiseFromNotes, ADVERTISE_PURPOSE } from "./advertisePurchase";
 
 const router: IRouter = Router();
 
@@ -1134,7 +1135,7 @@ router.post("/webhooks/razorpay/credits", async (req: Request, res: Response): P
     const paymentId = payment?.id as string;
     const notes = payment?.notes ?? {};
 
-    // White Glove plans share this webhook. Order notes aren't guaranteed to be
+    // White Glove and Advertise plans share this webhook. Order notes aren't guaranteed to be
     // copied onto the payment, so read them from the order itself.
     let orderNotes: Record<string, string> = {};
     const keyId = process.env["RAZORPAY_KEY_ID"];
@@ -1161,6 +1162,12 @@ router.post("/webhooks/razorpay/credits", async (req: Request, res: Response): P
         totalAmountInr: wgTotal || undefined,
       });
       res.json({ ok: true, duplicate: wg.status === "duplicate" });
+      return;
+    }
+
+    if (orderNotes.purpose === ADVERTISE_PURPOSE && orderNotes.brandId && paymentId) {
+      const ad = await fulfillAdvertiseFromNotes(orderNotes, payment.order_id, paymentId);
+      res.json({ ok: true, duplicate: ad.status === "duplicate" });
       return;
     }
 

@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Check } from "lucide-react";
 import { ADVERTISE_BRAND_DEFAULT, type AdvertiseBrand, type AdvPlan } from "./advertiseBrandContent";
+import { gstInclusiveTotal } from "./whiteGloveContent";
+import { useBrandAuth } from "@/contexts/BrandAuthContext";
+import { openRazorpayCheckout } from "@/lib/razorpay";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -23,6 +26,9 @@ export default function AdvertiseBrand() {
   // on the network and can never hang on a spinner. The fetch only *upgrades* content.
   const [data, setData] = useState<AdvertiseBrand>(ADVERTISE_BRAND_DEFAULT);
   const [, navigate] = useLocation();
+  const { brandId, brandName, apiFetch, loading: authLoading } = useBrandAuth();
+  const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -36,10 +42,53 @@ export default function AdvertiseBrand() {
     return () => { alive = false; };
   }, []);
 
-  // Display + thank-you only. Razorpay/checkout will slot in HERE later, before
-  // the redirect; for now every plan goes straight to the thank-you page.
-  const selectPlan = (_plan: AdvPlan) => {
-    navigate("/advertise-your-brand/thank-you");
+  // Same checkout as White Glove. The page itself stays public; only buying needs
+  // a brand login, so logged-out visitors are sent to log in and brought back.
+  const selectPlan = async (plan: AdvPlan) => {
+    if (payingPlanId || authLoading) return;
+    if (!brandId) { navigate(`/login-brand?next=${encodeURIComponent("/advertise-your-brand")}`); return; }
+    setPayingPlanId(plan.id);
+    setMsg(null);
+    try {
+      // 1) Create the Razorpay order server-side (price comes from the saved plan config).
+      const r = await apiFetch("/api/brand/advertise/create-order", { method: "POST", body: JSON.stringify({ planId: plan.id }) });
+      const d = await r.json();
+      if (!r.ok) { setMsg(d.message ?? d.error ?? "Failed to start payment"); setPayingPlanId(null); return; }
+      // 2) Open the hosted checkout modal.
+      const opened = await openRazorpayCheckout({
+        key: d.key,
+        orderId: d.orderId,
+        amount: d.amount,
+        currency: d.currency,
+        description: `Advertise · ${d.planName ?? plan.name}`,
+        prefill: brandName ? { name: brandName } : undefined,
+        onSuccess: async (resp) => {
+          // 3) Verify the signature server-side, which records the purchase.
+          try {
+            const vr = await apiFetch("/api/brand/advertise/verify-payment", {
+              method: "POST",
+              body: JSON.stringify({
+                razorpay_order_id: resp.razorpay_order_id,
+                razorpay_payment_id: resp.razorpay_payment_id,
+                razorpay_signature: resp.razorpay_signature,
+              }),
+            });
+            const vd = await vr.json();
+            if (vr.ok && vd.ok) navigate("/advertise-your-brand/thank-you");
+            else { setMsg(vd.error ?? "Payment verification failed. If money was deducted, our team will confirm shortly."); setPayingPlanId(null); }
+          } catch (err: any) {
+            setMsg(err?.message ?? "Could not verify payment. If money was deducted, our team will confirm shortly.");
+            setPayingPlanId(null);
+          }
+        },
+        onDismiss: () => setPayingPlanId(null),
+        onFailure: (message) => { setMsg(message); setPayingPlanId(null); },
+      });
+      if (!opened) { setMsg("Could not load the payment gateway. Check your connection and try again."); setPayingPlanId(null); }
+    } catch (e: any) {
+      setMsg(e?.message ?? "Payment failed");
+      setPayingPlanId(null);
+    }
   };
 
   return (
@@ -135,8 +184,14 @@ export default function AdvertiseBrand() {
                       <span className="text-white/35 line-through text-base mb-1">{inr(plan.mrp)}</span>
                     )}
                     <span className="text-white font-bold leading-none" style={{ fontSize: "2.25rem" }}>{inr(plan.price)}</span>
+                    {data.gstRatePercent > 0 && <span className="text-white/50 text-xs mb-1.5">+ GST</span>}
                   </div>
-                  <p className="text-white/50 text-xs mb-4">{perMonthLabel(plan)}</p>
+                  <p className={`text-white/50 text-xs ${data.gstRatePercent > 0 ? "" : "mb-4"}`}>{perMonthLabel(plan)}</p>
+                  {data.gstRatePercent > 0 && (
+                    <p className="text-white/45 text-[11px] mt-1 mb-4">
+                      {inr(gstInclusiveTotal(plan.price, data.gstRatePercent))} total incl. {data.gstRatePercent}% GST
+                    </p>
+                  )}
 
                   {pct > 0 && (
                     <div className="w-full rounded-lg px-3 py-2 mb-5"
@@ -156,17 +211,21 @@ export default function AdvertiseBrand() {
                     </div>
                   )}
 
-                  <button onClick={() => selectPlan(plan)}
-                    className="mt-auto w-full py-3 rounded-xl text-sm font-semibold transition-opacity hover:opacity-90"
+                  <button onClick={() => selectPlan(plan)} disabled={!!payingPlanId}
+                    className="mt-auto w-full py-3 rounded-xl text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
                     style={highlight
                       ? { background: PINK, color: "#fff", boxShadow: "0 6px 20px rgba(225,79,105,0.4)" }
                       : { background: "rgba(255,255,255,0.04)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }}>
-                    {label}
+                    {payingPlanId === plan.id ? "Processing…" : label}
                   </button>
                 </div>
               );
             })}
           </div>
+
+          {msg && (
+            <p className="text-center text-sm mt-8" style={{ color: "#f87171" }}>{msg}</p>
+          )}
 
           {data.pricingNote && (
             <p className="text-center text-white/45 text-xs mt-10">{data.pricingNote}</p>

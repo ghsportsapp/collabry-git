@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Trash2, Save, ChevronUp, ChevronDown, X, Upload, Penci
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { goBack } from "@/lib/adminReturnTo";
 import AdvertiseBrandEditor from "@/components/AdvertiseBrandEditor";
+import AdvertisePurchases from "./AdvertisePurchases";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -75,7 +76,7 @@ export default function AdminAdvertisements() {
   const [ads, setAds] = useState<Ad[] | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [editing, setEditing] = useState<Ad | "new" | null>(null);
-  const [tab, setTab] = useState<"banners" | "page" | "leads">("banners");
+  const [tab, setTab] = useState<"banners" | "page" | "purchases" | "leads">("banners");
   const [leadBrands, setLeadBrands] = useState<LeadBrand[] | null>(null);
   const [detail, setDetail] = useState<{ adId: string; brandName: string; leads: Lead[] } | null>(null);
 
@@ -165,7 +166,7 @@ export default function AdminAdvertisements() {
 
       {/* Tabs: ad banners · advertise-page content · lead form details */}
       <div className="flex gap-2 mb-6">
-        {([["banners", "Ad Banners"], ["page", "Advertise Page"], ["leads", "Form Details"]] as const).map(([key, lbl]) => (
+        {([["banners", "Ad Banners"], ["page", "Advertise Page"], ["purchases", "Purchases"], ["leads", "Form Details"]] as const).map(([key, lbl]) => (
           <button key={key} onClick={() => { setTab(key); if (key === "leads") setDetail(null); }}
             className="relative px-4 py-2 rounded-full text-xs font-semibold transition-colors"
             style={tab === key
@@ -183,6 +184,8 @@ export default function AdminAdvertisements() {
       </div>
 
       {tab === "page" && <AdvertiseBrandEditor onToast={showToast} />}
+
+      {tab === "purchases" && <AdvertisePurchases />}
 
       {tab === "leads" && (detail ? (
         <div>

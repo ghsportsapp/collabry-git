@@ -1,5 +1,5 @@
 // Shared types + built-in defaults for the /advertise-your-brand page.
-// Mirrors whiteGloveContent.ts, minus GST / membership (display + thank-you only).
+// Mirrors whiteGloveContent.ts, minus the membership card. GST is admin-set (0 = prices are final).
 // Used as an immediate client-side fallback so the public page, thank-you page,
 // and admin editor can ALWAYS render even when GET /api/advertise-brand fails.
 
@@ -30,6 +30,7 @@ export interface AdvertiseBrand {
   points: AdvPoint[];
   pricingLine1: string; pricingLine2: string;
   plans: AdvPlan[];
+  gstRatePercent: number;   // added on top of each plan's base price at checkout; 0 = none
   pricingNote: string;
   thankYouMessage: string;
   founderHeading: string; founderSubheading: string;
@@ -62,6 +63,7 @@ export const ADVERTISE_BRAND_DEFAULT: AdvertiseBrand = {
     { id: "m3", name: "3 Months", desc: "Sustained visibility for steady growth.", months: 3, mrp: 54000, price: 30000, badge: "Most popular", perks: ["Lower per-month rate", "Priority feed positioning"], buttonLabel: "Choose 3 Months" },
     { id: "m6", name: "6 Months", desc: "Best value for always-on brand presence.", months: 6, mrp: 108000, price: 54000, badge: "", perks: ["Lowest per-month rate", "Front-of-feed priority"], buttonLabel: "Get started" },
   ],
+  gstRatePercent: 0,
   pricingNote: "Our team reaches out within 24 hours to set up your placement.",
   thankYouMessage: "Thank you for choosing to advertise with Collabry. Our team will set up your brand placement and reach out shortly to finalise the creative and go live. Welcome aboard.",
   founderHeading: "From Founder to Founder",

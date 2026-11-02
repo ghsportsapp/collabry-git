@@ -41,6 +41,7 @@ import dealExtensionsRouter from "./dealExtensions";
 import brandReportsRouter from "./brandReports";
 import dealReportsRouter from "./dealReports";
 import whiteGloveRouter from "./whiteGlove";
+import advertisePurchaseRouter from "./advertisePurchase";
 import adsRouter from "./ads";
 import adLeadsRouter from "./adLeads";
 
@@ -88,6 +89,7 @@ router.use(dealExtensionsRouter);
 router.use(brandReportsRouter);
 router.use(dealReportsRouter);
 router.use(whiteGloveRouter);
+router.use(advertisePurchaseRouter);
 router.use(adsRouter);
 router.use(adLeadsRouter);
 

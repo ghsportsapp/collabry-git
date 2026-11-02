@@ -701,6 +701,8 @@ interface AdvertiseBrandContent {
   points: AdvPointS[];
   pricingLine1: string; pricingLine2: string;
   plans: AdvPlanS[];
+  /** Added on top of each plan's base price at checkout. 0 = prices are final. */
+  gstRatePercent: number;
   pricingNote: string;
   thankYouMessage: string;
   founderHeading: string; founderSubheading: string;
@@ -733,6 +735,9 @@ const ADVERTISE_BRAND_DEFAULT: AdvertiseBrandContent = {
     { id: "m3", name: "3 Months", desc: "Sustained visibility for steady growth.", months: 3, mrp: 54000, price: 30000, badge: "Most popular", perks: ["Lower per-month rate", "Priority feed positioning"], buttonLabel: "Choose 3 Months" },
     { id: "m6", name: "6 Months", desc: "Best value for always-on brand presence.", months: 6, mrp: 108000, price: 54000, badge: "", perks: ["Lowest per-month rate", "Front-of-feed priority"], buttonLabel: "Get started" },
   ],
+  // 0 until an admin sets it: charging GST on top of prices that have been
+  // public as final would surprise buyers. Set it on the Advertise Page editor.
+  gstRatePercent: 0,
   pricingNote: "Our team reaches out within 24 hours to set up your placement.",
   thankYouMessage: "Thank you for choosing to advertise with Collabry. Our team will set up your brand placement and reach out shortly to finalise the creative and go live. Welcome aboard.",
   founderHeading: "From Founder to Founder",
@@ -787,12 +792,13 @@ function cleanAdvFounders(input: unknown): AdvFounderS[] {
     .filter(f => f.name.length > 0 || f.designation.length > 0 || f.image.length > 0);
 }
 
-async function getAdvertiseBrand(): Promise<AdvertiseBrandContent> {
+export async function getAdvertiseBrand(): Promise<AdvertiseBrandContent> {
   const result = await pool.query(`SELECT value FROM "PlatformConfig" WHERE key=$1`, [ADVERTISE_BRAND_KEY]);
   if (result.rows.length > 0) {
     try {
       const p = JSON.parse(result.rows[0].value) as Partial<AdvertiseBrandContent>;
       const str = (v: unknown, d: string) => (typeof v === "string" && v.trim() ? v : d);
+      const num = (v: unknown, d: number) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 0 && n <= 100 ? n : d; };
       return {
         heroTag: str(p.heroTag, ADVERTISE_BRAND_DEFAULT.heroTag),
         heroLine1: str(p.heroLine1, ADVERTISE_BRAND_DEFAULT.heroLine1),
@@ -805,6 +811,7 @@ async function getAdvertiseBrand(): Promise<AdvertiseBrandContent> {
         pricingLine1: str(p.pricingLine1, ADVERTISE_BRAND_DEFAULT.pricingLine1),
         pricingLine2: str(p.pricingLine2, ADVERTISE_BRAND_DEFAULT.pricingLine2),
         plans: cleanAdvPlans(p.plans),
+        gstRatePercent: num(p.gstRatePercent, ADVERTISE_BRAND_DEFAULT.gstRatePercent),
         pricingNote: str(p.pricingNote, ADVERTISE_BRAND_DEFAULT.pricingNote),
         thankYouMessage: str(p.thankYouMessage, ADVERTISE_BRAND_DEFAULT.thankYouMessage),
         founderHeading: str(p.founderHeading, ADVERTISE_BRAND_DEFAULT.founderHeading),
@@ -825,6 +832,7 @@ router.get("/advertise-brand", async (_req: Request, res: Response): Promise<voi
 router.patch("/admin/advertise-brand", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const b = req.body as Partial<AdvertiseBrandContent>;
   const str = (v: unknown, d: string) => (typeof v === "string" && v.trim() ? v.trim() : d);
+  const num = (v: unknown, d: number) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 0 && n <= 100 ? n : d; };
   const payload: AdvertiseBrandContent = {
     heroTag: str(b.heroTag, ADVERTISE_BRAND_DEFAULT.heroTag),
     heroLine1: str(b.heroLine1, ADVERTISE_BRAND_DEFAULT.heroLine1),
@@ -837,6 +845,7 @@ router.patch("/admin/advertise-brand", requireAdmin, async (req: Request, res: R
     pricingLine1: str(b.pricingLine1, ADVERTISE_BRAND_DEFAULT.pricingLine1),
     pricingLine2: str(b.pricingLine2, ADVERTISE_BRAND_DEFAULT.pricingLine2),
     plans: cleanAdvPlans(b.plans),
+    gstRatePercent: num(b.gstRatePercent, ADVERTISE_BRAND_DEFAULT.gstRatePercent),
     pricingNote: str(b.pricingNote, ADVERTISE_BRAND_DEFAULT.pricingNote),
     thankYouMessage: str(b.thankYouMessage, ADVERTISE_BRAND_DEFAULT.thankYouMessage),
     founderHeading: str(b.founderHeading, ADVERTISE_BRAND_DEFAULT.founderHeading),

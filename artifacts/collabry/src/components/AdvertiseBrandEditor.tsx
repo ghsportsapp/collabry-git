@@ -266,6 +266,12 @@ export default function AdvertiseBrandEditor({ onToast }: { onToast: (msg: strin
       <div className="rounded-2xl p-5 mb-5" style={card}>
         <h2 className={sectionTitle}>Footer &amp; pricing note</h2>
         <div className="space-y-3">
+          <div className="max-w-[200px]"><label className={labelClass}>GST rate %</label>
+            <input type="number" min="0" max="100" className={inputClass}
+              value={data.gstRatePercent}
+              onChange={e => set({ gstRatePercent: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })} />
+            <p className="text-white/40 text-[11px] mt-1">Added on top of each plan's price at checkout. 0 = the listed price is what the brand pays.</p>
+          </div>
           <div><label className={labelClass}>Pricing note (below the plan cards)</label>
             <input className={inputClass} value={data.pricingNote} onChange={e => set({ pricingNote: e.target.value })} /></div>
           <div><label className={labelClass}>Footer note</label>

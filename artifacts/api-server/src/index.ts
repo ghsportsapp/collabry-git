@@ -13,6 +13,7 @@ import { activateAllCreditHoldCampaigns } from "./lib/creditHoldActivation";
 import { pool } from "@workspace/db";
 import { ensureExtensionTable } from "./routes/dealExtensions";
 import { ensureWhiteGloveTable } from "./routes/whiteGlove";
+import { ensureAdvertisePurchaseTable } from "./routes/advertisePurchase";
 import { isWhatsAppEnabled } from "./lib/aisensy";
 
 const rawPort = process.env["PORT"];
@@ -237,6 +238,13 @@ async function bootstrap() {
     logger.info("ensureWhiteGloveTable complete");
   } catch (e) {
     logger.error({ err: e }, "ensureWhiteGloveTable failed — continuing");
+  }
+
+  try {
+    await ensureAdvertisePurchaseTable();
+    logger.info("ensureAdvertisePurchaseTable complete");
+  } catch (e) {
+    logger.error({ err: e }, "ensureAdvertisePurchaseTable failed — continuing");
   }
 
   try {
