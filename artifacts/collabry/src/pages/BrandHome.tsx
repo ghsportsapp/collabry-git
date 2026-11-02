@@ -512,6 +512,24 @@ export default function BrandHome() {
           </div>
         </section>
 
+        {/* ── Advertise Your Brand on Collabry ── */}
+        <section className="mb-8 mt-10 lg:mt-14 lg:py-10">
+          <div className="rounded-2xl px-6 py-8 lg:px-12 lg:py-12 text-center"
+            style={{ background: "rgba(225,79,105,0.06)", border: "1px solid rgba(225,79,105,0.30)", boxShadow: "0 0 32px rgba(225,79,105,0.10)" }}>
+            <h2 className="text-white text-xl lg:text-[40px] font-bold leading-tight" style={{ fontFamily: POPPINS }}>
+              Advertise Your Brand <span style={{ color: PINK }}>on Collabry</span>
+            </h2>
+            <p className="text-white/70 text-xs lg:text-base mt-2 lg:mt-3 max-w-[640px] mx-auto" style={{ fontFamily: POPPINS }}>
+              Put your brand in front of thousands of creators and their audiences with premium feed placement — built for reach, priced to scale.
+            </p>
+            <button onClick={() => navigate("/advertise-your-brand")}
+              className="mt-5 lg:mt-7 px-8 py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ background: PINK, fontFamily: POPPINS, boxShadow: "0 6px 20px rgba(225,79,105,0.4)" }}>
+              Explore Now
+            </button>
+          </div>
+        </section>
+
         {/* ── How It Works (3 steps) ── */}
         <section className="mb-8">
           <HowItWorks brandsOnly subtitleOverride="Simple for Brands. Powerful for Results." brandStepsOverride={THREE_STEPS} />

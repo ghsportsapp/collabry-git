@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { useLandingContent } from "@/hooks/useLandingContent";
+import { useBrandAuth } from "@/contexts/BrandAuthContext";
 
 const POPPINS = "'Poppins', sans-serif";
 const PINK = "#E14F69";
@@ -12,6 +13,10 @@ function toExternalUrl(url: string, fallback: string): string {
 
 export default function Footer() {
   const { get } = useLandingContent();
+  // "Advertise your brand" + "White Glove service" are brand-only features, so
+  // their footer links show ONLY to a signed-in brand (hidden for creators and
+  // logged-out visitors). A creator session has no brandId, same as logged-out.
+  const { brandId } = useBrandAuth();
   const tagline = get("footer.tagline") || "India's trusted influencer marketplace.";
   const copyright = get("footer.copyright") || "© 2025 Collabry. All rights reserved.";
   const instagramUrl = toExternalUrl(get("footer.instagram_url"), "https://instagram.com/collabryofficial");
@@ -72,10 +77,18 @@ export default function Footer() {
             className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
             About Us
           </a>
-          <Link href="/advertise-your-brand" onClick={() => window.scrollTo(0, 0)}
-            className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
-            Advertise Your Brand
-          </Link>
+          {brandId && (
+            <Link href="/advertise-your-brand" onClick={() => window.scrollTo(0, 0)}
+              className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
+              Advertise Your Brand
+            </Link>
+          )}
+          {brandId && (
+            <Link href="/white-glove-service" onClick={() => window.scrollTo(0, 0)}
+              className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
+              White Glove Service
+            </Link>
+          )}
           <Link href="/privacy-policies"
             className="text-white/75 text-xs hover:text-white transition-colors" style={{ fontFamily: POPPINS }}>
             Privacy Policy

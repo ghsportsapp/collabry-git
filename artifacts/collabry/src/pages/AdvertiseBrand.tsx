@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { Check } from "lucide-react";
 import { ADVERTISE_BRAND_DEFAULT, type AdvertiseBrand, type AdvPlan } from "./advertiseBrandContent";
 import { gstInclusiveTotal } from "./whiteGloveContent";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { openRazorpayCheckout } from "@/lib/razorpay";
+import Header from "@/components/landing/Header";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -93,22 +94,12 @@ export default function AdvertiseBrand() {
 
   return (
     <div className="min-h-screen" style={{ background: BG, fontFamily: POPPINS }}>
-      {/* Minimal top bar — logo only */}
-      <div className="px-6 py-4 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
-        <div className="max-w-[1120px] mx-auto">
-          <Link href="/">
-            <span className="text-2xl cursor-pointer" style={{ fontFamily: "'Macondo Swash Caps', cursive", color: PINK }}>Collabry</span>
-          </Link>
-        </div>
-      </div>
+      {/* Same site header as the other main pages (landing / brand / creator). */}
+      <Header />
 
       {/* ── Hero ── */}
       <section className="px-6 pt-16 pb-14 text-center">
         <div className="max-w-[820px] mx-auto">
-          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium mb-7"
-            style={{ background: "rgba(225,79,105,0.12)", border: "1px solid rgba(225,79,105,0.35)", color: PINK }}>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: PINK }} /> {data.heroTag}
-          </span>
           <h1 className="font-bold leading-tight mb-5" style={{ fontSize: "clamp(1.05rem, 4.6vw, 2.8rem)" }}>
             <span className="text-white block whitespace-nowrap">{data.heroLine1}</span>
             <span className="block whitespace-nowrap" style={{ color: PINK }}>{data.heroLine2}</span>
@@ -184,7 +175,7 @@ export default function AdvertiseBrand() {
                       <span className="text-white/35 line-through text-base mb-1">{inr(plan.mrp)}</span>
                     )}
                     <span className="text-white font-bold leading-none" style={{ fontSize: "2.25rem" }}>{inr(plan.price)}</span>
-                    {data.gstRatePercent > 0 && <span className="text-white/50 text-xs mb-1.5">+ GST</span>}
+                    {data.gstRatePercent > 0 && <span className="text-white/50 text-xs mb-1.5 whitespace-nowrap">+ GST</span>}
                   </div>
                   <p className={`text-white/50 text-xs ${data.gstRatePercent > 0 ? "" : "mb-4"}`}>{perMonthLabel(plan)}</p>
                   {data.gstRatePercent > 0 && (

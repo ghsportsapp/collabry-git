@@ -283,7 +283,10 @@ export default function CreatorSignup() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) { const { data, ts } = JSON.parse(raw); if (Date.now() - ts < DRAFT_TTL) setForm({ ...EMPTY_FORM, ...data, termsAccepted: true }); else localStorage.removeItem(STORAGE_KEY); }
+      // Restore the draft, but NEVER rehydrate the pricing tier: force it back
+      // to empty so no tier is pre-selected on load. The creator must actively
+      // pick one each time (the explicit "" overrides any value in the draft).
+      if (raw) { const { data, ts } = JSON.parse(raw); if (Date.now() - ts < DRAFT_TTL) setForm({ ...EMPTY_FORM, ...data, selectedSlabId: "", selectedSlabLabel: "", termsAccepted: true }); else localStorage.removeItem(STORAGE_KEY); }
     } catch {}
   }, []);
 
@@ -1026,6 +1029,7 @@ export default function CreatorSignup() {
                     <div className="p-3 rounded-xl mb-3" style={{ background: "#F0187A", boxShadow: "0 0 6px 1px rgba(255,255,255,0.70)" }}>
                       <p className="text-white text-xs">We suggest creators choose their pricing based on their followers and engagement. Below are the default price ranges for every tier — you can select whichever fits your profile.</p>
                     </div>
+                    <p className="text-white/60 text-xs mb-2">Please select your pricing slab.</p>
                     <div className="space-y-2" data-field="selectedSlabId">
                       {eligibleSlabs.map((slab: any) => {
                         const isSelected = form.selectedSlabId === slab.id;
