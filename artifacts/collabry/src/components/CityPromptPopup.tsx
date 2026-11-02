@@ -5,6 +5,8 @@ import { MapPin } from "lucide-react";
 
 const PINK = "#F0187A";
 const POPPINS = "'Poppins', sans-serif";
+// Solid, fully-opaque card matching the Collabry dark theme — no see-through.
+const CARD_BG = "#141019";
 
 // Shown ONCE per session to a logged-in creator whose city/district is still
 // empty, nudging them to add it so brands searching by city can find them. It
@@ -14,14 +16,26 @@ const POPPINS = "'Poppins', sans-serif";
 // Mounted inside CreatorLayout, which remounts on route changes — the
 // sessionStorage guard makes the check run (and the popup appear) at most once
 // per session, "not on every page".
+//
+// It also takes PRIORITY over the queued login popups (campaign/deal/KYC):
+// `onBlockingChange` tells the layout to hold those back while this is
+// deciding or on screen, so the city nudge always shows first and alone.
 const SESSION_KEY = "collabry_city_prompt_checked";
 const CITY_FIELD_PATH = "/home-creator/profile?edit=true&section=city-district";
 
-export default function CityPromptPopup() {
+export default function CityPromptPopup({ onBlockingChange }: { onBlockingChange?: (blocking: boolean) => void }) {
   const { accessToken, apiFetch } = useCreatorAuth();
   const [, navigate] = useLocation();
   const [show, setShow] = useState(false);
   const [visible, setVisible] = useState(false);
+  // True while this popup must suppress the other login popups: from the moment
+  // the check starts until the creator resolves it (or it decides not to show).
+  const [blocking, setBlocking] = useState(false);
+
+  // Mirror `blocking` up to the layout, and always release on unmount so a
+  // navigation while the popup is open can never leave the queue stuck.
+  useEffect(() => { onBlockingChange?.(blocking); }, [blocking, onBlockingChange]);
+  useEffect(() => () => { onBlockingChange?.(false); }, [onBlockingChange]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -30,15 +44,18 @@ export default function CityPromptPopup() {
     // (which remounts the layout) can never fire a second fetch or popup.
     try { sessionStorage.setItem(SESSION_KEY, "1"); } catch { /* ignore */ }
 
+    // Hold back the other popups until we know whether to show the nudge.
+    setBlocking(true);
     let alive = true;
     apiFetch("/api/creator/profile")
       .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d: { creator?: { city?: string | null } }) => {
         if (!alive) return;
         const city = (d?.creator?.city ?? "").trim();
-        if (!city) setShow(true);
+        if (city) setBlocking(false);   // already has a city → straight to normal popups
+        else setShow(true);             // empty → show the nudge (keep blocking)
       })
-      .catch(() => { /* never nag on a lookup failure */ });
+      .catch(() => { if (alive) setBlocking(false); }); // never nag on a lookup failure
     return () => { alive = false; };
   }, [accessToken, apiFetch]);
 
@@ -52,7 +69,12 @@ export default function CityPromptPopup() {
 
   const close = (cb?: () => void) => {
     setVisible(false);
-    setTimeout(() => { setShow(false); cb?.(); }, 300);
+    setTimeout(() => {
+      setShow(false);
+      // Resolved — let the queued campaign/deal/KYC popups through.
+      setBlocking(false);
+      cb?.();
+    }, 300);
   };
 
   return (
@@ -71,9 +93,9 @@ export default function CityPromptPopup() {
         className="w-full max-w-sm text-center"
         style={{
           borderRadius: 12,
-          background: "rgba(240,24,122,0.15)",
-          border: "1px solid rgba(255,255,255,0.30)",
-          boxShadow: "0px 0px 2px 2px rgba(240,24,122,0.40)",
+          background: CARD_BG,
+          border: "1px solid rgba(240,24,122,0.45)",
+          boxShadow: "0 24px 60px rgba(0,0,0,0.65), 0 0 0 1px rgba(240,24,122,0.25)",
           padding: 28,
           transform: visible ? "scale(1) translateY(0)" : "scale(0.92) translateY(16px)",
           transition: "transform 0.3s cubic-bezier(0.34,1.56,0.64,1)",

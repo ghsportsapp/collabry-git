@@ -578,6 +578,11 @@ export default function AdminCreatorOnboarding() {
             <p className="text-white/70 text-sm">@{c.instagramHandle}</p>
             {c.email && <p className="text-white/70 text-xs mt-0.5">{c.email}</p>}
             <p className="text-white/70 text-xs mt-1">{c.followerCount?.toLocaleString("en-IN")} followers</p>
+            {(c.city || c.state) && (
+              <p className="text-xs mt-1 font-medium" style={{ color: "#E14F69" }}>
+                📍 {[c.city, c.state].filter(Boolean).join(", ")}
+              </p>
+            )}
             {(() => {
               const dReasons = (c.pendingReason ?? "").split("|").filter(Boolean);
               return (
@@ -716,6 +721,10 @@ export default function AdminCreatorOnboarding() {
                 ["Phone", c.phone],
                 ["DOB", c.dateOfBirth ? new Date(c.dateOfBirth).toLocaleDateString("en-IN") : "—"],
                 ["Gender", c.gender || "—"],
+                ["State / UT", c.state || "—"],
+                ["City / District", c.city || "—"],
+                ["YouTube", c.youtubeHandle || "—"],
+                ["Other Social", c.otherSocialHandle || "—"],
                 ["KYC", c.kycStatus],
                 ["Joined", new Date(c.createdAt).toLocaleDateString("en-IN")],
               ].map(([label, val]) => (

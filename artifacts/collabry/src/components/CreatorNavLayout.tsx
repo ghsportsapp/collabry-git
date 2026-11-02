@@ -458,6 +458,9 @@ export function CreatorLayout({ status, children, onLocked }: { status: string; 
   }, []);
 
   const { current: activePopup, dismiss, enqueue } = usePopupQueue("creator", getToken, filterCampaignLivePopup);
+  // The city nudge takes priority: while it is deciding or on screen, the queued
+  // campaign/deal/KYC popups are held back so it shows first and alone.
+  const [cityPromptBlocking, setCityPromptBlocking] = useState(false);
 
   return (
     <div className="min-h-screen" style={{ background: BG, fontFamily: POPPINS }}>
@@ -468,13 +471,14 @@ export function CreatorLayout({ status, children, onLocked }: { status: string; 
         {children}
       </main>
       <Footer />
-      {activePopup && (
+      {/* Queued popups wait until the city nudge is resolved (priority/sequencing). */}
+      {!cityPromptBlocking && activePopup && (
         ["KYC_APPROVED", "KYC_REJECTED", "PAYOUT_PENDING_KYC", "DEAL_COMPLETE_KYC_NEEDED"].includes(activePopup.type ?? "")
           ? <KycPopup popup={activePopup} onDismiss={dismiss} />
           : <GlobalPopup popup={activePopup} onDismiss={dismiss} creatorStatus={status} onLogout={clearAuth} />
       )}
       {/* Once-per-session nudge for creators who haven't set their city/district yet. */}
-      <CityPromptPopup />
+      <CityPromptPopup onBlockingChange={setCityPromptBlocking} />
     </div>
   );
 }

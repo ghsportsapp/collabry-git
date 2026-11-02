@@ -509,10 +509,18 @@ export default function BrandSearch() {
               ))}
             </div>
           ) : creators.length === 0 ? (
-            <div className="text-center pt-16">
+            <div className="text-center pt-16 px-4">
               <SearchIcon size={36} color="rgba(255,255,255,0.15)" style={{ display: "block", margin: "0 auto 12px" }} />
-              <p className="font-semibold text-sm" style={{ color: "rgba(255,255,255,0.70)", fontFamily: POPPINS }}>No creators found</p>
-              <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.70)", fontFamily: POPPINS }}>Try adjusting your filters</p>
+              <p className="font-semibold text-sm" style={{ color: "white", fontFamily: POPPINS }}>No creators match these filters yet</p>
+              <p className="text-xs mt-1 mb-5 max-w-xs mx-auto" style={{ color: "rgba(255,255,255,0.70)", fontFamily: POPPINS }}>
+                Post a campaign and let the right creators come to you.
+              </p>
+              <button
+                onClick={() => navigate("/home-brand/campaigns/create")}
+                className="inline-block py-2.5 px-6 rounded-full text-sm font-semibold transition-opacity hover:opacity-90"
+                style={{ background: PINK, color: "white", fontFamily: POPPINS }}>
+                Post a Campaign
+              </button>
             </div>
           ) : (
             <div className="flex flex-col gap-4">
