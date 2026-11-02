@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Check } from "lucide-react";
+import { Check, Megaphone, BadgeCheck, CalendarClock } from "lucide-react";
 import { ADVERTISE_BRAND_DEFAULT, type AdvertiseBrand, type AdvPlan } from "./advertiseBrandContent";
 import { gstInclusiveTotal } from "./whiteGloveContent";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { openRazorpayCheckout } from "@/lib/razorpay";
+import { BrandLayout } from "@/components/BrandLayout";
 import Header from "@/components/landing/Header";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -20,7 +21,12 @@ const perMonthLabel = (p: AdvPlan) => {
   return `${exact ? "" : "≈ "}${inr(perMonth(p))} / month · ${unit}`;
 };
 const savePct = (p: AdvPlan) => (p.mrp > 0 && p.price <= p.mrp ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0);
+const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—");
 const resolveImg = (u: string) => (u ? (/^(https?:|data:)/.test(u) ? u : `${BASE_URL}${u}`) : "");
+
+// Logged-in brand's own advertise plan, as returned by /api/brand/advertise/my-purchase.
+// `planName` is present only once they've purchased; `active` is false once it expires.
+interface Purchase { active: boolean; planName?: string; purchasedAt?: string; expiresAt?: string }
 
 export default function AdvertiseBrand() {
   // Start from built-in defaults so the page renders immediately — it never waits
@@ -30,6 +36,7 @@ export default function AdvertiseBrand() {
   const { brandId, brandName, apiFetch, loading: authLoading } = useBrandAuth();
   const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [purchase, setPurchase] = useState<Purchase | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -42,6 +49,20 @@ export default function AdvertiseBrand() {
       .catch(() => { /* keep defaults — never hang, never blank */ });
     return () => { alive = false; };
   }, []);
+
+  // Returning-buyer check — mirrors White Glove's membership lookup. Any failure or
+  // uncertainty leaves no active plan → the normal pricing cards render (never block
+  // a buyer). Only runs for a logged-in brand; logged-out visitors stay on pricing.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!brandId) { setPurchase({ active: false }); return; }
+    let alive = true;
+    apiFetch("/api/brand/advertise/my-purchase")
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((p: Purchase) => { if (alive) setPurchase(p && typeof p === "object" ? p : { active: false }); })
+      .catch(() => { if (alive) setPurchase({ active: false }); });
+    return () => { alive = false; };
+  }, [brandId, authLoading, apiFetch]);
 
   // Same checkout as White Glove. The page itself stays public; only buying needs
   // a brand login, so logged-out visitors are sent to log in and brought back.
@@ -92,11 +113,17 @@ export default function AdvertiseBrand() {
     }
   };
 
-  return (
-    <div className="min-h-screen" style={{ background: BG, fontFamily: POPPINS }}>
-      {/* Same site header as the other main pages (landing / brand / creator). */}
-      <Header />
+  // `planName` is only present once a brand has bought; `active` drops to false on expiry.
+  const hasPurchase = !!brandId && !!purchase?.planName;
+  const isActive = hasPurchase && !!purchase?.active;
 
+  // While auth resolves, render nothing rather than flash the logged-out header
+  // (with its "Signup as Brand/Creator" CTAs) to a brand who is actually logged in.
+  // Mirrors White Glove's authLoading gate; the page stays public once resolved.
+  if (authLoading) return null;
+
+  const sections = (
+    <>
       {/* ── Hero ── */}
       <section className="px-6 pt-16 pb-14 text-center">
         <div className="max-w-[820px] mx-auto">
@@ -136,7 +163,68 @@ export default function AdvertiseBrand() {
         </div>
       </section>
 
-      {/* ── Pricing ── */}
+      {/* ── Your plan card (logged-in brand with a purchase) ── */}
+      {hasPurchase && (
+        <section className="px-6 py-16">
+          <div className="max-w-[680px] mx-auto rounded-3xl p-8 sm:p-10 relative overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, rgba(225,79,105,0.22) 0%, rgba(140,30,60,0.16) 55%, rgba(40,10,25,0.20) 100%)",
+              border: "1px solid rgba(225,79,105,0.45)",
+              boxShadow: "0 0 60px rgba(225,79,105,0.14)",
+            }}>
+            <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full pointer-events-none"
+              style={{ background: "radial-gradient(circle, rgba(225,79,105,0.28) 0%, transparent 70%)" }} />
+            <div className="relative">
+              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-semibold mb-5"
+                style={{ background: "rgba(225,79,105,0.2)", border: "1px solid rgba(225,79,105,0.45)", color: PINK }}>
+                <Megaphone className="w-3.5 h-3.5" /> Advertise plan
+              </span>
+              <div className="flex items-start gap-3 mb-2">
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: PINK, boxShadow: "0 6px 20px rgba(225,79,105,0.45)" }}>
+                  <Megaphone className="w-6 h-6 text-white" />
+                </div>
+                <h2 className="text-white font-bold leading-tight" style={{ fontSize: "clamp(1.4rem,3vw,2rem)" }}>
+                  {isActive ? "Your brand is live on Collabry" : "Your advertise plan has ended"}
+                </h2>
+              </div>
+              <p className="text-white/70 text-sm leading-relaxed mb-7 max-w-[520px]">
+                {isActive
+                  ? "Your placement is running across Collabry. Here are the details of your current advertise plan."
+                  : "Your placement term has ended. Pick a plan below to put your brand back in front of creators."}
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-2xl p-4" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.10)" }}>
+                  <p className="text-white/50 text-[11px] mb-1">Plan</p>
+                  <p className="text-white font-bold text-sm">{purchase?.planName ?? "—"}</p>
+                </div>
+                <div className="rounded-2xl p-4" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.10)" }}>
+                  <p className="text-white/50 text-[11px] mb-1">Purchased</p>
+                  <p className="text-white font-bold text-sm">{fmtDate(purchase?.purchasedAt)}</p>
+                </div>
+                <div className="rounded-2xl p-4" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.10)" }}>
+                  <p className="text-white/50 text-[11px] mb-1 flex items-center gap-1"><CalendarClock className="w-3 h-3" /> Expires</p>
+                  <p className="text-white font-bold text-sm">{fmtDate(purchase?.expiresAt)}</p>
+                </div>
+              </div>
+
+              <div className="mt-5 inline-flex items-center gap-2 px-3.5 py-2 rounded-full"
+                style={isActive
+                  ? { background: "rgba(16,185,129,0.14)", border: "1px solid rgba(16,185,129,0.3)" }
+                  : { background: "rgba(248,113,113,0.14)", border: "1px solid rgba(248,113,113,0.3)" }}>
+                <BadgeCheck className="w-4 h-4" style={{ color: isActive ? "#34d399" : "#f87171" }} />
+                <span className="text-[13px] font-semibold" style={{ color: isActive ? "#34d399" : "#f87171" }}>
+                  Status: {isActive ? "Active" : "Expired"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── Pricing (hidden while an advertise plan is active) ── */}
+      {!isActive && (
       <section className="px-6 py-16">
         <div className="max-w-[1120px] mx-auto">
           <div className="text-center mb-12">
@@ -223,6 +311,7 @@ export default function AdvertiseBrand() {
           )}
         </div>
       </section>
+      )}
 
       {/* ── From Founder to Founder ── */}
       {data.founders.length > 0 && (
@@ -259,6 +348,23 @@ export default function AdvertiseBrand() {
           </div>
         </section>
       )}
+
+    </>
+  );
+
+  // Logged-in brand → the brand chrome (logged-in header + nav + credits, no signup
+  // CTAs), exactly like the White Glove page. BrandLayout supplies the header + footer.
+  if (brandId) {
+    return <BrandLayout>{sections}</BrandLayout>;
+  }
+
+  // Logged-out visitor → the public page: the normal landing header (with its signup
+  // CTAs) and the brand-only footer, unchanged.
+  return (
+    <div className="min-h-screen" style={{ background: BG, fontFamily: POPPINS }}>
+      {/* Same site header as the other main pages (landing / brand / creator). */}
+      <Header />
+      {sections}
 
       {/* ── Footer ── */}
       <footer className="px-6 py-10 border-t flex flex-col sm:flex-row items-center justify-between gap-3 max-w-[1120px] mx-auto"
