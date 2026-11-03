@@ -224,11 +224,14 @@ function CityFilterPicker({ cities, values, hasState, onToggle: onTog }: {
   );
 }
 
-export default function CreatorFilterBar({ opts, filters, onChange }: {
+export default function CreatorFilterBar({ opts, filters, onChange, isAdmin = false }: {
   opts: FilterOptions | null;
   filters: CreatorFilters;
   /** Called with the next filter set. Callers reset to page 1 here. */
   onChange: (next: CreatorFilters) => void;
+  /** Admin-only: show the City / District filter. Brands never pass this, so
+   *  the city filter never appears (and is never sent) on brand surfaces. */
+  isAdmin?: boolean;
 }) {
   const [openPill, setOpenPill] = useState<string | null>(null);
   const active = countActiveFilters(filters);
@@ -243,7 +246,8 @@ export default function CreatorFilterBar({ opts, filters, onChange }: {
     { key: "audienceAge",      label: "Audience's Age",       icon: <Target size={13} color={PINK} /> },
     { key: "audienceLocation", label: "Audience's Location",  icon: <MapPin size={13} color={PINK} /> },
     { key: "creatorState",     label: "Creator's State / UT", icon: <MapPin size={13} color={PINK} /> },
-    { key: "creatorCity",      label: "Creator's City / District", icon: <MapPin size={13} color={PINK} /> },
+    // City / District is admin-only — hidden entirely from brand applicant views.
+    ...(isAdmin ? [{ key: "creatorCity", label: "Creator's City / District", icon: <MapPin size={13} color={PINK} /> }] : []),
   ];
 
   function activeLabel(key: string): string | null {
@@ -330,7 +334,7 @@ export default function CreatorFilterBar({ opts, filters, onChange }: {
           </button>
         )}
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+      <div className={`grid grid-cols-2 md:grid-cols-4 ${isAdmin ? "xl:grid-cols-8" : "xl:grid-cols-7"} gap-3`}>
         {PILL_DEFS.map(pd => (
           <FilterRow
             key={pd.key}

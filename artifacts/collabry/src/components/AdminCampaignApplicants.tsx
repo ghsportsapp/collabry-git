@@ -95,7 +95,7 @@ export default function AdminCampaignApplicants({ kind, campaignId, campaignName
 
       {/* Filters */}
       <div className="flex-shrink-0 px-4 pt-3">
-        <CreatorFilterBar opts={filterOpts} filters={filters} onChange={setFilters} />
+        <CreatorFilterBar opts={filterOpts} filters={filters} onChange={setFilters} isAdmin />
       </div>
 
       {/* List */}

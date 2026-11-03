@@ -10,7 +10,7 @@ const router: IRouter = Router();
 
 const EXPORT_COLUMNS = [
   "Name", "Instagram Username", "Followers", "Mobile", "Email",
-  "Reel Price", "Story Price", "Post Price", "State", "Categories", "Gender",
+  "Reel Price", "Story Price", "Post Price", "State", "City", "Categories", "Gender",
 ];
 
 /** Spreadsheets read a leading =, +, - or @ as the start of a formula, and these
@@ -114,7 +114,7 @@ router.get("/admin/creators/export", requireAdminSecret, async (req: Request, re
             c."reelPriceMin", c."reelPriceMax",
             c."storyPriceMin", c."storyPriceMax",
             c."postPriceMin", c."postPriceMax",
-            c.state,
+            c.state, c."city",
             /* Correlated subquery rather than a JOIN, so one creator stays one
                row and the ORDER BY above is untouched. Ordered by the creator's
                own displayOrder, matching how their categories read elsewhere in
@@ -143,6 +143,7 @@ router.get("/admin/creators/export", requireAdminSecret, async (req: Request, re
         priceRange(r.storyPriceMin, r.storyPriceMax),
         priceRange(r.postPriceMin, r.postPriceMax),
         r.state,
+        r.city,
         r.categories,
         r.gender,
       ].map(csvCell).join(",")

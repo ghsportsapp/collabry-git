@@ -15,11 +15,10 @@ export interface FilterState {
   minScore: number;
   slabId: string | null;
   states: string[];
-  cities: string[];
 }
 
 export const EMPTY_FILTER: FilterState = {
-  gender: "any", ages: [], cats: [], minScore: 0, slabId: null, states: [], cities: [],
+  gender: "any", ages: [], cats: [], minScore: 0, slabId: null, states: [],
 };
 
 /** Matches the search page. */
