@@ -165,7 +165,9 @@ async function section2_adminLogin() {
     console.log("skipped (ADMIN_USERNAME + ADMIN_PASSWORD env vars not set)");
     return false;
   }
-  const r = await step("Admin login", null, () => api("POST", "/auth/admin/login", {
+  // RBAC cutover moved the username+password login to /login-legacy; the
+  // canonical /auth/admin/login now expects email+password+OTP.
+  const r = await step("Admin login", null, () => api("POST", "/auth/admin/login-legacy", {
     body: { username: ADMIN_USERNAME, password: ADMIN_PASSWORD },
   }));
   if (r?.body?.accessToken) {

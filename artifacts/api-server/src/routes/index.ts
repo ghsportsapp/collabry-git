@@ -44,12 +44,16 @@ import whiteGloveRouter from "./whiteGlove";
 import advertisePurchaseRouter from "./advertisePurchase";
 import adsRouter from "./ads";
 import adLeadsRouter from "./adLeads";
+import { adminGuard } from "../middleware/adminGuard";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
 router.use(adminAuthRouter);
+// RBAC cutover: authenticate + section-gate every /admin/* request before it
+// reaches any admin router. Non-/admin and /auth/admin/* paths pass through.
+router.use(adminGuard);
 router.use(instagramRouter);
 router.use(landingRouter);
 router.use(brandAuthRouter);

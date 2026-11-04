@@ -1,5 +1,5 @@
 import { createContext, useContext, useCallback, type ReactNode } from "react";
-import { isAdminLoggedIn, clearAdminSession, createAdminSession } from "@/lib/adminAuth";
+import { getAdminAuth, createAdminAuthSession, clearAdminSession, type AdminAuthData } from "@/lib/adminAuth";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
@@ -7,11 +7,14 @@ export interface AdminAuthState {
   accessToken: string | null;
   adminId: string | null;
   username: string | null;
+  name: string | null;
+  isSuperAdmin: boolean;
+  allowedSections: string[];
   loading: boolean;
 }
 
 interface AdminAuthContextValue extends AdminAuthState {
-  setAuth: (token: string, id: string, username: string) => void;
+  setAuth: (data: AdminAuthData) => void;
   clearAuth: () => void;
   adminFetch: (path: string, options?: RequestInit) => Promise<Response>;
 }
@@ -19,14 +22,17 @@ interface AdminAuthContextValue extends AdminAuthState {
 const AdminAuthContext = createContext<AdminAuthContextValue | null>(null);
 
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
-  const loggedIn = isAdminLoggedIn();
-  const accessToken = loggedIn ? "session" : null;
-  const adminId = loggedIn ? "admin" : null;
-  const username = loggedIn ? "admin" : null;
+  const auth = getAdminAuth();
+  const accessToken = auth?.token ?? null;
+  const adminId = auth?.adminId ?? null;
+  const username = auth?.username ?? null;
+  const name = auth?.name ?? null;
+  const isSuperAdmin = auth?.isSuperAdmin ?? false;
+  const allowedSections = auth?.allowedSections ?? [];
   const loading = false;
 
-  const setAuth = useCallback((_token: string, _id: string, _username: string) => {
-    createAdminSession();
+  const setAuth = useCallback((data: AdminAuthData) => {
+    createAdminAuthSession(data);
   }, []);
 
   const clearAuth = useCallback(() => {
@@ -35,18 +41,21 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   const adminFetch = useCallback(async (path: string, options: RequestInit = {}): Promise<Response> => {
     const cleanPath = path.startsWith(BASE_URL) ? path.slice(BASE_URL.length) : path;
+    // Read the token fresh so a login/logout mid-session is reflected without a reload.
+    const token = getAdminAuth()?.token ?? null;
     return fetch(`${BASE_URL}${cleanPath}`, {
       ...options,
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(options.headers ?? {}),
       },
     });
   }, []);
 
   return (
-    <AdminAuthContext.Provider value={{ accessToken, adminId, username, loading, setAuth, clearAuth, adminFetch }}>
+    <AdminAuthContext.Provider value={{ accessToken, adminId, username, name, isSuperAdmin, allowedSections, loading, setAuth, clearAuth, adminFetch }}>
       {children}
     </AdminAuthContext.Provider>
   );

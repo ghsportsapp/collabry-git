@@ -1,10 +1,10 @@
-import { lazy, Suspense } from "react";
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { lazy, Suspense, useEffect } from "react";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrandAuthProvider } from "@/contexts/BrandAuthContext";
-import { AdminAuthProvider } from "@/contexts/AdminAuthContext";
+import { AdminAuthProvider, useAdminAuth } from "@/contexts/AdminAuthContext";
 import { CreatorAuthProvider } from "@/contexts/CreatorAuthContext";
 import { queryClient } from "@/lib/queryClient";
 import TopProgressBar from "@/components/TopProgressBar";
@@ -84,12 +84,32 @@ const AdminWhiteGlove = lazy(() => import("@/pages/AdminWhiteGlove"));
 const AdminAdvertisements = lazy(() => import("@/pages/AdminAdvertisements"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
-function AR({ path, component: Comp }: { path: string; component: React.ComponentType<any> }) {
+// Section guard: redirects a logged-in admin to the dashboard if they lack the
+// section (or aren't super for a super-only route). `section` undefined = any
+// logged-in admin (e.g. the dashboard itself); "super" = super admin only.
+function AdminSectionGuard({ section, children }: { section?: string; children: React.ReactNode }) {
+  const { isSuperAdmin, allowedSections } = useAdminAuth();
+  const [, navigate] = useLocation();
+  const allowed = !section
+    ? true
+    : section === "super"
+      ? isSuperAdmin
+      : isSuperAdmin || allowedSections.includes(section);
+  useEffect(() => {
+    if (!allowed) navigate("/admin-collabryangad");
+  }, [allowed, navigate]);
+  if (!allowed) return null;
+  return <>{children}</>;
+}
+
+function AR({ path, component: Comp, section }: { path: string; component: React.ComponentType<any>; section?: string }) {
   return (
     <Route path={path}>
       {(params: any) => (
         <AdminProtectedRoute>
-          <Comp {...params} />
+          <AdminSectionGuard section={section}>
+            <Comp {...params} />
+          </AdminSectionGuard>
         </AdminProtectedRoute>
       )}
     </Route>
@@ -121,31 +141,31 @@ function Router() {
       {/* Admin — login is public */}
       <Route path="/admin-collabryangad/login" component={AdminLogin} />
 
-      {/* Admin — all other routes require session */}
+      {/* Admin — all other routes require session; `section` scopes access. */}
       <AR path="/admin-collabryangad" component={AdminDashboard} />
-      <AR path="/admin-collabryangad/landing" component={AdminLandingEditor} />
-      <AR path="/admin-collabryangad/brand-onboarding" component={AdminBrandOnboarding} />
-      <AR path="/admin-collabryangad/credits" component={AdminCreditsManagement} />
-      <AR path="/admin-collabryangad/categories" component={AdminCategories} />
-      <AR path="/admin-collabryangad/legal" component={AdminLegalPages} />
-      <AR path="/admin-collabryangad/creator-onboarding" component={AdminCreatorOnboarding} />
-      <AR path="/admin-collabryangad/pricing" component={AdminPricing} />
-      <AR path="/admin-collabryangad/matchmaking" component={AdminMatchmaking} />
-      <AR path="/admin-collabryangad/campaign-management" component={AdminCampaignManagement as any} />
-      <AR path="/admin-collabryangad/deal-management" component={AdminDealManagement as any} />
-      <AR path="/admin-collabryangad/deals" component={AdminDeals} />
-      <AR path="/admin-collabryangad/campaigns" component={AdminCampaignsPage as any} />
-      <AR path="/admin-collabryangad/barter" component={AdminBarterPage as any} />
-      <AR path="/admin-collabryangad/platform-settings" component={AdminPlatformSettings} />
-      <AR path="/admin-collabryangad/deal-settings" component={AdminDealSettings as any} />
-      <AR path="/admin-collabryangad/campaign-settings" component={AdminCampaignSettings as any} />
-      <AR path="/admin-collabryangad/brand-landing" component={AdminBrandLandingEditor} />
-      <AR path="/admin-collabryangad/creator-landing" component={AdminCreatorLandingEditor} />
-      <AR path="/admin-collabryangad/landing-videos" component={AdminLandingVideos} />
-      <AR path="/admin-collabryangad/about-us" component={AdminAboutUs} />
-      <AR path="/admin-collabryangad/contact-us" component={AdminAboutUs} />
-      <AR path="/admin-collabryangad/white-glove" component={AdminWhiteGlove} />
-      <AR path="/admin-collabryangad/advertisement" component={AdminAdvertisements} />
+      <AR path="/admin-collabryangad/landing" component={AdminLandingEditor} section="landing" />
+      <AR path="/admin-collabryangad/brand-onboarding" component={AdminBrandOnboarding} section="brand-onboarding" />
+      <AR path="/admin-collabryangad/credits" component={AdminCreditsManagement} section="credits" />
+      <AR path="/admin-collabryangad/categories" component={AdminCategories} section="categories" />
+      <AR path="/admin-collabryangad/legal" component={AdminLegalPages} section="legal" />
+      <AR path="/admin-collabryangad/creator-onboarding" component={AdminCreatorOnboarding} section="creator-onboarding" />
+      <AR path="/admin-collabryangad/pricing" component={AdminPricing} section="pricing" />
+      <AR path="/admin-collabryangad/matchmaking" component={AdminMatchmaking} section="matchmaking" />
+      <AR path="/admin-collabryangad/campaign-management" component={AdminCampaignManagement as any} section="campaign-management" />
+      <AR path="/admin-collabryangad/deal-management" component={AdminDealManagement as any} section="deal-management" />
+      <AR path="/admin-collabryangad/deals" component={AdminDeals} section="deal-management" />
+      <AR path="/admin-collabryangad/campaigns" component={AdminCampaignsPage as any} section="campaign-management" />
+      <AR path="/admin-collabryangad/barter" component={AdminBarterPage as any} section="campaign-management" />
+      <AR path="/admin-collabryangad/platform-settings" component={AdminPlatformSettings} section="super" />
+      <AR path="/admin-collabryangad/deal-settings" component={AdminDealSettings as any} section="deal-management" />
+      <AR path="/admin-collabryangad/campaign-settings" component={AdminCampaignSettings as any} section="campaign-management" />
+      <AR path="/admin-collabryangad/brand-landing" component={AdminBrandLandingEditor} section="brand-landing" />
+      <AR path="/admin-collabryangad/creator-landing" component={AdminCreatorLandingEditor} section="creator-landing" />
+      <AR path="/admin-collabryangad/landing-videos" component={AdminLandingVideos} section="landing-videos" />
+      <AR path="/admin-collabryangad/about-us" component={AdminAboutUs} section="about-us" />
+      <AR path="/admin-collabryangad/contact-us" component={AdminAboutUs} section="about-us" />
+      <AR path="/admin-collabryangad/white-glove" component={AdminWhiteGlove} section="white-glove" />
+      <AR path="/admin-collabryangad/advertisement" component={AdminAdvertisements} section="advertisement" />
 
       <Route path="/brand" component={BrandLandingPage} />
       <Route path="/creator" component={CreatorLandingPage} />

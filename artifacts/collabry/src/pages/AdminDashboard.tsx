@@ -212,8 +212,12 @@ function ChangePasswordSection() {
 }
 
 export default function AdminDashboard() {
-  const { username } = useAdminAuth();
+  const { username, isSuperAdmin, allowedSections } = useAdminAuth();
   const [, navigate] = useLocation();
+
+  // Each card's id is its section key — show only the sections this admin may
+  // access (super admins see everything).
+  const visiblePages = pages.filter((p) => isSuperAdmin || allowedSections.includes(p.id));
 
   const handleLogout = () => {
     clearAdminSession();
@@ -247,7 +251,7 @@ export default function AdminDashboard() {
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-14">
-          {pages.map((page) => {
+          {visiblePages.map((page) => {
             const Icon = page.icon;
             return (
               <Link key={page.id} href={page.href}>

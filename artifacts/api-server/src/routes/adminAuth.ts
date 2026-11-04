@@ -15,11 +15,10 @@ const COOKIE_OPTIONS = {
   path: "/",
 };
 
-// ── Legacy login (username + password) — UNCHANGED. ──────────────────────────
-// Kept intact because scripts/triggerAllEmailFlows.mjs still calls it and the
-// live panel's behavior must not change in Phase 1. The RBAC login below is the
-// new, dormant path; Phase 2 will promote it to the canonical /auth/admin/login.
-router.post("/auth/admin/login", async (req: Request, res: Response): Promise<void> => {
+// ── Legacy login (username + password) — moved to /login-legacy in Phase 2. ──
+// The panel now uses the RBAC login at /auth/admin/login. This legacy handler is
+// kept only for scripts/triggerAllEmailFlows.mjs (updated to call /login-legacy).
+router.post("/auth/admin/login-legacy", async (req: Request, res: Response): Promise<void> => {
   const { username, password } = req.body as { username?: string; password?: string };
   if (!username?.trim() || !password) {
     res.status(400).json({ error: "Username and password are required" });
@@ -90,8 +89,10 @@ function clearLoginFail(key: string): void {
   loginAttempts.delete(key);
 }
 
-// POST /auth/admin/login-rbac — email + password + per-account OTP → admin JWT.
-router.post("/auth/admin/login-rbac", async (req: Request, res: Response): Promise<void> => {
+// POST /auth/admin/login — email + password + per-account OTP → admin JWT.
+// This is the canonical admin login the panel uses (promoted from Phase 1's
+// /login-rbac). The legacy username+password handler lives at /login-legacy.
+router.post("/auth/admin/login", async (req: Request, res: Response): Promise<void> => {
   const { email, password, otp } = (req.body ?? {}) as { email?: string; password?: string; otp?: string };
   if (!email?.trim() || !password || !otp) {
     res.status(400).json({ error: "Email, password and OTP are required" });

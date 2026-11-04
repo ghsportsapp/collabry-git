@@ -21,7 +21,11 @@ export default function AdminCampaignApplicants({ kind, campaignId, campaignName
   campaignName?: string;
   onClose: () => void;
 }) {
-  const { adminFetch } = useAdminAuth();
+  const { adminFetch, isSuperAdmin, allowedSections } = useAdminAuth();
+  // Opening a creator's full profile is gated by the creator-onboarding section
+  // (cross-link rule). Without it the username stays visible but non-clickable,
+  // and /admin/creators/:id would 403 anyway.
+  const canViewCreatorProfile = isSuperAdmin || allowedSections.includes("creator-onboarding");
   const [tab, setTab] = useState(0); // 0 = All, 1 = Selected
   const [filterOpts, setFilterOpts] = useState<FilterOptions | null>(null);
   const [counts, setCounts] = useState<{ applied: number; selected: number } | null>(null);
@@ -116,7 +120,7 @@ export default function AdminCampaignApplicants({ kind, campaignId, campaignName
                   key={app.id}
                   app={app}
                   username={app.instagramHandle}
-                  onUsernameClick={app.creatorId ? () => setProfileCreatorId(app.creatorId!) : undefined}
+                  onUsernameClick={canViewCreatorProfile && app.creatorId ? () => setProfileCreatorId(app.creatorId!) : undefined}
                 />
               ))}
               <PaginationBar page={page} totalPages={totalPages} loading={loading} onChange={setPage} />

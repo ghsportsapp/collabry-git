@@ -96,6 +96,46 @@ export function createAdminSession(): void {
   sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
+// ── RBAC session (Phase 2) ───────────────────────────────────────────────────
+// The real admin session now carries the backend JWT + the account's identity
+// and permissions. Stored under the same SESSION_KEY (so isAdminLoggedIn /
+// inactivity / updateAdminActivity keep working), just with more fields.
+export interface AdminAuthData {
+  token: string;            // backend admin JWT (sent as Authorization: Bearer)
+  adminId: string;
+  username: string;
+  name: string | null;
+  isSuperAdmin: boolean;
+  allowedSections: string[];
+}
+
+export function createAdminAuthSession(data: AdminAuthData): void {
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ...data, lastActivityAt: Date.now() }));
+}
+
+export function getAdminAuth(): AdminAuthData | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Partial<AdminAuthData> & { lastActivityAt?: number };
+    if (Date.now() - (s.lastActivityAt ?? 0) > INACTIVITY_MS) {
+      sessionStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    if (!s.token) return null;
+    return {
+      token: s.token,
+      adminId: s.adminId ?? "",
+      username: s.username ?? "",
+      name: s.name ?? null,
+      isSuperAdmin: !!s.isSuperAdmin,
+      allowedSections: Array.isArray(s.allowedSections) ? s.allowedSections : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function getAdminSession(): AdminSession | null {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY);
