@@ -202,7 +202,7 @@ function CreateAdminModal({ onClose, onCreated, adminFetch }: { onClose: () => v
         <div><label className="block text-white/60 text-xs mb-1">Name</label><input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} /></div>
         <div><label className="block text-white/60 text-xs mb-1">Email</label><input className={inputClass} type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
         <div><label className="block text-white/60 text-xs mb-1">Password</label><input className={inputClass} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="min 8 characters" /></div>
-        <div><label className="block text-white/60 text-xs mb-1">OTP (4–6 digits)</label><input className={inputClass} inputMode="numeric" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="e.g. 8858" /></div>
+        <div><label className="block text-white/60 text-xs mb-1">OTP (4–6 digits)</label><input className={inputClass} inputMode="numeric" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="e.g. 1234" /></div>
         <div><label className="block text-white/60 text-xs mb-1.5">Sections this admin can access</label><SectionPicker value={sections} onChange={setSections} /></div>
         <button type="submit" disabled={saving} className="w-full py-2.5 rounded-full text-white text-sm font-semibold disabled:opacity-50" style={{ background: PINK }}>
           {saving ? "Creating…" : "Create Admin"}

@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 
 const router: IRouter = Router();
 
@@ -35,7 +34,7 @@ router.get("/creator-signup-config", async (_req: Request, res: Response): Promi
 });
 
 // Admin: get all creator signup config
-router.get("/admin/creator-signup-config", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/creator-signup-config", async (_req: Request, res: Response): Promise<void> => {
   const result = await pool.query(
     `SELECT key, value, "updatedAt" FROM "PlatformConfig" WHERE key = ANY($1)`,
     [CONFIG_KEYS]
@@ -49,7 +48,7 @@ router.get("/admin/creator-signup-config", requireAdmin, async (_req: Request, r
 });
 
 // Admin: update a single config key
-router.patch("/admin/creator-signup-config/:key", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/creator-signup-config/:key", async (req: Request, res: Response): Promise<void> => {
   const { key } = req.params as Record<string, string>;
   if (!CONFIG_KEYS.includes(key)) { res.status(400).json({ error: "Invalid config key" }); return; }
   const { value } = req.body as { value: any };

@@ -2,7 +2,6 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireBrand } from "../middleware/requireBrand";
 import { requireCreator } from "../middleware/requireCreator";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { createSystemMessage } from "../lib/dealChat";
 import { createNotification } from "../lib/notifications";
 
@@ -177,7 +176,7 @@ const ACTIVE_STATUSES = [
   "FINAL_POST_CONFIRMED","DISPUTE_WINDOW_OPEN","DISPUTED","OVERDUE"
 ];
 
-router.get("/admin/deals/list", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/deals/list", async (req: Request, res: Response): Promise<void> => {
   const { filter = "active", search = "", page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(limit) || 20));
@@ -238,7 +237,7 @@ router.get("/admin/deals/list", requireAdmin, async (req: Request, res: Response
 });
 
 // ─── Admin: GET /admin/deals/:id ──────────────────────────────────────────────
-router.get("/admin/deals/:id/detail", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/deals/:id/detail", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
 
   const [dealRow, messagesRow, deliverablesRow, disputesRow, issuesRow, actionsRow] = await Promise.all([
@@ -274,7 +273,7 @@ router.get("/admin/deals/:id/detail", requireAdmin, async (req: Request, res: Re
 });
 
 // ─── Admin: Override status ────────────────────────────────────────────────────
-router.post("/admin/deals/:id/override-status", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals/:id/override-status", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { status, reason } = req.body ?? {};
@@ -294,7 +293,7 @@ router.post("/admin/deals/:id/override-status", requireAdmin, async (req: Reques
 });
 
 // ─── Admin: Resolve dispute ────────────────────────────────────────────────────
-router.post("/admin/deals/:id/resolve-dispute", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals/:id/resolve-dispute", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { resolution, notes } = req.body ?? {};
@@ -316,7 +315,7 @@ router.post("/admin/deals/:id/resolve-dispute", requireAdmin, async (req: Reques
 });
 
 // ─── Admin: Extend timeline ────────────────────────────────────────────────────
-router.post("/admin/deals/:id/extend-timeline", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals/:id/extend-timeline", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { days, reason } = req.body ?? {};
@@ -339,7 +338,7 @@ router.post("/admin/deals/:id/extend-timeline", requireAdmin, async (req: Reques
 });
 
 // ─── Admin: Cancel deal ────────────────────────────────────────────────────────
-router.post("/admin/deals/:id/cancel", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals/:id/cancel", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { reason } = req.body ?? {};
@@ -504,7 +503,7 @@ router.post("/creator/deals/:id/delivery-address", requireCreator, async (req: R
 });
 
 // ─── Admin: GET chat ──────────────────────────────────────────────────────────
-router.get("/admin/deals/:id/chat", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/deals/:id/chat", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const dealCheck = await pool.query(`SELECT "chatDeletedAt" FROM "Deal" WHERE id=$1`, [id]);
   if (dealCheck.rows.length === 0) { res.status(404).json({ error: "Deal not found" }); return; }
@@ -522,7 +521,7 @@ router.get("/admin/deals/:id/chat", requireAdmin, async (req: Request, res: Resp
 });
 
 // ─── Admin: POST send message ─────────────────────────────────────────────────
-router.post("/admin/deals/:id/chat/send", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals/:id/chat/send", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string | undefined;
   const { id } = req.params as Record<string, string>;
   const exists = await pool.query(`SELECT id FROM "Deal" WHERE id=$1`, [id]);

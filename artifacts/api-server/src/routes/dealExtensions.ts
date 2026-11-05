@@ -2,7 +2,6 @@ import { Router, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireCreator } from "../middleware/requireCreator";
 import { requireBrand } from "../middleware/requireBrand";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { createNotification } from "../lib/notifications";
 import { createPopup } from "../lib/popups";
 import { createSystemMessage } from "../lib/dealChat";
@@ -281,7 +280,6 @@ router.get(
 // ─── Admin: list extensions ────────────────────────────────────────────────────
 router.get(
   "/admin/deals/:id/extensions",
-  requireAdmin,
   async (req: Request, res: Response): Promise<void> => {
     const dealId = req.params["id"] as string;
     const r = await pool.query(

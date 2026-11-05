@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { requireCreator } from "../middleware/requireCreator";
 
 /* Ad leads (Advertisement lead-capture). Creators submit a "get more details"
@@ -51,7 +50,7 @@ router.post("/ads/:adId/lead", requireCreator, async (req: Request, res: Respons
 });
 
 // ── Admin: ads that have ≥1 lead, unread-first ──────────────────────────────
-router.get("/admin/ad-leads", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/ad-leads", async (_req: Request, res: Response): Promise<void> => {
   try {
     const r = await pool.query(
       `SELECT a.id AS "adId",
@@ -73,7 +72,7 @@ router.get("/admin/ad-leads", requireAdmin, async (_req: Request, res: Response)
 });
 
 // ── Admin: leads for one ad, newest first ───────────────────────────────────
-router.get("/admin/ad-leads/:adId", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/ad-leads/:adId", async (req: Request, res: Response): Promise<void> => {
   const adId = str(req.params["adId"]);
   try {
     const brand = await pool.query(`SELECT ${BRAND} AS "brandName" FROM "Advertisement" a WHERE a.id=$1`, [adId]);
@@ -90,7 +89,7 @@ router.get("/admin/ad-leads/:adId", requireAdmin, async (req: Request, res: Resp
 });
 
 // ── Admin: mark all of an ad's leads read ───────────────────────────────────
-router.post("/admin/ad-leads/:adId/mark-read", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/ad-leads/:adId/mark-read", async (req: Request, res: Response): Promise<void> => {
   const adId = str(req.params["adId"]);
   try {
     await pool.query(`UPDATE "AdLead" SET "isRead"=true, "updatedAt"=NOW() WHERE "adId"=$1 AND NOT "isRead"`, [adId]);

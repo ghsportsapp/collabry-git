@@ -1,7 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireBrand } from "../middleware/requireBrand";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { createNotification } from "../lib/notifications";
 import { readCommissionRate, payoutAfterCommission } from "../lib/creatorPayout";
 import { createPopup } from "../lib/popups";
@@ -161,7 +160,7 @@ const filterOptionsHandler = async (_req: Request, res: Response): Promise<void>
   });
 };
 router.get("/brand/search/filter-options", requireBrand, filterOptionsHandler);
-router.get("/admin/search/filter-options", requireAdmin, filterOptionsHandler);
+router.get("/admin/search/filter-options", filterOptionsHandler);
 
 // ── GET /api/brand/search/creators-all ──
 // Returns ALL active creators (no slab gate). AND across filters, OR within multi-select.

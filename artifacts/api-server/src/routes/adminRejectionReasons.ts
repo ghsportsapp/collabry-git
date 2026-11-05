@@ -1,12 +1,11 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { requireCreator } from "../middleware/requireCreator";
 import { requireBrand } from "../middleware/requireBrand";
 
 const router: IRouter = Router();
 
-router.get("/admin/rejection-reasons", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/rejection-reasons", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(
     `SELECT * FROM "RejectionReason" WHERE "isActive"=true ORDER BY "forRole", "displayOrder", "createdAt"`,
   );
@@ -27,7 +26,7 @@ router.get("/brand/rejection-reasons", requireBrand, async (_req: Request, res: 
   res.json({ reasons: r.rows });
 });
 
-router.post("/admin/rejection-reasons", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/rejection-reasons", async (req: Request, res: Response): Promise<void> => {
   const { reason, solution, forRole = "CREATOR" } = req.body as { reason?: string; solution?: string; forRole?: string };
   if (!reason?.trim()) { res.status(400).json({ error: "Reason is required" }); return; }
   if (!solution?.trim()) { res.status(400).json({ error: "Solution is required" }); return; }
@@ -42,7 +41,7 @@ router.post("/admin/rejection-reasons", requireAdmin, async (req: Request, res: 
   res.json(r.rows[0]);
 });
 
-router.patch("/admin/rejection-reasons/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/rejection-reasons/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const { reason, solution, forRole } = req.body as { reason?: string; solution?: string; forRole?: string };
   if (!reason?.trim()) { res.status(400).json({ error: "Reason is required" }); return; }
@@ -59,7 +58,7 @@ router.patch("/admin/rejection-reasons/:id", requireAdmin, async (req: Request, 
   res.json({ ok: true });
 });
 
-router.delete("/admin/rejection-reasons/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/rejection-reasons/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   await pool.query(`UPDATE "RejectionReason" SET "isActive"=false, "updatedAt"=NOW() WHERE id=$1`, [id]);
   res.json({ ok: true });

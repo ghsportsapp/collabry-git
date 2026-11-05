@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { activateAllCreditHoldCampaigns } from "../lib/creditHoldActivation";
 import { createPopup } from "../lib/popups";
 import { createNotification } from "../lib/notifications";
@@ -41,14 +40,14 @@ async function setConfig(key: string, value: string) {
 // ─── Audience Field Config ────────────────────────────────────────────────────
 // Returns { id, fieldKey, label, isVisible }
 
-router.get("/admin/audience-fields", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/audience-fields", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(
     `SELECT id, "fieldName" AS "fieldKey", COALESCE(label, "fieldName") AS label, "isVisible", "isRequired" FROM "AudienceFieldConfig" ORDER BY label`
   );
   res.json(r.rows);
 });
 
-router.patch("/admin/audience-fields/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/audience-fields/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const { isVisible, isRequired } = req.body as { isVisible?: boolean; isRequired?: boolean };
   const sets: string[] = [];
@@ -62,12 +61,12 @@ router.patch("/admin/audience-fields/:id", requireAdmin, async (req: Request, re
 });
 
 // Legacy signup-config endpoint (audience field required-ness for creator signup)
-router.get("/admin/signup-config/audience-fields", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/signup-config/audience-fields", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT "fieldName", "isRequired" FROM "AudienceFieldConfig" ORDER BY label`);
   res.json(r.rows);
 });
 
-router.patch("/admin/signup-config/audience-fields", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/signup-config/audience-fields", async (req: Request, res: Response): Promise<void> => {
   const { field, isRequired } = req.body as { field: string; isRequired: boolean };
   if (!field) { res.status(400).json({ error: "field required" }); return; }
   await pool.query(
@@ -86,14 +85,14 @@ router.get("/signup-config/audience-fields", async (_req: Request, res: Response
 // ─── Partial Profile Visibility ───────────────────────────────────────────────
 // Returns { id, fieldKey, label, isVisible }
 
-router.get("/admin/partial-profile-visibility", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/partial-profile-visibility", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(
     `SELECT id, "fieldName" AS "fieldKey", COALESCE(label, "fieldName") AS label, "isVisible" FROM "PartialProfileVisibility" ORDER BY label`
   );
   res.json(r.rows);
 });
 
-router.patch("/admin/partial-profile-visibility/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/partial-profile-visibility/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const { isVisible } = req.body as { isVisible: boolean };
   if (typeof isVisible !== "boolean") { res.status(400).json({ error: "isVisible (boolean) required" }); return; }
@@ -114,7 +113,7 @@ router.get("/partial-profile-visibility", async (_req: Request, res: Response): 
 
 const DEAL_KEYS = ["min_timeline_days", "timeline_description_text", "max_deal_finalize_days", "require_courier_awb", "max_script_brief_chars", "max_revision_brief_chars"];
 
-router.get("/admin/deal-settings", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/deal-settings", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT key, value FROM "PlatformConfig" WHERE key = ANY($1::text[])`, [DEAL_KEYS]);
   const settings: Record<string, string> = {};
   for (const row of r.rows) settings[row.key] = row.value;
@@ -127,7 +126,7 @@ router.get("/admin/deal-settings", requireAdmin, async (_req: Request, res: Resp
   res.json(settings);
 });
 
-router.patch("/admin/deal-settings", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/deal-settings", async (req: Request, res: Response): Promise<void> => {
   const { key, value } = req.body as { key: string; value: string };
   if (!DEAL_KEYS.includes(key)) { res.status(400).json({ error: "Invalid key" }); return; }
   await setConfig(key, String(value));
@@ -168,14 +167,14 @@ const SHIPPING_DEFAULTS: Record<string, string> = {
   product_issue_image_retention_days: "7",
 };
 
-router.get("/admin/shipping-settings", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/shipping-settings", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT key, value FROM "PlatformConfig" WHERE key = ANY($1::text[])`, [SHIPPING_KEYS]);
   const settings: Record<string, string> = { ...SHIPPING_DEFAULTS };
   for (const row of r.rows) settings[row.key] = row.value;
   res.json(settings);
 });
 
-router.patch("/admin/shipping-settings", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/shipping-settings", async (req: Request, res: Response): Promise<void> => {
   const { key, value } = req.body as { key: string; value: string };
   if (!SHIPPING_KEYS.includes(key)) { res.status(400).json({ error: "Invalid shipping config key" }); return; }
   // Light validation: numeric & sensible bounds
@@ -214,13 +213,13 @@ router.patch("/admin/shipping-settings", requireAdmin, async (req: Request, res:
 
 // ─── Commission Rate ──────────────────────────────────────────────────────────
 
-router.get("/admin/commission-rate", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/commission-rate", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT value FROM "PlatformConfig" WHERE key='commission_rate'`);
   const rate = parseFloat(r.rows[0]?.value ?? "5");
   res.json({ rate: isNaN(rate) ? 5 : rate });
 });
 
-router.patch("/admin/commission-rate", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/commission-rate", async (req: Request, res: Response): Promise<void> => {
   const { rate } = req.body as { rate: number };
   const n = parseFloat(String(rate));
   if (!Number.isFinite(n) || n < 0 || n > 100) {
@@ -233,13 +232,13 @@ router.patch("/admin/commission-rate", requireAdmin, async (req: Request, res: R
 
 // ─── GST Rate ─────────────────────────────────────────────────────────────────
 
-router.get("/admin/gst-rate", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/gst-rate", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT value FROM "PlatformConfig" WHERE key='gst_rate'`);
   const rate = parseFloat(r.rows[0]?.value ?? "18");
   res.json({ rate: isNaN(rate) ? 18 : rate });
 });
 
-router.patch("/admin/gst-rate", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/gst-rate", async (req: Request, res: Response): Promise<void> => {
   const { rate } = req.body as { rate: number };
   const n = parseFloat(String(rate));
   if (!Number.isFinite(n) || n < 0 || n > 100) {
@@ -284,14 +283,14 @@ const CAMPAIGN_DEFAULTS: Record<string, string> = {
   min_barter_product_value: "0", max_barter_slots: "20",
 };
 
-router.get("/admin/campaign-settings", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/campaign-settings", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT key, value FROM "PlatformConfig" WHERE key = ANY($1::text[])`, [CAMPAIGN_KEYS]);
   const settings: Record<string, string> = { ...CAMPAIGN_DEFAULTS };
   for (const row of r.rows) settings[row.key] = row.value;
   res.json(settings);
 });
 
-router.patch("/admin/campaign-settings", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/campaign-settings", async (req: Request, res: Response): Promise<void> => {
   const updates = req.body as Record<string, string>;
   const CREDIT_COST_KEYS = ["campaign_credits_cost", "barter_credits_cost"];
   let creditCostChanged = false;
@@ -314,18 +313,18 @@ router.get("/platform-config/campaigns", async (_req: Request, res: Response): P
 
 // ─── KYC Fields Config ────────────────────────────────────────────────────────
 
-router.get("/admin/kyc-fields", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/kyc-fields", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT * FROM "KYCField" ORDER BY "displayOrder", "createdAt"`);
   res.json(r.rows);
 });
 
-router.delete("/admin/kyc-fields/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/kyc-fields/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   await pool.query(`DELETE FROM "KYCField" WHERE id=$1`, [id]);
   res.json({ ok: true });
 });
 
-router.post("/admin/kyc-fields", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/kyc-fields", async (req: Request, res: Response): Promise<void> => {
   const { label, fieldType = "TEXT", isRequired = true } = req.body as { label: string; fieldType?: string; isRequired?: boolean };
   if (!label?.trim()) { res.status(400).json({ error: "label required" }); return; }
   const countR = await pool.query(`SELECT COUNT(*) FROM "KYCField" WHERE "isActive"=true`);
@@ -338,7 +337,7 @@ router.post("/admin/kyc-fields", requireAdmin, async (req: Request, res: Respons
   res.json(r.rows[0]);
 });
 
-router.patch("/admin/kyc-fields/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/kyc-fields/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const { label, isRequired, isActive, displayOrder } = req.body;
   const sets: string[] = []; const params: unknown[] = [];
@@ -356,7 +355,7 @@ router.patch("/admin/kyc-fields/:id", requireAdmin, async (req: Request, res: Re
 // ─── KYC Requests ─────────────────────────────────────────────────────────────
 // Frontend uses selected.id as the creatorId
 
-router.get("/admin/kyc-requests", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/kyc-requests", async (req: Request, res: Response): Promise<void> => {
   const { status, page = "1", search = "" } = req.query as Record<string, string>;
   const limit = 20;
   const offset = (Math.max(1, parseInt(page)) - 1) * limit;
@@ -396,7 +395,7 @@ router.get("/admin/kyc-requests", requireAdmin, async (req: Request, res: Respon
 });
 
 // Approve: POST /admin/kyc-requests/:id/approve
-router.post("/admin/kyc-requests/:id/approve", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/kyc-requests/:id/approve", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   await pool.query(
     `UPDATE "Creator" SET "kycStatus"='VERIFIED', "kycRejectionReason"=NULL, "updatedAt"=NOW() WHERE id=$1`,
@@ -419,7 +418,7 @@ router.post("/admin/kyc-requests/:id/approve", requireAdmin, async (req: Request
 });
 
 // Reject: POST /admin/kyc-requests/:id/reject
-router.post("/admin/kyc-requests/:id/reject", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/kyc-requests/:id/reject", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const { reason } = req.body as { reason: string };
   if (!reason?.trim()) { res.status(400).json({ error: "reason required" }); return; }
@@ -448,12 +447,12 @@ router.post("/admin/kyc-requests/:id/reject", requireAdmin, async (req: Request,
 
 // ─── Deal Flow Tutorial Video ─────────────────────────────────────────────────
 
-router.get("/admin/deal-tutorial-video", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/deal-tutorial-video", async (_req: Request, res: Response): Promise<void> => {
   const url = await getConfig("deal_tutorial_video_url", "");
   res.json({ url });
 });
 
-router.patch("/admin/deal-tutorial-video", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/deal-tutorial-video", async (req: Request, res: Response): Promise<void> => {
   const { url } = req.body as { url: string };
   await setConfig("deal_tutorial_video_url", String(url ?? "").trim());
   res.json({ ok: true });
@@ -466,7 +465,7 @@ router.get("/platform-config/deal-tutorial-video", async (_req: Request, res: Re
 });
 
 // ─── All Deals (for Deal Management page) ────────────────────────────────────
-router.get("/admin/deals", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/deals", async (req: Request, res: Response): Promise<void> => {
   const { status, source, search } = req.query as { status?: string; source?: string; search?: string };
   const { page, limit, offset, wantsPaging } = readDealPaging(req);
   const where: string[] = [];
@@ -583,7 +582,7 @@ router.get("/admin/deals", requireAdmin, async (req: Request, res: Response): Pr
  * instead of fudging it through the search box. Computed against the same
  * ORDER BY the list uses (createdAt DESC, id DESC) with no filters applied,
  * which matches the client clearing filters before it jumps. */
-router.get("/admin/deals/:id/page", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/deals/:id/page", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const limit = Math.min(100, Math.max(1, parseInt(String(req.query["limit"] ?? DEALS_PAGE_SIZE), 10) || DEALS_PAGE_SIZE));
   const r = await pool.query(
@@ -609,7 +608,7 @@ router.get("/admin/deals/:id/page", requireAdmin, async (req: Request, res: Resp
  * both handlers treat that as "no events yet" instead of failing the page. */
 const UNDEFINED_TABLE = "42P01";
 
-router.get("/admin/deal-stage-events", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/deal-stage-events", async (req: Request, res: Response): Promise<void> => {
   const limit = Math.min(50, Math.max(1, parseInt(String(req.query["limit"] ?? 20), 10) || 20));
   try {
     const [events, unseen] = await Promise.all([
@@ -648,7 +647,7 @@ router.get("/admin/deal-stage-events", requireAdmin, async (req: Request, res: R
   }
 });
 
-router.post("/admin/deal-stage-events/seen", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deal-stage-events/seen", async (req: Request, res: Response): Promise<void> => {
   /* Acknowledgement is per deal: admin clears a deal by clicking its card or
      its bell row, which is what removes that card's highlight. `dealId` marks
      every outstanding event for that one deal. `before` (mark everything up to
@@ -677,7 +676,7 @@ router.post("/admin/deal-stage-events/seen", requireAdmin, async (req: Request, 
 });
 
 // ── GET /api/admin/credit-purchases ──
-router.get("/admin/credit-purchases", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/credit-purchases", async (req: Request, res: Response): Promise<void> => {
   const { search } = req.query as { search?: string };
   const where: string[] = [];
   const vals: unknown[] = [];
@@ -706,7 +705,7 @@ router.get("/admin/credit-purchases", requireAdmin, async (req: Request, res: Re
 });
 
 // ── POST /api/admin/invoices/upload ──
-router.post("/admin/invoices/upload", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/invoices/upload", async (req: Request, res: Response): Promise<void> => {
   const { referenceId, recipientType, recipientId, image, type } = req.body ?? {};
   if (!referenceId || !recipientType || !recipientId || !image || !type) {
     res.status(400).json({ error: "referenceId, recipientType, recipientId, image, type are required" });

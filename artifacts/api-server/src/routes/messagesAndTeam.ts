@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 
 const router: IRouter = Router();
 
@@ -34,7 +33,7 @@ router.get("/team-members", async (_req: Request, res: Response): Promise<void> 
 });
 
 // ── Admin: slab messages (list of all slabs with their messages) ───────────
-router.get("/admin/slab-messages", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/slab-messages", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(
     `SELECT id, label, "minFollowers", "maxFollowers", "motivationalMessage" FROM "FollowerSlab"
      WHERE "isActive"=true ORDER BY "displayOrder" ASC, "minFollowers" ASC`,
@@ -42,7 +41,7 @@ router.get("/admin/slab-messages", requireAdmin, async (_req: Request, res: Resp
   res.json(r.rows);
 });
 
-router.patch("/admin/slab-messages/:slabId", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/slab-messages/:slabId", async (req: Request, res: Response): Promise<void> => {
   const { slabId } = req.params as Record<string, string>;
   const { message } = req.body as { message?: string };
   await pool.query(
@@ -53,7 +52,7 @@ router.patch("/admin/slab-messages/:slabId", requireAdmin, async (req: Request, 
 });
 
 // ── Admin: category messages CRUD ──────────────────────────────────────────
-router.get("/admin/category-messages", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/category-messages", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(
     `SELECT id, message, "isActive", "displayOrder", "createdAt" FROM "CategoryMessage"
      ORDER BY "displayOrder" ASC, "createdAt" ASC`,
@@ -61,7 +60,7 @@ router.get("/admin/category-messages", requireAdmin, async (_req: Request, res: 
   res.json(r.rows);
 });
 
-router.post("/admin/category-messages", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/category-messages", async (req: Request, res: Response): Promise<void> => {
   const { message } = req.body as { message?: string };
   const trimmed = (message ?? "").trim();
   if (!trimmed) { res.status(400).json({ error: "Message is required" }); return; }
@@ -81,7 +80,7 @@ router.post("/admin/category-messages", requireAdmin, async (req: Request, res: 
   res.json({ id: r.rows[0].id });
 });
 
-router.patch("/admin/category-messages/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/category-messages/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const { message } = req.body as { message?: string };
   const trimmed = (message ?? "").trim();
@@ -90,13 +89,13 @@ router.patch("/admin/category-messages/:id", requireAdmin, async (req: Request, 
   res.json({ ok: true });
 });
 
-router.delete("/admin/category-messages/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/category-messages/:id", async (req: Request, res: Response): Promise<void> => {
   await pool.query(`DELETE FROM "CategoryMessage" WHERE id=$1`, [req.params["id"]]);
   res.json({ ok: true });
 });
 
 // ── Admin: team members CRUD ───────────────────────────────────────────────
-router.get("/admin/team-members", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/team-members", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(
     `SELECT id, name, "photoUrl", role, "displayOrder", "isActive", "createdAt" FROM "TeamMember"
      ORDER BY "displayOrder" ASC, "createdAt" ASC`,
@@ -104,7 +103,7 @@ router.get("/admin/team-members", requireAdmin, async (_req: Request, res: Respo
   res.json(r.rows);
 });
 
-router.post("/admin/team-members", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/team-members", async (req: Request, res: Response): Promise<void> => {
   const { name, photoUrl, role } = req.body as { name?: string; photoUrl?: string; role?: string };
   if (!name?.trim() || !photoUrl?.trim()) { res.status(400).json({ error: "Name and photo are required" }); return; }
   const maxR = await pool.query(`SELECT COALESCE(MAX("displayOrder"),0) AS m FROM "TeamMember"`);
@@ -116,7 +115,7 @@ router.post("/admin/team-members", requireAdmin, async (req: Request, res: Respo
   res.json({ id: r.rows[0].id });
 });
 
-router.patch("/admin/team-members/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/team-members/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const { name, photoUrl, role, isActive } = req.body as { name?: string; photoUrl?: string; role?: string; isActive?: boolean };
   const sets: string[] = [], params: unknown[] = [];
@@ -131,7 +130,7 @@ router.patch("/admin/team-members/:id", requireAdmin, async (req: Request, res: 
   res.json({ ok: true });
 });
 
-router.delete("/admin/team-members/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/team-members/:id", async (req: Request, res: Response): Promise<void> => {
   await pool.query(`DELETE FROM "TeamMember" WHERE id=$1`, [req.params["id"]]);
   res.json({ ok: true });
 });

@@ -2,7 +2,6 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireBrand } from "../middleware/requireBrand";
 import { requireCreator } from "../middleware/requireCreator";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { createNotification } from "../lib/notifications";
 import { createSystemMessage } from "../lib/dealChat";
 import { createPopup } from "../lib/popups";
@@ -594,7 +593,7 @@ router.post("/creator/deals/:id/not-received", requireCreator, async (req: Reque
 });
 
 // Admin extends delivery
-router.post("/admin/deals/:id/extend-delivery", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals/:id/extend-delivery", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   if (!id) { res.status(400).json({ error: "Deal id required" }); return; }
   const dr = await pool.query(`SELECT * FROM "Deal" WHERE id=$1`, [id]);
@@ -644,7 +643,7 @@ router.post("/admin/deals/:id/extend-delivery", requireAdmin, async (req: Reques
 });
 
 // Admin resolves non-delivery: GENUINE or FAKE_AWB
-router.post("/admin/deals/:id/non-delivery-resolve", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals/:id/non-delivery-resolve", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string | undefined;
   const { id } = req.params as Record<string, string>;
   if (!id) { res.status(400).json({ error: "Deal id required" }); return; }
@@ -748,7 +747,7 @@ router.post("/admin/deals/:id/non-delivery-resolve", requireAdmin, async (req: R
 });
 
 // Admin: list active non-delivery reports needing attention
-router.get("/admin/non-delivery-alerts", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/non-delivery-alerts", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(
     `SELECT d.id, d."brandId", d."creatorId", d."awbNumber", d."courierName", d."shipDate",
             d."non_delivery_reported_at", d."delivery_extension_count",
@@ -769,7 +768,7 @@ router.get("/admin/non-delivery-alerts", requireAdmin, async (_req: Request, res
 });
 
 // Admin: ban brand (visible only when warning_strikes >= 2)
-router.post("/admin/brands/:id/ban", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/brands/:id/ban", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string | undefined;
   const { id } = req.params as Record<string, string>;
   if (!id) { res.status(400).json({ error: "Brand id required" }); return; }

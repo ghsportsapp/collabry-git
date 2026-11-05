@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { requireCreator } from "../middleware/requireCreator";
 import { tryDeleteByStoredPath } from "../lib/storage";
 
@@ -43,7 +42,7 @@ router.get("/ads", requireCreator, async (_req: Request, res: Response): Promise
 });
 
 // ── Admin: list all ads (active + inactive) in order ────────────────────────
-router.get("/admin/ads", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/ads", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(
     `SELECT id, "imageUrl", headline, "bodyText",
             to_jsonb(a)->>'brandName' AS "brandName",
@@ -55,7 +54,7 @@ router.get("/admin/ads", requireAdmin, async (_req: Request, res: Response): Pro
 });
 
 // ── Admin: create ad (appended to the end of the order) ─────────────────────
-router.post("/admin/ads", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/ads", async (req: Request, res: Response): Promise<void> => {
   const imageUrl = str(req.body?.imageUrl);
   if (!imageUrl) { res.status(400).json({ error: "imageUrl is required" }); return; }
   const headline = str(req.body?.headline);
@@ -78,7 +77,7 @@ router.post("/admin/ads", requireAdmin, async (req: Request, res: Response): Pro
 });
 
 // ── Admin: update ad (any subset of fields) ─────────────────────────────────
-router.patch("/admin/ads/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/ads/:id", async (req: Request, res: Response): Promise<void> => {
   const b = req.body ?? {};
   const hasBrand = await hasBrandNameCol();
   const sets: string[] = [];
@@ -102,7 +101,7 @@ router.patch("/admin/ads/:id", requireAdmin, async (req: Request, res: Response)
 });
 
 // ── Admin: delete ad (also purges the image from object storage) ────────────
-router.delete("/admin/ads/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/ads/:id", async (req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`DELETE FROM "Advertisement" WHERE id = $1 RETURNING "imageUrl"`, [req.params["id"]]);
   if (r.rows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
   // Best-effort storage cleanup — the key is derivable from the stored public URL
@@ -113,7 +112,7 @@ router.delete("/admin/ads/:id", requireAdmin, async (req: Request, res: Response
 });
 
 // ── Admin: move ad up/down (swap displayOrder with the adjacent ad) ─────────
-router.post("/admin/ads/:id/move", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/ads/:id/move", async (req: Request, res: Response): Promise<void> => {
   const dir = req.body?.dir === "up" ? "up" : req.body?.dir === "down" ? "down" : null;
   if (!dir) { res.status(400).json({ error: "dir must be 'up' or 'down'" }); return; }
   const client = await pool.connect();

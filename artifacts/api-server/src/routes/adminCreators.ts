@@ -3,7 +3,6 @@ import { createNotification } from "../lib/notifications";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { getSupportEmail } from "../lib/supportEmail";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { requireAdminSecret } from "../middleware/requireAdminSecret";
 
 const router: IRouter = Router();
@@ -49,7 +48,7 @@ function priceRange(min: unknown, max: unknown): string | null {
 }
 
 // Status counts
-router.get("/admin/creators/counts", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/creators/counts", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`
     SELECT status, COUNT(*) as count FROM "Creator"
     WHERE status != 'PENDING'
@@ -62,7 +61,7 @@ router.get("/admin/creators/counts", requireAdmin, async (_req: Request, res: Re
 });
 
 // List creators
-router.get("/admin/creators", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/creators", async (req: Request, res: Response): Promise<void> => {
   const { page = "1", limit = "20", status = "ALL", search = "" } = req.query as Record<string, string>;
   const offset = (parseInt(page) - 1) * parseInt(limit);
   const conditions: string[] = [];
@@ -163,7 +162,7 @@ router.get("/admin/creators/export", requireAdminSecret, async (req: Request, re
 });
 
 // Get single creator detail
-router.get("/admin/creators/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/creators/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const [creatorR, catsR, portfolioR, funR, customFieldsR, customValuesR] = await Promise.all([
     pool.query(`SELECT * FROM "Creator" WHERE id=$1`, [id]),
@@ -200,7 +199,7 @@ router.get("/admin/creators/:id", requireAdmin, async (req: Request, res: Respon
 });
 
 // Update admin notes
-router.patch("/admin/creators/:id/notes", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/creators/:id/notes", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const { note } = req.body as { note?: string };
   await pool.query(`UPDATE "Creator" SET "adminNotes"=$1, "updatedAt"=NOW() WHERE id=$2`, [note ?? null, id]);
@@ -208,7 +207,7 @@ router.patch("/admin/creators/:id/notes", requireAdmin, async (req: Request, res
 });
 
 // Approve
-router.post("/admin/creators/:id/approve", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/creators/:id/approve", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const cr = await pool.query(`SELECT "fullName", status, "pendingReason", "pendingImages", "pendingCategories", "pendingFollowerCount", "pendingInstagramHandle", "pendingPricing" FROM "Creator" WHERE id=$1`, [id]);
@@ -292,7 +291,7 @@ router.post("/admin/creators/:id/approve", requireAdmin, async (req: Request, re
 });
 
 // Reject — accepts reasonId (from RejectionReason table) OR freeform reason text
-router.post("/admin/creators/:id/reject", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/creators/:id/reject", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { reasonId, reason: freeReason } = req.body as { reasonId?: string; reason?: string };
@@ -385,7 +384,7 @@ router.post("/admin/creators/:id/reject", requireAdmin, async (req: Request, res
 });
 
 // Suspend
-router.post("/admin/creators/:id/suspend", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/creators/:id/suspend", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { reason } = req.body as { reason?: string };
@@ -418,7 +417,7 @@ router.post("/admin/creators/:id/suspend", requireAdmin, async (req: Request, re
 });
 
 // Unsuspend
-router.post("/admin/creators/:id/unsuspend", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/creators/:id/unsuspend", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   await pool.query(
@@ -446,7 +445,7 @@ router.post("/admin/creators/:id/unsuspend", requireAdmin, async (req: Request, 
 });
 
 // Ban
-router.post("/admin/creators/:id/ban", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/creators/:id/ban", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { reason } = req.body as { reason?: string };
@@ -476,7 +475,7 @@ router.post("/admin/creators/:id/ban", requireAdmin, async (req: Request, res: R
 });
 
 // Unban
-router.post("/admin/creators/:id/unban", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/creators/:id/unban", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { reason } = req.body as { reason?: string };
@@ -505,7 +504,7 @@ router.post("/admin/creators/:id/unban", requireAdmin, async (req: Request, res:
 });
 
 // Delete creator account permanently
-router.delete("/admin/creators/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/creators/:id", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { reason } = req.body as { reason?: string };

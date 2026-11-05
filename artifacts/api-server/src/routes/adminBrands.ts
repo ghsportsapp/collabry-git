@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { requireAdminSecret } from "../middleware/requireAdminSecret";
 import { activateCreditHoldCampaigns } from "../lib/creditHoldActivation";
 import { createPopup } from "../lib/popups";
@@ -8,7 +7,7 @@ import { createNotification } from "../lib/notifications";
 
 const router: IRouter = Router();
 
-router.get("/admin/brands", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/brands", async (req: Request, res: Response): Promise<void> => {
   const { search, status, page = "1", limit = "20" } = req.query as Record<string, string>;
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -45,7 +44,7 @@ router.get("/admin/brands", requireAdmin, async (req: Request, res: Response): P
   res.json({ brands: result.rows, total, page: parseInt(page), limit: parseInt(limit) });
 });
 
-router.get("/admin/brands/list-all", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/brands/list-all", async (_req: Request, res: Response): Promise<void> => {
   const result = await pool.query(
     `SELECT id, "brandName", email, "logoUrl", "creditBalance", status FROM "Brand" WHERE status='ACTIVE' ORDER BY "brandName"`
   );
@@ -109,7 +108,7 @@ router.get("/admin/brands/export", requireAdminSecret, async (_req: Request, res
   res.send(csv);
 });
 
-router.get("/admin/brands/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/brands/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const brandResult = await pool.query(
     `SELECT b.*, c.name as "categoryName", s.name as "subcategoryName"
@@ -143,7 +142,7 @@ router.get("/admin/brands/:id", requireAdmin, async (req: Request, res: Response
   res.json({ brand, credits: creditsResult.rows, customFields: customFieldsResult.rows });
 });
 
-router.post("/admin/brands/:id/adjust-credits", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/brands/:id/adjust-credits", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const adminId = (req as any).adminId as string;
   const { amount, type, reason, expiryDays } = req.body as { amount: number; type: "add" | "remove"; reason: string; expiryDays?: number };
@@ -246,7 +245,7 @@ router.post("/admin/brands/:id/adjust-credits", requireAdmin, async (req: Reques
   res.json({ ok: true, newBalance });
 });
 
-router.post("/admin/brands/:id/suspend", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/brands/:id/suspend", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const adminId = (req as any).adminId as string;
   const { reason } = req.body as { reason?: string };
@@ -271,7 +270,7 @@ router.post("/admin/brands/:id/suspend", requireAdmin, async (req: Request, res:
   res.json({ ok: true });
 });
 
-router.post("/admin/brands/:id/unsuspend", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/brands/:id/unsuspend", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const adminId = (req as any).adminId as string;
 
@@ -302,7 +301,7 @@ router.post("/admin/brands/:id/unsuspend", requireAdmin, async (req: Request, re
 });
 
 // Delete brand account permanently
-router.delete("/admin/brands/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/brands/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const adminId = (req as any).adminId as string;
   const { reason } = req.body as { reason?: string };

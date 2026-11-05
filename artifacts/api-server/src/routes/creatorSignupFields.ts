@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 
 const router: IRouter = Router();
 
@@ -13,7 +12,7 @@ router.get("/creator-signup-fields", async (_req: Request, res: Response): Promi
 });
 
 // Admin: list all custom fields
-router.get("/admin/creator-signup-fields", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/creator-signup-fields", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(
     `SELECT * FROM "CreatorSignupField" ORDER BY "displayOrder"`
   );
@@ -21,7 +20,7 @@ router.get("/admin/creator-signup-fields", requireAdmin, async (_req: Request, r
 });
 
 // Admin: create custom field
-router.post("/admin/creator-signup-fields", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/creator-signup-fields", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { label, fieldType = "text", isRequired = false } = req.body as Record<string, any>;
   if (!label?.trim()) { res.status(400).json({ error: "Label is required" }); return; }
@@ -35,7 +34,7 @@ router.post("/admin/creator-signup-fields", requireAdmin, async (req: Request, r
 });
 
 // Admin: update custom field
-router.patch("/admin/creator-signup-fields/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/creator-signup-fields/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const { label, isRequired, isActive, displayOrder } = req.body as Record<string, any>;
   const sets: string[] = []; const params: unknown[] = [];
@@ -51,7 +50,7 @@ router.patch("/admin/creator-signup-fields/:id", requireAdmin, async (req: Reque
 });
 
 // Admin: delete custom field
-router.delete("/admin/creator-signup-fields/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/creator-signup-fields/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   await pool.query(`DELETE FROM "CreatorSignupField" WHERE id=$1`, [id]);
   res.json({ ok: true });

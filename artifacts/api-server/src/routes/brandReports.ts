@@ -1,7 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireBrand } from "../middleware/requireBrand";
-import { requireAdmin } from "../middleware/requireAdmin";
 
 const router: IRouter = Router();
 
@@ -30,7 +29,7 @@ router.post("/brand/creators/:id/report", requireBrand, async (req: Request, res
 });
 
 // GET /api/admin/creator-reports  — admin lists all reports
-router.get("/admin/creator-reports", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/creator-reports", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`
     SELECT
       cr.id,

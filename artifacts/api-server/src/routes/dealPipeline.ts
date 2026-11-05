@@ -2,7 +2,6 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireBrand } from "../middleware/requireBrand";
 import { requireCreator } from "../middleware/requireCreator";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { createSystemMessage } from "../lib/dealChat";
 import { createNotification } from "../lib/notifications";
 import { createPopup } from "../lib/popups";
@@ -1067,7 +1066,7 @@ router.post("/creator/deals/:id/final-post/resubmit-slot", requireCreator, async
 });
 
 // Admin: review a flagged slot — OVERRIDE (force confirm) or REQUEST_RESUBMIT (send back to creator)
-router.post("/admin/deals/:id/url-flag/review", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals/:id/url-flag/review", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const dealRes = await pool.query(`SELECT * FROM "Deal" WHERE id=$1`, [id]);
   if (!dealRes.rows.length) { res.status(404).json({ error: "Deal not found" }); return; }
@@ -1119,7 +1118,7 @@ router.post("/admin/deals/:id/url-flag/review", requireAdmin, async (req: Reques
 });
 
 // Admin: list deals with URL_FLAGGED status (plus optionally other flagged statuses)
-router.get("/admin/deals/flagged", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/deals/flagged", async (req: Request, res: Response): Promise<void> => {
   const result = await pool.query(`
     SELECT d.id, d.status, d."createdAt", d."totalAgreedValue", d.source,
            d."escrowStatus", d."disputeRaisedAt",
@@ -1207,7 +1206,7 @@ router.post("/brand/deals/:id/dispute", requireBrand, async (req: Request, res: 
   res.json({ ok: true });
 });
 
-router.post("/admin/deals/:id/dispute/resolve", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals/:id/dispute/resolve", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string | undefined;
   const { id } = req.params as Record<string, string>;
   const { outcome, notes } = req.body ?? {};
@@ -1289,7 +1288,7 @@ router.post("/admin/deals/:id/dispute/resolve", requireAdmin, async (req: Reques
   res.json({ ok: true });
 });
 
-router.post("/admin/deals/:id/dispute/cancel", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals/:id/dispute/cancel", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string | undefined;
   const { id } = req.params as Record<string, string>;
   const v = await verifyDeal(id!, null, "ADMIN");
@@ -1352,7 +1351,7 @@ router.post("/admin/deals/:id/dispute/cancel", requireAdmin, async (req: Request
 // PAYOUT
 // =====================================================
 
-router.post("/admin/deals/:id/simulate-payout", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals/:id/simulate-payout", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const v = await verifyDeal(id!, null, "ADMIN");
   if (!v.ok) { res.status(404).json({ error: "Deal not found" }); return; }
@@ -1429,7 +1428,7 @@ router.post("/admin/deals/:id/simulate-payout", requireAdmin, async (req: Reques
 // ADMIN: REFUND BRAND
 // =====================================================
 
-router.post("/admin/deals/:id/refund-brand", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals/:id/refund-brand", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
 
@@ -1563,7 +1562,7 @@ router.get("/brand/deals/:id/my-rating", requireBrand, async (req: Request, res:
   res.json({ rating: r.rows[0] ?? null });
 });
 
-router.delete("/admin/ratings/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/ratings/:id", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string | undefined;
   const { id } = req.params as Record<string, string>;
   const r = await pool.query(`SELECT "creatorId","deletedAt" FROM "CreatorRating" WHERE id=$1`, [id]);

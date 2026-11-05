@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 
 const router: IRouter = Router();
 
@@ -53,7 +52,7 @@ router.get("/slabs/all", async (_req: Request, res: Response): Promise<void> => 
 });
 
 // Admin: all slabs (same but for admin panel)
-router.get("/admin/slabs", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/slabs", async (_req: Request, res: Response): Promise<void> => {
   const result = await pool.query(
     `SELECT id, label, "minFollowers", "maxFollowers",
      "recReelMin", "recReelMax", "recStoryMin", "recStoryMax", "recPostMin", "recPostMax",
@@ -69,7 +68,7 @@ router.get("/admin/slabs", requireAdmin, async (_req: Request, res: Response): P
 });
 
 // Admin: create slab
-router.post("/admin/slabs", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/slabs", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { label, minFollowers, maxFollowers, recReelMin, recReelMax, recStoryMin, recStoryMax, recPostMin, recPostMax, disclaimerRecommended, disclaimerHigher } = req.body;
   if (!label?.trim() || minFollowers === undefined || !recReelMin || !recReelMax) {
@@ -93,7 +92,7 @@ router.post("/admin/slabs", requireAdmin, async (req: Request, res: Response): P
 });
 
 // Admin: update slab
-router.patch("/admin/slabs/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/slabs/:id", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { label, minFollowers, maxFollowers, recReelMin, recReelMax, recStoryMin, recStoryMax, recPostMin, recPostMax, disclaimerRecommended, disclaimerHigher, isActive } = req.body;
@@ -127,7 +126,7 @@ router.patch("/admin/slabs/:id", requireAdmin, async (req: Request, res: Respons
 });
 
 // Admin: delete slab
-router.delete("/admin/slabs/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/slabs/:id", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const existing = await pool.query(`SELECT label FROM "FollowerSlab" WHERE id=$1`, [id]);

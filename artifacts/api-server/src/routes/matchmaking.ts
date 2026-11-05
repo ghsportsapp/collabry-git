@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { requireBrand } from "../middleware/requireBrand";
 
 const router: IRouter = Router();
@@ -129,7 +128,7 @@ function lookupMapping(
 
 // ─── ADMIN: Scoring Weights ─────────────────────────────────────────────────
 
-router.get("/admin/matchmaking/scoring-weights", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/matchmaking/scoring-weights", async (_req: Request, res: Response): Promise<void> => {
   const [swR, cfgR] = await Promise.all([
     pool.query(`SELECT * FROM "ScoringWeight" ORDER BY parameter`),
     pool.query(`SELECT key,value FROM "PlatformConfig" WHERE key IN ('gender_majority_threshold','gender_mixed_min','gender_mixed_max')`),
@@ -144,7 +143,7 @@ router.get("/admin/matchmaking/scoring-weights", requireAdmin, async (_req: Requ
   });
 });
 
-router.patch("/admin/matchmaking/scoring-weights", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/matchmaking/scoring-weights", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { weights, genderMajorityThreshold, genderMixedMin, genderMixedMax } = req.body;
   const weightsArr = Array.isArray(weights) ? weights : (Array.isArray(req.body) ? req.body : null);
@@ -172,7 +171,7 @@ router.patch("/admin/matchmaking/scoring-weights", requireAdmin, async (req: Req
 
 // ─── ADMIN: Field Options ───────────────────────────────────────────────────
 
-router.get("/admin/matchmaking/options", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/matchmaking/options", async (req: Request, res: Response): Promise<void> => {
   const field = req.query["field"] as string | undefined;
   const q = field
     ? `SELECT * FROM "MatchmakingFieldOption" WHERE field=$1 ORDER BY "displayOrder"`
@@ -181,7 +180,7 @@ router.get("/admin/matchmaking/options", requireAdmin, async (req: Request, res:
   res.json(r.rows);
 });
 
-router.post("/admin/matchmaking/options", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/matchmaking/options", async (req: Request, res: Response): Promise<void> => {
   const { field, label, value } = req.body;
   if (!field || !label || !value) { res.status(400).json({ error: "field, label, value required" }); return; }
   const maxOrd = await pool.query(`SELECT COALESCE(MAX("displayOrder"),0)+1 as n FROM "MatchmakingFieldOption" WHERE field=$1`, [field]);
@@ -192,7 +191,7 @@ router.post("/admin/matchmaking/options", requireAdmin, async (req: Request, res
   res.status(201).json(r.rows[0]);
 });
 
-router.patch("/admin/matchmaking/options/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/matchmaking/options/:id", async (req: Request, res: Response): Promise<void> => {
   const { label, value, displayOrder, isActive } = req.body;
   const sets: string[] = [];
   const vals: unknown[] = [];
@@ -208,7 +207,7 @@ router.patch("/admin/matchmaking/options/:id", requireAdmin, async (req: Request
   res.json(r.rows[0]);
 });
 
-router.delete("/admin/matchmaking/options/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/matchmaking/options/:id", async (req: Request, res: Response): Promise<void> => {
   // Cascade: remove MatchmakingMapping entries that reference this brand option label
   const optR = await pool.query(`SELECT field, label FROM "MatchmakingFieldOption" WHERE id=$1`, [req.params["id"]]);
   if (optR.rows.length > 0) {
@@ -226,7 +225,7 @@ router.delete("/admin/matchmaking/options/:id", requireAdmin, async (req: Reques
 });
 
 // Delete ALL options for a field group — also cascades to dimensions + mappings
-router.delete("/admin/matchmaking/options-field/:fieldKey", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/matchmaking/options-field/:fieldKey", async (req: Request, res: Response): Promise<void> => {
   const { fieldKey } = req.params as Record<string, string>;
 
   // 1. Cascade: find all dimensions using this brandField, delete their mappings, then delete them
@@ -285,11 +284,11 @@ async function saveFieldSections(sections: Array<{ key: string; label: string }>
   }
 }
 
-router.get("/admin/matchmaking/field-sections", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/matchmaking/field-sections", async (_req: Request, res: Response): Promise<void> => {
   res.json(await getFieldSections());
 });
 
-router.put("/admin/matchmaking/field-sections", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.put("/admin/matchmaking/field-sections", async (req: Request, res: Response): Promise<void> => {
   const sections = req.body as Array<{ key: string; label: string }>;
   if (!Array.isArray(sections)) { res.status(400).json({ error: "Array required" }); return; }
   for (const s of sections) {
@@ -301,12 +300,12 @@ router.put("/admin/matchmaking/field-sections", requireAdmin, async (req: Reques
 
 // ─── ADMIN: Result Filters ──────────────────────────────────────────────────
 
-router.get("/admin/matchmaking/filters", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/matchmaking/filters", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT * FROM "MatchmakingFilter" ORDER BY "filterType"`);
   res.json(r.rows);
 });
 
-router.patch("/admin/matchmaking/filters", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/matchmaking/filters", async (req: Request, res: Response): Promise<void> => {
   const filters = req.body?.filters as Array<{ type: string; isActive: boolean }>;
   if (!Array.isArray(filters)) { res.status(400).json({ error: "filters array required" }); return; }
   for (const f of filters) {
@@ -321,12 +320,12 @@ router.patch("/admin/matchmaking/filters", requireAdmin, async (req: Request, re
 // ─── ADMIN: Match Mappings ──────────────────────────────────────────────────
 // mappingType values: goal_content | price_audience | purchase_audience | customer_audience
 
-router.get("/admin/matchmaking/mappings", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/matchmaking/mappings", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT * FROM "MatchmakingMapping" ORDER BY "mappingType","brandOption","creatorOption"`);
   res.json(r.rows);
 });
 
-router.put("/admin/matchmaking/mappings/:type", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.put("/admin/matchmaking/mappings/:type", async (req: Request, res: Response): Promise<void> => {
   const { type } = req.params as Record<string, string>;
   const rows = req.body as Array<{ brandOption: string; creatorOption: string; matchLevel: string }>;
   if (!Array.isArray(rows)) { res.status(400).json({ error: "body must be array" }); return; }
@@ -348,7 +347,7 @@ router.put("/admin/matchmaking/mappings/:type", requireAdmin, async (req: Reques
 // ─── ADMIN: Creator field options (for mapping UI) ───────────────────────────
 // Reads from MatchmakingCreatorFieldOption (admin-managed)
 
-router.get("/admin/matchmaking/creator-options", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/matchmaking/creator-options", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT "fieldKey","label","value" FROM "MatchmakingCreatorFieldOption" WHERE "isActive"=true ORDER BY "fieldKey","displayOrder"`);
   const grouped: Record<string, string[]> = {};
   for (const row of r.rows) {
@@ -364,12 +363,12 @@ router.get("/admin/matchmaking/creator-options", requireAdmin, async (_req: Requ
 
 // ─── ADMIN: Dimensions CRUD ──────────────────────────────────────────────────
 
-router.get("/admin/matchmaking/dimensions", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/matchmaking/dimensions", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT * FROM "MatchmakingDimension" ORDER BY "displayOrder","createdAt"`);
   res.json(r.rows);
 });
 
-router.post("/admin/matchmaking/dimensions", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/matchmaking/dimensions", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { dimensionKey, label, brandField, brandFieldLabel, creatorField, creatorFieldLabel, scoringParam, briefKey, creatorColumn } = req.body;
   if (!dimensionKey || !label || !brandField || !brandFieldLabel || !creatorField || !creatorFieldLabel || !scoringParam || !briefKey || !creatorColumn) {
@@ -395,7 +394,7 @@ router.post("/admin/matchmaking/dimensions", requireAdmin, async (req: Request, 
   }
 });
 
-router.patch("/admin/matchmaking/dimensions/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/matchmaking/dimensions/:id", async (req: Request, res: Response): Promise<void> => {
   const { label, brandField, brandFieldLabel, creatorField, creatorFieldLabel, scoringParam, briefKey, creatorColumn, displayOrder, isActive } = req.body;
   const sets: string[] = []; const vals: unknown[] = []; let i = 1;
   if (label !== undefined)             { sets.push(`label=$${i++}`); vals.push(label); }
@@ -416,7 +415,7 @@ router.patch("/admin/matchmaking/dimensions/:id", requireAdmin, async (req: Requ
   res.json(r.rows[0]);
 });
 
-router.delete("/admin/matchmaking/dimensions/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/matchmaking/dimensions/:id", async (req: Request, res: Response): Promise<void> => {
   const dim = await pool.query(`SELECT "dimensionKey" FROM "MatchmakingDimension" WHERE id=$1`, [req.params["id"]]);
   if (dim.rows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
   await pool.query(`DELETE FROM "MatchmakingMapping" WHERE "mappingType"=$1`, [dim.rows[0].dimensionKey]);
@@ -426,7 +425,7 @@ router.delete("/admin/matchmaking/dimensions/:id", requireAdmin, async (req: Req
 
 // ─── ADMIN: Creator Field Options CRUD ──────────────────────────────────────
 
-router.get("/admin/matchmaking/creator-field-options", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/matchmaking/creator-field-options", async (req: Request, res: Response): Promise<void> => {
   const fieldKey = req.query["fieldKey"] as string | undefined;
   const q = fieldKey
     ? `SELECT * FROM "MatchmakingCreatorFieldOption" WHERE "fieldKey"=$1 ORDER BY "displayOrder"`
@@ -435,7 +434,7 @@ router.get("/admin/matchmaking/creator-field-options", requireAdmin, async (req:
   res.json(r.rows);
 });
 
-router.post("/admin/matchmaking/creator-field-options", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/matchmaking/creator-field-options", async (req: Request, res: Response): Promise<void> => {
   const { fieldKey, label, value } = req.body;
   if (!fieldKey || !label || !value) { res.status(400).json({ error: "fieldKey, label, value required" }); return; }
   const maxOrd = await pool.query(`SELECT COALESCE(MAX("displayOrder"),0)+1 as n FROM "MatchmakingCreatorFieldOption" WHERE "fieldKey"=$1`, [fieldKey]);
@@ -451,7 +450,7 @@ router.post("/admin/matchmaking/creator-field-options", requireAdmin, async (req
   }
 });
 
-router.patch("/admin/matchmaking/creator-field-options/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/matchmaking/creator-field-options/:id", async (req: Request, res: Response): Promise<void> => {
   const { label, value, displayOrder, isActive } = req.body;
   const sets: string[] = []; const vals: unknown[] = []; let i = 1;
   if (label !== undefined)        { sets.push(`label=$${i++}`); vals.push(label); }
@@ -465,7 +464,7 @@ router.patch("/admin/matchmaking/creator-field-options/:id", requireAdmin, async
   res.json(r.rows[0]);
 });
 
-router.delete("/admin/matchmaking/creator-field-options/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/matchmaking/creator-field-options/:id", async (req: Request, res: Response): Promise<void> => {
   // Cascade: remove MatchmakingMapping entries that reference this creator option value
   const optR = await pool.query(`SELECT "fieldKey", value FROM "MatchmakingCreatorFieldOption" WHERE id=$1`, [req.params["id"]]);
   if (optR.rows.length > 0) {
@@ -484,7 +483,7 @@ router.delete("/admin/matchmaking/creator-field-options/:id", requireAdmin, asyn
 
 // ─── ADMIN: Adjacency CRUD ──────────────────────────────────────────────────
 
-router.get("/admin/matchmaking/adjacency", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/matchmaking/adjacency", async (_req: Request, res: Response): Promise<void> => {
   const [catR, goalR, locR, custR] = await Promise.all([
     pool.query(`SELECT * FROM "CategoryAdjacency" ORDER BY "categoryA"`),
     pool.query(`SELECT * FROM "GoalAdjacency" ORDER BY "goalA"`),
@@ -499,7 +498,7 @@ router.get("/admin/matchmaking/adjacency", requireAdmin, async (_req: Request, r
   });
 });
 
-router.post("/admin/matchmaking/adjacency", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/matchmaking/adjacency", async (req: Request, res: Response): Promise<void> => {
   const { type, entityA, entityB } = req.body as { type: string; entityA: string; entityB: string };
   if (!type || !entityA?.trim() || !entityB?.trim()) { res.status(400).json({ error: "type, entityA, entityB required" }); return; }
   const a = entityA.trim(); const b = entityB.trim();
@@ -534,7 +533,7 @@ router.post("/admin/matchmaking/adjacency", requireAdmin, async (req: Request, r
   }
 });
 
-router.delete("/admin/matchmaking/adjacency/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/matchmaking/adjacency/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const { type } = req.query as { type: string };
   if (type === "category") {
@@ -555,7 +554,7 @@ router.delete("/admin/matchmaking/adjacency/:id", requireAdmin, async (req: Requ
 
 // ─── ADMIN: Other Settings ──────────────────────────────────────────────────
 
-router.get("/admin/matchmaking/settings", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/matchmaking/settings", async (_req: Request, res: Response): Promise<void> => {
   const cfg = await pool.query(`SELECT key, value FROM "PlatformConfig" WHERE key IN ('matchmaking_min_score','matchmaking_default_completion')`);
   const cfgMap: Record<string, string> = {};
   cfg.rows.forEach((r: any) => { cfgMap[r.key] = r.value; });
@@ -565,7 +564,7 @@ router.get("/admin/matchmaking/settings", requireAdmin, async (_req: Request, re
   });
 });
 
-router.patch("/admin/matchmaking/settings", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/matchmaking/settings", async (req: Request, res: Response): Promise<void> => {
   const { minScore, defaultCompletion } = req.body;
   if (minScore !== undefined) {
     await pool.query(
@@ -1030,7 +1029,7 @@ router.post("/brand/matchmaking/results", requireBrand, (req: Request, res: Resp
 
 // ─── ADMIN: Match Preview ────────────────────────────────────────────────────
 
-router.post("/admin/matchmaking/preview", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/matchmaking/preview", async (req: Request, res: Response): Promise<void> => {
   const { brand, creator } = req.body as {
     brand: Record<string, string | number | undefined>;
     creator: { campaignGoal?: string; audienceLocation?: string; audienceAge?: string; audienceGenderFemale?: number; audienceGenderMale?: number; categories?: string[] };

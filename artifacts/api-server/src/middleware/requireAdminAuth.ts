@@ -3,10 +3,8 @@ import { pool } from "@workspace/db";
 import { verifyToken, getAdminSecret } from "../lib/auth";
 
 /**
- * REAL admin authentication — the intended replacement for the no-op
- * `requireAdmin`. DORMANT in Phase 1: defined and unit-testable, but NOT yet
- * attached to any live admin router (the live routes still use the old no-op
- * `requireAdmin`). Phase 2 swaps the routers over to this.
+ * REAL admin authentication. Used by adminGuard (which runs it for every
+ * /admin/* request) and by the /auth/admin/me and section-check endpoints.
  *
  * Verifies the admin JWT (admin secret + scheme, same as /auth/admin/login),
  * loads the Admin row, rejects disabled accounts, and populates req.adminId +

@@ -2,7 +2,6 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireBrand } from "../middleware/requireBrand";
 import { requireCreator } from "../middleware/requireCreator";
-import { requireAdmin } from "../middleware/requireAdmin";
 
 const router: IRouter = Router();
 
@@ -79,7 +78,7 @@ router.post("/reports/deal-creator", requireBrand, async (req: Request, res: Res
   res.json({ ok: true });
 });
 
-router.get("/admin/deal-reports/brand", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/deal-reports/brand", async (_req: Request, res: Response): Promise<void> => {
   await ensureTables();
   const r = await pool.query(`
     SELECT dbr.id, dbr."dealId", dbr.reason, dbr."createdAt", dbr."reporterEmail",
@@ -93,7 +92,7 @@ router.get("/admin/deal-reports/brand", requireAdmin, async (_req: Request, res:
   res.json({ reports: r.rows });
 });
 
-router.get("/admin/deal-reports/creator", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/deal-reports/creator", async (_req: Request, res: Response): Promise<void> => {
   await ensureTables();
   const r = await pool.query(`
     SELECT dcr.id, dcr."dealId", dcr.reason, dcr."createdAt", dcr."reporterEmail",

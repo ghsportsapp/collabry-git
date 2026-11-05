@@ -1,10 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 
 const router: IRouter = Router();
 
-router.get("/admin/categories", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/categories", async (_req: Request, res: Response): Promise<void> => {
   const cats = await pool.query(
     `SELECT c.id, c.name, c."displayOrder", c."isActive", c."createdAt",
      COUNT(DISTINCT s.id) as "subcategoryCount"
@@ -39,7 +38,7 @@ router.get("/admin/categories", requireAdmin, async (_req: Request, res: Respons
   res.json(result);
 });
 
-router.get("/admin/categories/:id/subcategories", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/categories/:id/subcategories", async (req: Request, res: Response): Promise<void> => {
   const result = await pool.query(
     `SELECT id, name, "displayOrder", "isActive", "createdAt" FROM "Subcategory"
      WHERE "categoryId"=$1 ORDER BY "displayOrder", name`,
@@ -48,7 +47,7 @@ router.get("/admin/categories/:id/subcategories", requireAdmin, async (req: Requ
   res.json(result.rows);
 });
 
-router.post("/admin/categories", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/categories", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { name, relatedCategoryIds = [] } = req.body as { name?: string; relatedCategoryIds?: string[] };
   if (!name?.trim()) { res.status(400).json({ error: "Category name is required" }); return; }
@@ -93,7 +92,7 @@ router.post("/admin/categories", requireAdmin, async (req: Request, res: Respons
   }
 });
 
-router.patch("/admin/categories/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/categories/:id", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { name, relatedCategoryIds } = req.body as { name?: string; relatedCategoryIds?: string[] };
@@ -138,7 +137,7 @@ router.patch("/admin/categories/:id", requireAdmin, async (req: Request, res: Re
   res.json({ ok: true });
 });
 
-router.delete("/admin/categories/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/categories/:id", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
 
@@ -170,7 +169,7 @@ router.delete("/admin/categories/:id", requireAdmin, async (req: Request, res: R
   res.json({ ok: true, affectedBrands: affectedBrands.rowCount });
 });
 
-router.post("/admin/categories/:categoryId/subcategories", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/categories/:categoryId/subcategories", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { categoryId } = req.params as Record<string, string>;
   const { name } = req.body as { name?: string };
@@ -216,7 +215,7 @@ router.post("/admin/categories/:categoryId/subcategories", requireAdmin, async (
   res.json(result.rows[0]);
 });
 
-router.patch("/admin/subcategories/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/subcategories/:id", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { name } = req.body as { name?: string };
@@ -233,7 +232,7 @@ router.patch("/admin/subcategories/:id", requireAdmin, async (req: Request, res:
   res.json({ ok: true });
 });
 
-router.delete("/admin/subcategories/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/subcategories/:id", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
 

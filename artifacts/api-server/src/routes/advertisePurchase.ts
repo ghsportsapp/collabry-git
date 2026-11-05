@@ -1,7 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireBrand } from "../middleware/requireBrand";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { requireAdminSecret } from "../middleware/requireAdminSecret";
 import { createNotification } from "../lib/notifications";
 import { logger } from "../lib/logger";
@@ -256,7 +255,7 @@ router.get("/brand/advertise/my-purchase", requireBrand, async (req: Request, re
 
 // ── GET /api/admin/advertise/purchases ──
 // Returns brand contact details in bulk, so it sits behind the real admin secret.
-router.get("/admin/advertise/purchases", requireAdmin, requireAdminSecret, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/advertise/purchases", requireAdminSecret, async (_req: Request, res: Response): Promise<void> => {
   const rows = await pool.query(
     `SELECT p.id, p."orderRef", p."brandId", p."planName", p.months, p."amountInr",
             p."baseAmountInr", p."gstRatePercent", p."gstAmountInr", p."totalAmountInr",
@@ -271,7 +270,7 @@ router.get("/admin/advertise/purchases", requireAdmin, requireAdminSecret, async
 });
 
 // ── PATCH /api/admin/advertise/purchases/:id/contacted ──
-router.patch("/admin/advertise/purchases/:id/contacted", requireAdmin, requireAdminSecret, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/advertise/purchases/:id/contacted", requireAdminSecret, async (req: Request, res: Response): Promise<void> => {
   const contacted = !!req.body?.contacted;
   const r = await pool.query(
     `UPDATE "AdvertisePurchase" SET "contactedAt" = ${contacted ? "NOW()" : "NULL"} WHERE id::text=$1 RETURNING "contactedAt"`,

@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdminIfAuth } from "../middleware/requireAdmin";
 import { tryDeleteByStoredPath } from "../lib/storage";
 
 const router: IRouter = Router();
@@ -24,7 +23,7 @@ router.get("/landing-content", async (_req: Request, res: Response): Promise<voi
   res.json(result.rows);
 });
 
-router.get("/admin/landing-content", requireAdminIfAuth, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/landing-content", async (_req: Request, res: Response): Promise<void> => {
   const result = await pool.query(
     `SELECT id, key, value, type, section, "updatedAt", "updatedBy"
      FROM "LandingPageContent"
@@ -76,7 +75,7 @@ router.get("/landing-content/:key", async (req: Request, res: Response): Promise
   res.json(result.rows[0]);
 });
 
-router.put("/landing-content", requireAdminIfAuth, async (req: Request, res: Response): Promise<void> => {
+router.put("/landing-content", async (req: Request, res: Response): Promise<void> => {
   const items = req.body as Array<{
     key: string;
     value: string;
@@ -130,7 +129,7 @@ router.put("/landing-content", requireAdminIfAuth, async (req: Request, res: Res
   }
 });
 
-router.delete("/landing-content/:key", requireAdminIfAuth, async (req: Request, res: Response): Promise<void> => {
+router.delete("/landing-content/:key", async (req: Request, res: Response): Promise<void> => {
   const { key } = req.params as Record<string, string>;
   const result = await pool.query(
     `DELETE FROM "LandingPageContent" WHERE key = $1`,
@@ -185,7 +184,7 @@ router.get("/landing-videos/:page", async (req: Request, res: Response): Promise
   res.json(result.rows[0]);
 });
 
-router.put("/landing-videos/:page", requireAdminIfAuth, async (req: Request, res: Response): Promise<void> => {
+router.put("/landing-videos/:page", async (req: Request, res: Response): Promise<void> => {
   const { page } = req.params as Record<string, string>;
   if (!VALID_PAGES.includes(page)) {
     res.status(400).json({ error: "Invalid page. Must be home, brand, or creator." });
@@ -236,7 +235,7 @@ router.put("/landing-videos/:page", requireAdminIfAuth, async (req: Request, res
   res.json(result.rows[0]);
 });
 
-router.delete("/landing-videos/:page/video", requireAdminIfAuth, async (req: Request, res: Response): Promise<void> => {
+router.delete("/landing-videos/:page/video", async (req: Request, res: Response): Promise<void> => {
   const { page } = req.params as Record<string, string>;
   if (!VALID_PAGES.includes(page)) {
     res.status(400).json({ error: "Invalid page." });
@@ -249,7 +248,7 @@ router.delete("/landing-videos/:page/video", requireAdminIfAuth, async (req: Req
   res.json({ ok: true });
 });
 
-router.delete("/landing-videos/:page/thumbnail", requireAdminIfAuth, async (req: Request, res: Response): Promise<void> => {
+router.delete("/landing-videos/:page/thumbnail", async (req: Request, res: Response): Promise<void> => {
   const { page } = req.params as Record<string, string>;
   if (!VALID_PAGES.includes(page)) {
     res.status(400).json({ error: "Invalid page." });

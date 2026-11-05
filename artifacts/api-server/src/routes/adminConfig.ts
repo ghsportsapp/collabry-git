@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { activateCreditHoldCampaigns } from "../lib/creditHoldActivation";
 
 const DEFAULT_FIELD_CONFIG_KEY = "default_fields_config";
@@ -51,7 +50,7 @@ async function getDefaultFieldConfig(): Promise<Record<FieldKey, FieldConfigItem
 const router: IRouter = Router();
 
 // ── Credits config ────────────────────────────────────────────────────────────
-router.get("/admin/config/credits", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/config/credits", async (_req: Request, res: Response): Promise<void> => {
   const result = await pool.query(
     `SELECT key, value FROM "PlatformConfig" WHERE key IN ('free_credits_amount','free_credits_expiry_days','credit_price_inr')`
   );
@@ -64,7 +63,7 @@ router.get("/admin/config/credits", requireAdmin, async (_req: Request, res: Res
   });
 });
 
-router.patch("/admin/config/credits", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/config/credits", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { freeCreditsOnSignup, creditExpiryDays, pricePerCredit } = req.body as { freeCreditsOnSignup?: number; creditExpiryDays?: number; pricePerCredit?: number };
   const updates: Array<[string, number]> = [];
@@ -110,7 +109,7 @@ router.get("/credits/price", async (_req: Request, res: Response): Promise<void>
 });
 
 // ── Gift credits ──────────────────────────────────────────────────────────────
-router.post("/admin/credits/gift", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/credits/gift", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { brandIds, amount, reason, expiryDays } = req.body as { brandIds: string[]; amount: number; reason?: string; expiryDays?: number };
   if (!Array.isArray(brandIds) || brandIds.length === 0) { res.status(400).json({ error: "brandIds must be a non-empty array" }); return; }
@@ -163,14 +162,14 @@ router.post("/admin/credits/gift", requireAdmin, async (req: Request, res: Respo
 });
 
 // ── Default field config ──────────────────────────────────────────────────────
-router.get("/admin/default-field-config", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/default-field-config", async (_req: Request, res: Response): Promise<void> => {
   const config = await getDefaultFieldConfig();
   const sorted = (Object.keys(FIELD_DEFAULTS) as FieldKey[]).sort((a, b) => config[a].order - config[b].order);
   const result = sorted.map(key => ({ key, label: FIELD_DEFAULTS[key].label, status: config[key].status, order: config[key].order }));
   res.json(result);
 });
 
-router.patch("/admin/default-field-config/:field", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/default-field-config/:field", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { field } = req.params as Record<string, string>;
   const { status, order } = req.body as { status?: FieldStatus; order?: number };
@@ -220,7 +219,7 @@ router.patch("/admin/default-field-config/:field", requireAdmin, async (req: Req
 });
 
 // Bulk reorder default fields
-router.patch("/admin/default-field-config-order", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/default-field-config-order", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { order } = req.body as { order: Record<FieldKey, number> };
   if (!order || typeof order !== "object") { res.status(400).json({ error: "order must be an object" }); return; }
@@ -318,7 +317,7 @@ router.get("/unified-field-order", async (_req: Request, res: Response): Promise
 });
 
 // Admin: full list including hidden fields
-router.get("/admin/unified-field-order", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/unified-field-order", async (_req: Request, res: Response): Promise<void> => {
   const [order, fieldConfig, customRows] = await Promise.all([
     getUnifiedOrder(),
     getDefaultFieldConfig(),
@@ -343,7 +342,7 @@ router.get("/admin/unified-field-order", requireAdmin, async (_req: Request, res
 });
 
 // Admin: save a new unified order
-router.patch("/admin/unified-field-order", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/unified-field-order", async (req: Request, res: Response): Promise<void> => {
   const { order } = req.body as { order: UnifiedEntry[] };
   if (!Array.isArray(order)) { res.status(400).json({ error: "order must be an array" }); return; }
   await saveUnifiedOrder(order);
@@ -400,7 +399,7 @@ router.get("/legal/privacy", async (_req: Request, res: Response): Promise<void>
   res.json(await getLegalContent("privacy"));
 });
 
-router.patch("/admin/legal/:type", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/legal/:type", async (req: Request, res: Response): Promise<void> => {
   const { type } = req.params as Record<string, string>;
   if (type !== "terms" && type !== "privacy") { res.status(400).json({ error: "Invalid type" }); return; }
   const { sections } = req.body as { sections?: LegalSection[] };
@@ -464,7 +463,7 @@ router.get("/about-us", async (_req: Request, res: Response): Promise<void> => {
   res.json(await getAboutUs());
 });
 
-router.patch("/admin/about-us", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/about-us", async (req: Request, res: Response): Promise<void> => {
   const { heading, content, mission, missionImage, contactEmail, contactPhone, callTiming, contactDesc, teamDesc, team } = req.body as Partial<AboutUsContent>;
   if (typeof heading !== "string" || typeof content !== "string" || !Array.isArray(team)) {
     res.status(400).json({ error: "heading, content, and team are required" }); return;
@@ -651,7 +650,7 @@ router.get("/white-glove", async (_req: Request, res: Response): Promise<void> =
   res.json(await getWhiteGlove());
 });
 
-router.patch("/admin/white-glove", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/white-glove", async (req: Request, res: Response): Promise<void> => {
   const b = req.body as Partial<WhiteGloveContent>;
   const str = (v: unknown, d: string) => (typeof v === "string" && v.trim() ? v.trim() : d);
   const num = (v: unknown, d: number) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 0 && n <= 100 ? n : d; };
@@ -829,7 +828,7 @@ router.get("/advertise-brand", async (_req: Request, res: Response): Promise<voi
   res.json(await getAdvertiseBrand());
 });
 
-router.patch("/admin/advertise-brand", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/advertise-brand", async (req: Request, res: Response): Promise<void> => {
   const b = req.body as Partial<AdvertiseBrandContent>;
   const str = (v: unknown, d: string) => (typeof v === "string" && v.trim() ? v.trim() : d);
   const num = (v: unknown, d: number) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 0 && n <= 100 ? n : d; };

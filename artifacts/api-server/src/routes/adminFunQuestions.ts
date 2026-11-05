@@ -1,12 +1,11 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 
 const router: IRouter = Router();
 
 const MAX_ACTIVE = 10;
 
-router.get("/admin/fun-questions", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/fun-questions", async (_req: Request, res: Response): Promise<void> => {
   const [qR, optR] = await Promise.all([
     pool.query(`SELECT * FROM "FunQuestion" WHERE "isActive"=true ORDER BY "displayOrder", "createdAt"`),
     pool.query(`SELECT * FROM "FunQuestionOption" ORDER BY "displayOrder"`),
@@ -24,7 +23,7 @@ router.get("/admin/fun-questions", requireAdmin, async (_req: Request, res: Resp
   })));
 });
 
-router.post("/admin/fun-questions", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/fun-questions", async (req: Request, res: Response): Promise<void> => {
   const { questionText, options } = req.body as { questionText?: string; options?: string[] };
   if (!questionText?.trim()) { res.status(400).json({ error: "Question text required" }); return; }
   const cleanOptions = (options ?? []).map(o => (o ?? "").trim()).filter(Boolean);
@@ -77,7 +76,7 @@ router.post("/admin/fun-questions", requireAdmin, async (req: Request, res: Resp
   }
 });
 
-router.patch("/admin/fun-questions/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/fun-questions/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const { questionText, options } = req.body as { questionText?: string; options?: string[] };
   if (!questionText?.trim()) { res.status(400).json({ error: "Question text required" }); return; }
@@ -120,7 +119,7 @@ router.patch("/admin/fun-questions/:id", requireAdmin, async (req: Request, res:
   }
 });
 
-router.delete("/admin/fun-questions/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/fun-questions/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   await pool.query(`DELETE FROM "CreatorFunAnswer" WHERE "questionId"=$1`, [id]);
   await pool.query(`DELETE FROM "FunQuestionOption" WHERE "questionId"=$1`, [id]);

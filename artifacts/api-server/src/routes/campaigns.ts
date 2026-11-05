@@ -1,7 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import crypto from "crypto";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 import { requireBrand } from "../middleware/requireBrand";
 import { buildCreatorFilters } from "../lib/creatorFilters";
 
@@ -1603,7 +1602,7 @@ router.get("/creator/applications", requireCreator, async (req: Request, res: Re
 // ADMIN — CAMPAIGNS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-router.get("/admin/campaigns", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/campaigns", async (req: Request, res: Response): Promise<void> => {
   const { status, search } = req.query;
   let where = "WHERE 1=1";
   const vals: unknown[] = [];
@@ -1619,7 +1618,7 @@ router.get("/admin/campaigns", requireAdmin, async (req: Request, res: Response)
   res.json(r.rows);
 });
 
-router.get("/admin/campaigns/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/campaigns/:id", async (req: Request, res: Response): Promise<void> => {
   const r = await pool.query(
     `SELECT c.*, b."brandName",b."logoUrl",
        COALESCE(json_agg(DISTINCT jsonb_build_object('categoryId',cc."categoryId",'name',cat.name)) FILTER (WHERE cc.id IS NOT NULL),'[]') as categories
@@ -1682,40 +1681,40 @@ async function adminApplicantCounts(
   return { applied: applied.rows[0].c, selected: selected.rows[0].c };
 }
 
-router.get("/admin/campaigns/:id/applications", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/campaigns/:id/applications", async (req: Request, res: Response): Promise<void> => {
   const camp = await pool.query(`SELECT id FROM "Campaign" WHERE id=$1`, [req.params["id"]]);
   if (!camp.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
   res.json(await adminApplicantList(req, "CampaignApplication", "campaignId", String(req.params["id"])));
 });
-router.get("/admin/campaigns/:id/applicant-counts", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/campaigns/:id/applicant-counts", async (req: Request, res: Response): Promise<void> => {
   const camp = await pool.query(`SELECT id FROM "Campaign" WHERE id=$1`, [req.params["id"]]);
   if (!camp.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
   res.json(await adminApplicantCounts("CampaignApplication", "campaignId", String(req.params["id"])));
 });
-router.get("/admin/barter/:id/applications", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/barter/:id/applications", async (req: Request, res: Response): Promise<void> => {
   const b = await pool.query(`SELECT id FROM "BarterCampaign" WHERE id=$1`, [req.params["id"]]);
   if (!b.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
   res.json(await adminApplicantList(req, "BarterApplication", "barterId", String(req.params["id"])));
 });
-router.get("/admin/barter/:id/applicant-counts", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/barter/:id/applicant-counts", async (req: Request, res: Response): Promise<void> => {
   const b = await pool.query(`SELECT id FROM "BarterCampaign" WHERE id=$1`, [req.params["id"]]);
   if (!b.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
   res.json(await adminApplicantCounts("BarterApplication", "barterId", String(req.params["id"])));
 });
 
-router.post("/admin/campaigns/:id/extend", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/campaigns/:id/extend", async (req: Request, res: Response): Promise<void> => {
   const { days } = req.body;
   if (!days || parseInt(days) < 1) { res.status(400).json({ error: "days required" }); return; }
   await pool.query(`UPDATE "Campaign" SET "expiresAt"="expiresAt"+($1::int * INTERVAL '1 day') WHERE id=$2`, [parseInt(days), req.params["id"]]);
   res.json({ ok: true });
 });
 
-router.post("/admin/campaigns/:id/expire", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/campaigns/:id/expire", async (req: Request, res: Response): Promise<void> => {
   await expireCampaign(req.params["id"] as string);
   res.json({ ok: true });
 });
 
-router.post("/admin/campaigns/:id/cancel", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/campaigns/:id/cancel", async (req: Request, res: Response): Promise<void> => {
   const camp = await pool.query(`SELECT * FROM "Campaign" WHERE id=$1`, [req.params["id"]]);
   if (!camp.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
   await pool.query(`UPDATE "Campaign" SET status='CANCELLED' WHERE id=$1`, [req.params["id"]]);
@@ -1732,7 +1731,7 @@ router.post("/admin/campaigns/:id/cancel", requireAdmin, async (req: Request, re
 });
 
 // Admin Approve — deduct credits, set LIVE
-router.post("/admin/campaigns/:id/approve", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/campaigns/:id/approve", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const camp = await pool.query(`SELECT * FROM "Campaign" WHERE id=$1 AND status='PENDING_APPROVAL'`, [id]);
@@ -1800,7 +1799,7 @@ router.post("/admin/campaigns/:id/approve", requireAdmin, async (req: Request, r
 });
 
 // Admin Reject — mandatory reason
-router.post("/admin/campaigns/:id/reject", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/campaigns/:id/reject", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { reason } = req.body;
@@ -1828,7 +1827,7 @@ router.post("/admin/campaigns/:id/reject", requireAdmin, async (req: Request, re
 });
 
 // Admin Hold — needs more info
-router.post("/admin/campaigns/:id/hold", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/campaigns/:id/hold", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { id } = req.params as Record<string, string>;
   const { message } = req.body;
@@ -1851,7 +1850,7 @@ router.post("/admin/campaigns/:id/hold", requireAdmin, async (req: Request, res:
 // ADMIN — BARTER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-router.get("/admin/barter", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/barter", async (req: Request, res: Response): Promise<void> => {
   const { status = "PENDING_APPROVAL" } = req.query;
   const r = await pool.query(
     `SELECT bc.*,
@@ -1869,7 +1868,7 @@ router.get("/admin/barter", requireAdmin, async (req: Request, res: Response): P
   res.json(r.rows);
 });
 
-router.post("/admin/barter/:id/approve", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/barter/:id/approve", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const barter = await pool.query(`SELECT * FROM "BarterCampaign" WHERE id=$1 AND status='PENDING_APPROVAL'`, [req.params["id"]]);
   if (!barter.rows[0]) { res.status(404).json({ error: "Not found or not pending approval" }); return; }
@@ -1936,7 +1935,7 @@ router.post("/admin/barter/:id/approve", requireAdmin, async (req: Request, res:
   res.json({ ok: true, status: "LIVE" });
 });
 
-router.post("/admin/barter/:id/reject", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/barter/:id/reject", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { reason } = req.body;
   if (!reason?.trim()) { res.status(400).json({ error: "Rejection reason is required" }); return; }
@@ -1965,7 +1964,7 @@ router.post("/admin/barter/:id/reject", requireAdmin, async (req: Request, res: 
   res.json({ ok: true });
 });
 
-router.post("/admin/barter/:id/hold", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/barter/:id/hold", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const { message } = req.body;
   const barter = await pool.query(`SELECT * FROM "BarterCampaign" WHERE id=$1`, [req.params["id"]]);
@@ -1991,7 +1990,7 @@ router.post("/admin/barter/:id/hold", requireAdmin, async (req: Request, res: Re
 // existing deals (their own rows, independent of campaign status) are untouched.
 // Barter moves no money, so none of these touch escrow/payout/refund logic.
 
-router.post("/admin/barter/:id/pause", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/barter/:id/pause", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const barter = await pool.query(
     `SELECT id, name, status, "brandId", "expiresAt" FROM "BarterCampaign" WHERE id=$1`,
@@ -2023,7 +2022,7 @@ router.post("/admin/barter/:id/pause", requireAdmin, async (req: Request, res: R
   res.json({ ok: true, status: "PAUSED" });
 });
 
-router.post("/admin/barter/:id/resume", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/barter/:id/resume", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const barter = await pool.query(
     `SELECT id, name, status, "expiresAt", "slotCount", "slotsFilled" FROM "BarterCampaign" WHERE id=$1`,
@@ -2040,14 +2039,14 @@ router.post("/admin/barter/:id/resume", requireAdmin, async (req: Request, res: 
   res.json({ ok: true, status: resumeStatus });
 });
 
-router.post("/admin/barter/:id/extend", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/barter/:id/extend", async (req: Request, res: Response): Promise<void> => {
   const { days } = req.body;
   if (!days || parseInt(days) < 1) { res.status(400).json({ error: "days required" }); return; }
   await pool.query(`UPDATE "BarterCampaign" SET "expiresAt"="expiresAt"+($1::int * INTERVAL '1 day') WHERE id=$2`, [parseInt(days), req.params["id"]]);
   res.json({ ok: true });
 });
 
-router.post("/admin/barter/:id/expire", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/barter/:id/expire", async (req: Request, res: Response): Promise<void> => {
   await expireBarterCampaign(req.params["id"] as string);
   res.json({ ok: true });
 });

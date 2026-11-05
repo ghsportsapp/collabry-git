@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 
 const VALID_FIELD_TYPES = ["text", "number", "tel", "email", "url", "date"];
 const VALID_STATUSES = ["mandatory", "optional", "hidden"];
@@ -46,7 +45,7 @@ router.get("/brand-signup-fields", async (_req: Request, res: Response): Promise
 });
 
 // Admin: all active fields with status
-router.get("/admin/brand-signup-fields", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/brand-signup-fields", async (_req: Request, res: Response): Promise<void> => {
   const result = await pool.query(
     `SELECT id, label, "fieldType", "isRequired", "displayOrder", "isActive", status, "createdAt"
      FROM "BrandSignupField" WHERE "isActive"=true ORDER BY "displayOrder", "createdAt"`
@@ -54,7 +53,7 @@ router.get("/admin/brand-signup-fields", requireAdmin, async (_req: Request, res
   res.json(result.rows);
 });
 
-router.post("/admin/brand-signup-fields", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/brand-signup-fields", async (req: Request, res: Response): Promise<void> => {
   const { label, fieldType = "text", status = "optional" } = req.body as Record<string, any>;
   if (!label?.trim()) { res.status(400).json({ error: "Label is required" }); return; }
   if (!VALID_FIELD_TYPES.includes(fieldType)) { res.status(400).json({ error: `fieldType must be one of: ${VALID_FIELD_TYPES.join(", ")}` }); return; }
@@ -75,7 +74,7 @@ router.post("/admin/brand-signup-fields", requireAdmin, async (req: Request, res
   res.json(newField);
 });
 
-router.patch("/admin/brand-signup-fields/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/brand-signup-fields/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const { status, label, fieldType } = req.body as { status?: string; label?: string; fieldType?: string };
   const updates: string[] = [];
@@ -97,7 +96,7 @@ router.patch("/admin/brand-signup-fields/:id", requireAdmin, async (req: Request
   res.json({ ok: true });
 });
 
-router.delete("/admin/brand-signup-fields/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/brand-signup-fields/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   await pool.query(`UPDATE "BrandSignupField" SET "isActive"=false,"updatedAt"=NOW() WHERE id=$1`, [id]);
   // Remove from unified order
@@ -105,7 +104,7 @@ router.delete("/admin/brand-signup-fields/:id", requireAdmin, async (req: Reques
   res.json({ ok: true });
 });
 
-router.put("/admin/brand-signup-fields/reorder", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.put("/admin/brand-signup-fields/reorder", async (req: Request, res: Response): Promise<void> => {
   const { order } = req.body as { order: string[] };
   if (!Array.isArray(order)) { res.status(400).json({ error: "order must be an array of ids" }); return; }
   const client = await pool.connect();

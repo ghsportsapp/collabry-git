@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middleware/requireAdmin";
 
 const router: IRouter = Router();
 
@@ -14,12 +13,12 @@ function serialize(r: any) {
   };
 }
 
-router.get("/admin/revision-reasons", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get("/admin/revision-reasons", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT * FROM "RevisionReason" ORDER BY "displayOrder" ASC, "createdAt" ASC`);
   res.json({ reasons: r.rows.map(serialize) });
 });
 
-router.post("/admin/revision-reasons", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/revision-reasons", async (req: Request, res: Response): Promise<void> => {
   const reason = ((req.body?.reason as string | undefined) ?? "").trim();
   const type = (req.body?.type as string | undefined) ?? "BOTH";
   const displayOrder = Number.isFinite(Number(req.body?.displayOrder)) ? Number(req.body?.displayOrder) : 0;
@@ -35,7 +34,7 @@ router.post("/admin/revision-reasons", requireAdmin, async (req: Request, res: R
   res.json({ reason: serialize(r.rows[0]) });
 });
 
-router.patch("/admin/revision-reasons/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.patch("/admin/revision-reasons/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const fields: string[] = [];
   const params: any[] = [id];
@@ -62,7 +61,7 @@ router.patch("/admin/revision-reasons/:id", requireAdmin, async (req: Request, r
   res.json({ reason: serialize(r.rows[0]) });
 });
 
-router.delete("/admin/revision-reasons/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete("/admin/revision-reasons/:id", async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as Record<string, string>;
   const r = await pool.query(`UPDATE "RevisionReason" SET "isActive"=false, "updatedAt"=NOW() WHERE id=$1 RETURNING id`, [id]);
   if (r.rows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
