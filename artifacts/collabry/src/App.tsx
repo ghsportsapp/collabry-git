@@ -82,6 +82,7 @@ const AdvertiseBrandThankYou = lazy(() => import("@/pages/AdvertiseBrandThankYou
 const WhiteGloveThankYou = lazy(() => import("@/pages/WhiteGloveThankYou"));
 const AdminWhiteGlove = lazy(() => import("@/pages/AdminWhiteGlove"));
 const AdminAdvertisements = lazy(() => import("@/pages/AdminAdvertisements"));
+const ManageAdmins = lazy(() => import("@/pages/ManageAdmins"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 // Section guard: redirects a logged-in admin to the dashboard if they lack the
@@ -166,6 +167,7 @@ function Router() {
       <AR path="/admin-collabryangad/contact-us" component={AdminAboutUs} section="about-us" />
       <AR path="/admin-collabryangad/white-glove" component={AdminWhiteGlove} section="white-glove" />
       <AR path="/admin-collabryangad/advertisement" component={AdminAdvertisements} section="advertisement" />
+      <AR path="/admin-collabryangad/manage-admins" component={ManageAdmins} section="manage-admins" />
 
       <Route path="/brand" component={BrandLandingPage} />
       <Route path="/creator" component={CreatorLandingPage} />

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Layout, Settings, Users, ArrowRight, CreditCard, Tag, LogOut, FileText, Star, Megaphone, Sliders, Info, Video, KeyRound, Eye, EyeOff, CheckCircle, Sparkles, Image as ImageIcon } from "lucide-react";
+import { Layout, Settings, Users, ArrowRight, CreditCard, Tag, LogOut, FileText, Star, Megaphone, Sliders, Info, Video, KeyRound, Eye, EyeOff, CheckCircle, Sparkles, Image as ImageIcon, Shield } from "lucide-react";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { clearAdminSession, verifyAdminPassword, changeAdminPassword, verifyAdminOtp, checkLocked, recordFailedAttempt, clearAttempts, LOCK_DURATION_MS } from "@/lib/adminAuth";
 
@@ -24,6 +24,8 @@ const pages = [
   { id: "deal-management", title: "Deal Management", desc: "Configure deal settings (timelines, helper text) and view every finalized deal across paid, barter and matchmaking.", icon: Settings, href: "/admin-collabryangad/deal-management", status: "Live", statusColor: "bg-green-500" },
   { id: "matchmaking", title: "Matchmaking Config", desc: "Configure scoring weights, parameter cards, adjacency rules, field options, result filters and creator profile visibility for the brand matchmaking engine.", icon: Sliders, href: "/admin-collabryangad/matchmaking", status: "Live", statusColor: "bg-green-500" },
   { id: "landing-videos", title: "Videos", desc: "Upload and manage videos and thumbnails for landing pages and other sections.", icon: Video, href: "/admin-collabryangad/landing-videos", status: "Live", statusColor: "bg-green-500" },
+  // Super-admin only: filtered in via isSuperAdmin (no normal admin can hold the "manage-admins" key).
+  { id: "manage-admins", title: "Manage Admins", desc: "Create admin accounts, set each one's password, OTP and allowed sections, and enable, disable or delete them.", icon: Shield, href: "/admin-collabryangad/manage-admins", status: "Live", statusColor: "bg-green-500" },
 ];
 
 const comingSoon = [

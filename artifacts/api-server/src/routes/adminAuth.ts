@@ -66,12 +66,23 @@ router.post("/auth/admin/login-legacy", async (req: Request, res: Response): Pro
 // affect another account or device.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// In-process, per-account login throttle (~3 tries / 5 min). Per-process only —
-// fine for a single admin API node; a shared store can replace it if scaled out.
-const LOGIN_MAX_ATTEMPTS = 3;
+// In-process login throttle, keyed PER-DEVICE (request IP) — 5 fails → lock that
+// device for 5 min. One device's bad attempts never lock the account on another
+// device, nor any other admin. A successful verify OR login resets the device's
+// counter, so a correct password is never falsely locked by earlier typos.
+// Per-process only — fine for a single admin API node.
+const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
 const loginAttempts = new Map<string, { attempts: number; lockedUntil: number }>();
 
+/** Best-effort client/device IP — first X-Forwarded-For hop (behind nginx) or
+ *  the socket address. Good enough as a per-device lockout key. */
+function clientIp(req: Request): string {
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string" && xff.trim()) return xff.split(",")[0]!.trim();
+  if (Array.isArray(xff) && xff.length) return String(xff[0]).trim();
+  return req.ip || req.socket?.remoteAddress || "unknown";
+}
 function loginLockRemaining(key: string): number {
   const s = loginAttempts.get(key);
   if (!s) return 0;
@@ -102,14 +113,14 @@ router.post("/auth/admin/login/verify", async (req: Request, res: Response): Pro
     res.status(400).json({ error: "Email and password are required" });
     return;
   }
-  const key = email.trim().toLowerCase();
+  const key = clientIp(req); // per-device lockout key
 
   const locked = loginLockRemaining(key);
   if (locked > 0) { sendLocked(res, locked); return; }
 
   const result = await pool.query(
     `SELECT id, "passwordHash", "disabled" FROM "Admin" WHERE LOWER(email) = LOWER($1) LIMIT 1`,
-    [key]
+    [email.trim().toLowerCase()]
   );
   if (result.rows.length === 0) { recordLoginFail(key); res.status(401).json({ error: "Incorrect email or password" }); return; }
   const admin = result.rows[0];
@@ -118,7 +129,9 @@ router.post("/auth/admin/login/verify", async (req: Request, res: Response): Pro
   const pwOk = await comparePassword(password, admin.passwordHash ?? "");
   if (!pwOk) { recordLoginFail(key); res.status(401).json({ error: "Incorrect email or password" }); return; }
 
-  // Correct — hand back a short-lived token that only the OTP step accepts.
+  // Correct — reset this device's counter and hand back a short-lived token
+  // that only the OTP step accepts.
+  clearLoginFail(key);
   res.json({ ok: true, preAuthToken: generateAdminPreAuthToken(admin.id) });
 });
 
@@ -154,7 +167,7 @@ router.post("/auth/admin/login", async (req: Request, res: Response): Promise<vo
   const admin = result.rows[0];
   if (admin.disabled) { res.status(403).json({ error: "Account disabled" }); return; }
 
-  const key = String(admin.email ?? "").toLowerCase();
+  const key = clientIp(req); // per-device lockout key
   const locked = loginLockRemaining(key);
   if (locked > 0) { sendLocked(res, locked); return; }
 
