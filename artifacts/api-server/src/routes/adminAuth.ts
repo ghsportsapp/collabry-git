@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { pool } from "@workspace/db";
-import { comparePassword, generateAccessToken, generateRefreshToken, getAdminSecret, UserType } from "../lib/auth";
+import { comparePassword, generateAccessToken, generateAdminPreAuthToken, generateRefreshToken, getAdminSecret, verifyToken, UserType } from "../lib/auth";
 import { saveRefreshToken } from "../lib/session";
 import { requireAdminAuth } from "../middleware/requireAdminAuth";
 import { requireSection } from "../middleware/requireSection";
@@ -58,17 +58,16 @@ router.post("/auth/admin/login-legacy", async (req: Request, res: Response): Pro
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RBAC login + dormant diagnostics (Phase 1).
-//
-// These are ADDITIVE and not wired to the live panel or to any existing admin
-// data route. They exist so the new auth core can be exercised end-to-end (and
-// so Phase 2 has a working login to cut the panel over to). Nothing here gates
-// or changes any current admin endpoint.
+// RBAC login — two steps:
+//   1) POST /auth/admin/login/verify  {email,password} → short-lived preAuthToken
+//   2) POST /auth/admin/login         {preAuthToken,otp} → admin JWT
+// Step 2 requires the step-1 token, so the OTP step can't be skipped. Lockout is
+// PER-ACCOUNT (keyed by lowercased email): one account's bad attempts never
+// affect another account or device.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Simple in-process login throttle (mirrors the panel's 3-try / 5-min lock).
-// Per-process only — fine for a single admin API node; a shared store can
-// replace it later if the API is scaled out.
+// In-process, per-account login throttle (~3 tries / 5 min). Per-process only —
+// fine for a single admin API node; a shared store can replace it if scaled out.
 const LOGIN_MAX_ATTEMPTS = 3;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
 const loginAttempts = new Map<string, { attempts: number; lockedUntil: number }>();
@@ -88,42 +87,79 @@ function recordLoginFail(key: string): void {
 function clearLoginFail(key: string): void {
   loginAttempts.delete(key);
 }
+function sendLocked(res: Response, remainingMs: number): void {
+  const secs = Math.ceil(remainingMs / 1000);
+  const mins = Math.max(1, Math.ceil(secs / 60));
+  res.status(429).json({ error: `Too many attempts. Try again in ${mins} min.`, retryAfterSeconds: secs });
+}
 
-// POST /auth/admin/login — email + password + per-account OTP → admin JWT.
-// This is the canonical admin login the panel uses (promoted from Phase 1's
-// /login-rbac). The legacy username+password handler lives at /login-legacy.
-router.post("/auth/admin/login", async (req: Request, res: Response): Promise<void> => {
-  const { email, password, otp } = (req.body ?? {}) as { email?: string; password?: string; otp?: string };
-  if (!email?.trim() || !password || !otp) {
-    res.status(400).json({ error: "Email, password and OTP are required" });
+// Step 1 — verify email + password. On success returns a 5-minute pre-auth token
+// the OTP step requires. Password validity is revealed before OTP (accepted
+// product decision). Failures count toward the per-account lockout.
+router.post("/auth/admin/login/verify", async (req: Request, res: Response): Promise<void> => {
+  const { email, password } = (req.body ?? {}) as { email?: string; password?: string };
+  if (!email?.trim() || !password) {
+    res.status(400).json({ error: "Email and password are required" });
     return;
   }
   const key = email.trim().toLowerCase();
 
-  if (loginLockRemaining(key) > 0) {
-    res.status(429).json({ error: "Too many attempts. Please try again later." });
+  const locked = loginLockRemaining(key);
+  if (locked > 0) { sendLocked(res, locked); return; }
+
+  const result = await pool.query(
+    `SELECT id, "passwordHash", "disabled" FROM "Admin" WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+    [key]
+  );
+  if (result.rows.length === 0) { recordLoginFail(key); res.status(401).json({ error: "Incorrect email or password" }); return; }
+  const admin = result.rows[0];
+  if (admin.disabled) { res.status(403).json({ error: "Account disabled" }); return; }
+
+  const pwOk = await comparePassword(password, admin.passwordHash ?? "");
+  if (!pwOk) { recordLoginFail(key); res.status(401).json({ error: "Incorrect email or password" }); return; }
+
+  // Correct — hand back a short-lived token that only the OTP step accepts.
+  res.json({ ok: true, preAuthToken: generateAdminPreAuthToken(admin.id) });
+});
+
+// Step 2 — pre-auth token + per-account OTP → admin JWT. The pre-auth token
+// proves step 1 passed; without it OTP can't be submitted.
+router.post("/auth/admin/login", async (req: Request, res: Response): Promise<void> => {
+  const { preAuthToken, otp } = (req.body ?? {}) as { preAuthToken?: string; otp?: string };
+  if (!preAuthToken || !otp) {
+    res.status(400).json({ error: "OTP is required" });
+    return;
+  }
+
+  // Validate the step-1 token (admin secret, scope=preauth, not expired).
+  let adminId: string;
+  try {
+    const payload = verifyToken(preAuthToken, getAdminSecret());
+    if (payload.userType !== "ADMIN" || payload.scope !== "preauth") throw new Error("not a preauth token");
+    adminId = payload.userId;
+  } catch {
+    res.status(401).json({ error: "Your session expired. Please re-enter your email and password.", code: "PREAUTH_EXPIRED" });
     return;
   }
 
   const result = await pool.query(
-    `SELECT id, username, email, name, "passwordHash", "otpHash", "isSuperAdmin", "disabled", "allowedSections"
-     FROM "Admin" WHERE LOWER(email) = LOWER($1) LIMIT 1`,
-    [key]
+    `SELECT id, username, email, name, "otpHash", "isSuperAdmin", "disabled", "allowedSections"
+     FROM "Admin" WHERE id = $1 LIMIT 1`,
+    [adminId]
   );
-
-  // Generic failure — never reveal which factor was wrong (avoids enumeration).
-  const fail = () => { recordLoginFail(key); res.status(401).json({ error: "Invalid credentials" }); };
-
-  if (result.rows.length === 0) { fail(); return; }
+  if (result.rows.length === 0) {
+    res.status(401).json({ error: "Your session expired. Please re-enter your email and password.", code: "PREAUTH_EXPIRED" });
+    return;
+  }
   const admin = result.rows[0];
+  if (admin.disabled) { res.status(403).json({ error: "Account disabled" }); return; }
 
-  if (admin.disabled) { recordLoginFail(key); res.status(403).json({ error: "Account disabled" }); return; }
-
-  const pwOk = await comparePassword(password, admin.passwordHash ?? "");
-  if (!pwOk) { fail(); return; }
+  const key = String(admin.email ?? "").toLowerCase();
+  const locked = loginLockRemaining(key);
+  if (locked > 0) { sendLocked(res, locked); return; }
 
   const otpOk = admin.otpHash ? await comparePassword(String(otp), admin.otpHash) : false;
-  if (!otpOk) { fail(); return; }
+  if (!otpOk) { recordLoginFail(key); res.status(401).json({ error: "Incorrect OTP" }); return; }
 
   clearLoginFail(key);
 

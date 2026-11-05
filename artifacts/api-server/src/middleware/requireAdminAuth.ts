@@ -37,6 +37,11 @@ export async function requireAdminAuth(req: Request, res: Response, next: NextFu
       res.status(403).json({ error: "Admin access required" });
       return;
     }
+    // A step-1 (preauth) token only unlocks the OTP step — never real admin APIs.
+    if (payload.scope === "preauth") {
+      res.status(401).json({ error: "Invalid or expired token" });
+      return;
+    }
     adminId = payload.userId;
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });

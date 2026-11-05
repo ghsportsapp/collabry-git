@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useCallback, useEffect, useState, type ReactNode } from "react";
 import { getAdminAuth, createAdminAuthSession, clearAdminSession, type AdminAuthData } from "@/lib/adminAuth";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -22,27 +22,29 @@ interface AdminAuthContextValue extends AdminAuthState {
 const AdminAuthContext = createContext<AdminAuthContextValue | null>(null);
 
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
-  const auth = getAdminAuth();
-  const accessToken = auth?.token ?? null;
-  const adminId = auth?.adminId ?? null;
-  const username = auth?.username ?? null;
-  const name = auth?.name ?? null;
-  const isSuperAdmin = auth?.isSuperAdmin ?? false;
-  const allowedSections = auth?.allowedSections ?? [];
-  const loading = false;
+  // Lazy initializer reads the stored session synchronously on mount, so a
+  // logged-in admin is rehydrated across a page refresh (until logout/timeout).
+  const [auth, setAuthState] = useState<AdminAuthData | null>(() => getAdminAuth());
+
+  // Re-read once after mount to pick up any session written just before this
+  // provider mounted (and to drop an expired one).
+  useEffect(() => { setAuthState(getAdminAuth()); }, []);
 
   const setAuth = useCallback((data: AdminAuthData) => {
-    createAdminAuthSession(data);
+    createAdminAuthSession(data); // persist for refresh
+    setAuthState(data);           // update in-memory immediately (no refresh needed)
   }, []);
 
   const clearAuth = useCallback(() => {
     clearAdminSession();
+    setAuthState(null);
   }, []);
 
   const adminFetch = useCallback(async (path: string, options: RequestInit = {}): Promise<Response> => {
     const cleanPath = path.startsWith(BASE_URL) ? path.slice(BASE_URL.length) : path;
-    // Read the token fresh so a login/logout mid-session is reflected without a reload.
-    const token = getAdminAuth()?.token ?? null;
+    // Read the token fresh from storage so it's always current (and correct even
+    // right after a rehydrate), then send it as a Bearer header.
+    const token = getAdminAuth()?.token ?? auth?.token ?? null;
     return fetch(`${BASE_URL}${cleanPath}`, {
       ...options,
       credentials: "include",
@@ -52,10 +54,23 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         ...(options.headers ?? {}),
       },
     });
-  }, []);
+  }, [auth]);
 
   return (
-    <AdminAuthContext.Provider value={{ accessToken, adminId, username, name, isSuperAdmin, allowedSections, loading, setAuth, clearAuth, adminFetch }}>
+    <AdminAuthContext.Provider
+      value={{
+        accessToken: auth?.token ?? null,
+        adminId: auth?.adminId ?? null,
+        username: auth?.username ?? null,
+        name: auth?.name ?? null,
+        isSuperAdmin: auth?.isSuperAdmin ?? false,
+        allowedSections: auth?.allowedSections ?? [],
+        loading: false,
+        setAuth,
+        clearAuth,
+        adminFetch,
+      }}
+    >
       {children}
     </AdminAuthContext.Provider>
   );

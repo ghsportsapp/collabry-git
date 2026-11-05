@@ -22,6 +22,7 @@ export default function AdminLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
+  const [preAuthToken, setPreAuthToken] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -33,14 +34,40 @@ export default function AdminLogin() {
 
   useEffect(() => { if (step === "otp") otpRef.current?.focus(); }, [step]);
 
-  const toOtp = (e: React.FormEvent) => {
+  // Step 1 — verify email + password on the backend BEFORE advancing to OTP.
+  const verifyCreds = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     if (!email.trim() || !password) { setError("Email and password are required."); return; }
-    setStep("otp");
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/admin/login/verify`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d?.preAuthToken) {
+        setPreAuthToken(d.preAuthToken);
+        setOtp("");
+        setStep("otp");
+      } else if (res.status === 429) {
+        setError(d?.error ?? "Too many attempts. Please try again later.");
+      } else if (res.status === 403) {
+        setError(d?.error ?? "Account disabled.");
+      } else {
+        setError("Incorrect email or password.");
+      }
+    } catch {
+      setError("Could not reach the server. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const submit = async (e: React.FormEvent) => {
+  // Step 2 — submit OTP with the pre-auth token to receive the admin JWT.
+  const submitOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (otp.length < 4) return;
     setSubmitting(true);
@@ -50,10 +77,10 @@ export default function AdminLogin() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password, otp: otp.trim() }),
+        body: JSON.stringify({ preAuthToken, otp: otp.trim() }),
       });
+      const d = await res.json().catch(() => ({}));
       if (res.ok) {
-        const d = await res.json();
         setAuth({
           token: d.accessToken,
           adminId: d.adminId,
@@ -66,11 +93,14 @@ export default function AdminLogin() {
         return;
       }
       if (res.status === 429) {
-        setError("Too many attempts. Please try again in a few minutes.");
+        setError(d?.error ?? "Too many attempts. Please try again later.");
+      } else if (d?.code === "PREAUTH_EXPIRED") {
+        // Pre-auth token expired/invalid — send back to step 1.
+        setPreAuthToken(""); setOtp(""); setStep("creds");
+        setError(d?.error ?? "Your session expired. Please sign in again.");
       } else {
-        setError("Invalid credentials.");
+        setError("Incorrect OTP.");
         setOtp("");
-        setStep("creds");
       }
     } catch {
       setError("Could not reach the server. Please try again.");
@@ -97,7 +127,7 @@ export default function AdminLogin() {
           {step === "creds" ? (
             <>
               <h1 className="text-white font-bold text-lg mb-6 text-center">Admin Login</h1>
-              <form onSubmit={toOtp} className="space-y-4">
+              <form onSubmit={verifyCreds} className="space-y-4">
                 <div>
                   <label className="block text-white/70 text-xs font-medium mb-1.5">Email</label>
                   <input className={inputClass} type="email" placeholder="admin@example.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
@@ -111,14 +141,14 @@ export default function AdminLogin() {
                     </button>
                   </div>
                 </div>
-                <button type="submit" className="w-full py-3 rounded-full text-white font-semibold text-sm transition-opacity mt-2" style={{ background: PINK }}>Continue</button>
+                <button type="submit" disabled={submitting} className="w-full py-3 rounded-full text-white font-semibold text-sm disabled:opacity-50 transition-opacity mt-2" style={{ background: PINK }}>{submitting ? "Verifying…" : "Continue"}</button>
               </form>
             </>
           ) : (
             <>
               <h1 className="text-white font-bold text-lg mb-2 text-center">Verify OTP</h1>
               <p className="text-white/50 text-xs text-center mb-6">Enter your account's OTP code to sign in.</p>
-              <form onSubmit={submit} className="space-y-4">
+              <form onSubmit={submitOtp} className="space-y-4">
                 <div>
                   <label className="block text-white/70 text-xs font-medium mb-1.5">OTP</label>
                   <input ref={otpRef} className={inputClass + " text-center text-xl tracking-[0.4em] font-semibold"} type="text" inputMode="numeric" maxLength={6}

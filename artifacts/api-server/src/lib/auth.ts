@@ -11,6 +11,9 @@ export enum UserType {
 export interface TokenPayload {
   userId: string;
   userType: UserType;
+  /** Set to "preauth" on the short-lived admin step-1 token. A preauth token is
+   *  only accepted by the admin OTP step — never by requireAdminAuth. */
+  scope?: string;
   iat?: number;
   exp?: number;
 }
@@ -35,6 +38,17 @@ export function generateAccessToken(
   const payload: Omit<TokenPayload, "iat" | "exp"> = { userId, userType };
   const options: SignOptions = { expiresIn: "15m" };
   return jwt.sign(payload, secret, options);
+}
+
+/** Short-lived admin step-1 token: proves email+password were verified, so the
+ *  OTP step can't be skipped. Carries scope "preauth" and is rejected by
+ *  requireAdminAuth (it only grants access to the OTP step). */
+export function generateAdminPreAuthToken(userId: string): string {
+  return jwt.sign(
+    { userId, userType: UserType.ADMIN, scope: "preauth" },
+    getAdminSecret(),
+    { expiresIn: "5m" } as SignOptions
+  );
 }
 
 export function generateRefreshToken(
