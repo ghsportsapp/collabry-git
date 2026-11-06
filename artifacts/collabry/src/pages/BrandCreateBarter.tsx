@@ -582,6 +582,23 @@ export default function BrandCreateBarter() {
         {/* STEP 4: Review & Submit */}
         {step === 4 && (
           <div>
+            {/* White Glove informational notice (text only — no gating/enforcement). */}
+            <div className="rounded-xl px-4 py-3 mb-4 flex items-start gap-2.5"
+              style={{ background: "rgba(240,24,122,0.08)", border: "1px solid rgba(240,24,122,0.25)" }}>
+              <Info className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: PINK }} />
+              <p className="text-white/85 text-xs leading-relaxed" style={{ fontFamily: POPPINS }}>
+                You need to be a White Glove member to run a barter campaign.{" "}
+                <button
+                  type="button"
+                  onClick={() => navigate("/contact-us")}
+                  className="font-semibold underline underline-offset-2 hover:opacity-80 transition-opacity"
+                  style={{ color: PINK, background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: POPPINS }}>
+                  Contact us
+                </button>{" "}
+                for more details.
+              </p>
+            </div>
+
             {/* Credits info box */}
             {(() => {
               const cost = barterCost ?? 5;
