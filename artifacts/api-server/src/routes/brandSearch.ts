@@ -699,7 +699,7 @@ router.get("/brand/creators/:id/profile", requireBrand, async (req: Request, res
   const [c, funQR, funOptR, funAnsR, activeDeal] = await Promise.all([
     pool.query(
       `SELECT id, "fullName", "instagramHandle", "profilePhotoUrl", bio, "followerCount", images,
-              gender, state, email, phone, "contentType",
+              gender, state, email, "contentType",
               EXTRACT(YEAR FROM AGE(NOW(), "dateOfBirth"))::int as "creatorAge",
               "audienceGenderFemale","audienceGenderMale","audienceAge","audienceLocation","campaignGoal",
               "reelPriceMin","reelPriceMax","storyPriceMin","storyPriceMax","postPriceMin","postPriceMax",
@@ -754,7 +754,6 @@ router.get("/brand/creators/:id/profile", requireBrand, async (req: Request, res
       gender: cr.gender ?? null,
       state: cr.state ?? null,
       email: cr.email ?? null,
-      phone: cr.phone ?? null,
       contentType: cr.contentType ?? null,
       audienceGenderFemale: cr.audienceGenderFemale,
       audienceGenderMale: cr.audienceGenderMale,

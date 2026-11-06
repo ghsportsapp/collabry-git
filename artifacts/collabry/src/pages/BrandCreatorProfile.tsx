@@ -10,7 +10,7 @@ interface FullProfile {
     id: string; fullName: string | null; instagramHandle: string;
     profilePhotoUrl: string | null; bio: string | null;
     gender: string | null; state: string | null;
-    email: string | null; phone: string | null; contentType: string | null;
+    email: string | null; contentType: string | null;
     followerCount: number;
     audienceGenderFemale: number | null; audienceGenderMale: number | null;
     audienceAge: string | null; audienceLocation: string | null; campaignGoal: string | null;
@@ -410,7 +410,6 @@ export default function BrandCreatorProfile() {
               </div>
               <div className="grid grid-cols-3 gap-3 sm:gap-6">
                 {[
-                  { label: "Phone", value: c.phone || "—" },
                   { label: "E-mail", value: c.email || "—" },
                   { label: "Primary Content Style", value: c.contentType || "—" },
                 ].map(({ label, value }) => (
