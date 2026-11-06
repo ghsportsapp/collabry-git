@@ -90,6 +90,8 @@ const SECTION_PREFIXES: Array<{ prefix: string; sections: string[] }> = [
   { prefix: "/admin/invoices", sections: ["deal-management"] },
   // matchmaking
   { prefix: "/admin/matchmaking", sections: ["matchmaking"] },
+  // chatbot
+  { prefix: "/admin/chatbot", sections: ["chatbot"] },
   // about-us / legal / white-glove / advertisement
   { prefix: "/admin/about-us", sections: ["about-us"] },
   { prefix: "/admin/legal", sections: ["legal"] },

@@ -45,6 +45,7 @@ import advertisePurchaseRouter from "./advertisePurchase";
 import adsRouter from "./ads";
 import adLeadsRouter from "./adLeads";
 import adminManageAdminsRouter from "./adminManageAdmins";
+import chatbotRouter from "./chatbot";
 import { adminGuard } from "../middleware/adminGuard";
 
 const router: IRouter = Router();
@@ -98,6 +99,7 @@ router.use(advertisePurchaseRouter);
 router.use(adsRouter);
 router.use(adLeadsRouter);
 router.use(adminManageAdminsRouter);
+router.use(chatbotRouter);
 
 router.get("/server-time", (_req: Request, res: Response) => {
   res.json({ ts: Date.now() });

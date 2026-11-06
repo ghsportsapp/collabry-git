@@ -83,6 +83,8 @@ const WhiteGloveThankYou = lazy(() => import("@/pages/WhiteGloveThankYou"));
 const AdminWhiteGlove = lazy(() => import("@/pages/AdminWhiteGlove"));
 const AdminAdvertisements = lazy(() => import("@/pages/AdminAdvertisements"));
 const ManageAdmins = lazy(() => import("@/pages/ManageAdmins"));
+const AdminChatbot = lazy(() => import("@/pages/AdminChatbot"));
+const ChatbotMount = lazy(() => import("@/components/ChatbotWidget"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 // Section guard: redirects a logged-in admin to the dashboard if they lack the
@@ -168,6 +170,7 @@ function Router() {
       <AR path="/admin-collabryangad/white-glove" component={AdminWhiteGlove} section="white-glove" />
       <AR path="/admin-collabryangad/advertisement" component={AdminAdvertisements} section="advertisement" />
       <AR path="/admin-collabryangad/manage-admins" component={ManageAdmins} section="manage-admins" />
+      <AR path="/admin-collabryangad/chatbot" component={AdminChatbot} section="chatbot" />
 
       <Route path="/brand" component={BrandLandingPage} />
       <Route path="/creator" component={CreatorLandingPage} />
@@ -222,6 +225,10 @@ function App() {
                 <TopProgressBar />
                 <Suspense fallback={<PageLoader />}>
                   <Router />
+                </Suspense>
+                {/* Scripted chatbot — brand bot on brand pages, creator bot on creator pages. */}
+                <Suspense fallback={null}>
+                  <ChatbotMount />
                 </Suspense>
               </WouterRouter>
             </CreatorAuthProvider>

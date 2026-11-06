@@ -25,6 +25,7 @@ const SECTIONS: Array<{ key: string; label: string }> = [
   { key: "deal-management", label: "Deal Management" },
   { key: "matchmaking", label: "Matchmaking" },
   { key: "landing-videos", label: "Videos" },
+  { key: "chatbot", label: "Chatbot" },
 ];
 const LABEL: Record<string, string> = Object.fromEntries(SECTIONS.map((s) => [s.key, s.label]));
 

@@ -30,6 +30,7 @@ export const ADMIN_SECTION_KEYS = [
   "deal-management",
   "matchmaking",
   "landing-videos",
+  "chatbot",
 ] as const;
 
 export type AdminSectionKey = (typeof ADMIN_SECTION_KEYS)[number];
@@ -90,6 +91,7 @@ export const SECTION_ROUTE_GROUPS: Record<AdminSectionKey, string[]> = {
   ],
   "matchmaking": ["/admin/matchmaking"],
   "landing-videos": ["/admin/landing-videos"],
+  "chatbot": ["/admin/chatbot"],
 };
 
 /**
