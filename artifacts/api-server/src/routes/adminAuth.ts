@@ -177,7 +177,10 @@ router.post("/auth/admin/login", async (req: Request, res: Response): Promise<vo
   clearLoginFail(key);
 
   const adminSecret = getAdminSecret();
-  const accessToken = generateAccessToken(admin.id, UserType.ADMIN, adminSecret);
+  // 8h access token (matches the refresh cookie window). The panel has no
+  // refresh flow; the real control is the 5-min client-side idle logout, so this
+  // must be long enough that an active admin's API calls never 401.
+  const accessToken = generateAccessToken(admin.id, UserType.ADMIN, adminSecret, "8h");
   const refreshToken = generateRefreshToken(admin.id, UserType.ADMIN);
   await saveRefreshToken(admin.id, UserType.ADMIN, refreshToken);
 

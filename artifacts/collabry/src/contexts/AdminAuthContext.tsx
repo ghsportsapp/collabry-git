@@ -1,5 +1,5 @@
 import { createContext, useContext, useCallback, useEffect, useState, type ReactNode } from "react";
-import { getAdminAuth, createAdminAuthSession, clearAdminSession, type AdminAuthData } from "@/lib/adminAuth";
+import { getAdminAuth, createAdminAuthSession, clearAdminSession, updateAdminActivity, type AdminAuthData } from "@/lib/adminAuth";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
@@ -45,7 +45,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     // Read the token fresh from storage so it's always current (and correct even
     // right after a rehydrate), then send it as a Bearer header.
     const token = getAdminAuth()?.token ?? auth?.token ?? null;
-    return fetch(`${BASE_URL}${cleanPath}`, {
+    const res = await fetch(`${BASE_URL}${cleanPath}`, {
       ...options,
       credentials: "include",
       headers: {
@@ -54,6 +54,10 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         ...(options.headers ?? {}),
       },
     });
+    // A successful API call is activity — keep an actively-used panel alive so
+    // only a genuinely idle one (5 min, no calls, no input) logs out.
+    if (res.ok) updateAdminActivity();
+    return res;
   }, [auth]);
 
   return (

@@ -4,7 +4,9 @@
 // entirely on the backend (/auth/admin/login[/verify], adminGuard).
 
 const SESSION_KEY = "collabry_admin_session";
-export const INACTIVITY_MS = 10 * 60 * 1000;
+// Idle logout window: the admin stays logged in until Logout or 5 full minutes
+// of genuine inactivity. Any activity (mouse/key/scroll/nav/API call) resets it.
+export const INACTIVITY_MS = 5 * 60 * 1000;
 
 interface AdminSession {
   token: string;

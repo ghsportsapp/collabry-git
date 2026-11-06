@@ -33,10 +33,14 @@ function getAdminSecret(): string {
 export function generateAccessToken(
   userId: string,
   userType: UserType,
-  secret: string
+  secret: string,
+  // Brand/creator keep the short 15m access token (they auto-refresh). The admin
+  // panel has no refresh flow and relies on a 5-min client-side idle logout, so
+  // it passes a longer lifetime here — an active admin's calls must never 401.
+  expiresIn: string = "15m"
 ): string {
   const payload: Omit<TokenPayload, "iat" | "exp"> = { userId, userType };
-  const options: SignOptions = { expiresIn: "15m" };
+  const options: SignOptions = { expiresIn } as SignOptions;
   return jwt.sign(payload, secret, options);
 }
 
