@@ -248,6 +248,19 @@ router.post("/brand/campaigns/create", requireBrand, async (req: Request, res: R
   const price = parseFloat(pricePerCreator);
   const slots = parseInt(slotCount);
 
+  // Posting credits scale with slots: perSlot × slots. Reject server-side if the
+  // brand can't cover it (don't rely on the UI block alone).
+  const perSlotCredits = parseInt(await getCfg("campaign_credits_cost", "1"));
+  const requiredCredits = perSlotCredits * slots;
+  {
+    const balRow = await pool.query(`SELECT "creditBalance" FROM "Brand" WHERE id=$1`, [brandId]);
+    const balance = parseInt(String(balRow.rows[0]?.creditBalance ?? "0"));
+    if (balance < requiredCredits) {
+      res.status(400).json({ error: `Insufficient credits: ${requiredCredits} needed for ${slots} slot(s) (${perSlotCredits}/slot); your balance is ${balance}.`, required: requiredCredits, balance, perSlot: perSlotCredits });
+      return;
+    }
+  }
+
   const campaignId = (await pool.query(
     `INSERT INTO "Campaign" (id,"brandId",name,type,brief,"reelScript","keyMessage","dosAndDonts",
      "pricePerCreator","slotCount","slotsFilled","timelineDays","productRequired","productName","productDescription","productPhotos","deliveryWindowDays","productDeliveryDays",
@@ -1006,6 +1019,19 @@ router.post("/brand/barter/create", requireBrand, async (req: Request, res: Resp
   const dur = parseInt(durationDays);
   if (dur < minDays || dur > maxDays) { res.status(400).json({ error: `Campaign duration must be ${minDays}–${maxDays} days` }); return; }
 
+  // Posting credits scale with slots: perSlot × slots. Reject if insufficient.
+  {
+    const slots = parseInt(slotCount);
+    const perSlotCredits = parseInt(await getCfg("barter_credits_cost", "5"));
+    const requiredCredits = perSlotCredits * slots;
+    const balRow = await pool.query(`SELECT "creditBalance" FROM "Brand" WHERE id=$1`, [brandId]);
+    const balance = parseInt(String(balRow.rows[0]?.creditBalance ?? "0"));
+    if (balance < requiredCredits) {
+      res.status(400).json({ error: `Insufficient credits: ${requiredCredits} needed for ${slots} slot(s) (${perSlotCredits}/slot); your balance is ${balance}.`, required: requiredCredits, balance, perSlot: perSlotCredits });
+      return;
+    }
+  }
+
   await pool.query(`ALTER TABLE "BarterCampaign" ADD COLUMN IF NOT EXISTS "script" TEXT`);
 
   const barterId = (await pool.query(
@@ -1737,7 +1763,8 @@ router.post("/admin/campaigns/:id/approve", async (req: Request, res: Response):
   const camp = await pool.query(`SELECT * FROM "Campaign" WHERE id=$1 AND status='PENDING_APPROVAL'`, [id]);
   if (!camp.rows[0]) { res.status(404).json({ error: "Campaign not found or not pending approval" }); return; }
   const c = camp.rows[0];
-  const creditsCost = parseInt(await getCfg("campaign_credits_cost", "1"));
+  // Credits scale with slots: perSlot × slotCount.
+  const creditsCost = parseInt(await getCfg("campaign_credits_cost", "1")) * (parseInt(String(c.slotCount)) || 1);
   // Use the brand-supplied campaign expiry (stored in deliveryWindowDays); fall back to platform default
   const durationDays = parseInt(c.deliveryWindowDays ?? await getCfg("max_campaign_days", "30"));
   const brandBalance = await pool.query(`SELECT "creditBalance" FROM "Brand" WHERE id=$1`, [c.brandId]);
@@ -1873,7 +1900,8 @@ router.post("/admin/barter/:id/approve", async (req: Request, res: Response): Pr
   const barter = await pool.query(`SELECT * FROM "BarterCampaign" WHERE id=$1 AND status='PENDING_APPROVAL'`, [req.params["id"]]);
   if (!barter.rows[0]) { res.status(404).json({ error: "Not found or not pending approval" }); return; }
   const b = barter.rows[0];
-  const creditsCost = parseInt(await getCfg("barter_credits_cost", "5"));
+  // Credits scale with slots: perSlot × slotCount.
+  const creditsCost = parseInt(await getCfg("barter_credits_cost", "5")) * (parseInt(String(b.slotCount)) || 1);
   const durationDays = b.durationDays ?? parseInt(await getCfg("max_barter_days", "30"));
   const brandBalance = await pool.query(`SELECT "creditBalance" FROM "Brand" WHERE id=$1`, [b.brandId]);
   const balance = brandBalance.rows[0]?.creditBalance ?? 0;

@@ -420,7 +420,7 @@ export default function AdminPlatformSettings() {
                       <NumInput label="Default campaign duration (days)" value={campaignSettings.default_campaign_days} onChange={setCamp("default_campaign_days")} />
                       <NumInput label="Min price per creator ₹" value={campaignSettings.min_campaign_price} onChange={setCamp("min_campaign_price")} />
                       <NumInput label="Max slots per campaign" value={campaignSettings.max_campaign_slots} onChange={setCamp("max_campaign_slots")} />
-                      <NumInput label="Credits required to post" value={campaignSettings.campaign_credits_cost} onChange={setCamp("campaign_credits_cost")} hint="0 = no credits required" />
+                      <NumInput label="Credits required PER SLOT to post a campaign" value={campaignSettings.campaign_credits_cost} onChange={setCamp("campaign_credits_cost")} hint="Per slot — total = this × number of slots. 0 = no credits required." />
                     </div>
                     <div className="mt-2 mb-5">
                       <label className={labelClass}>Campaign approval required</label>
@@ -479,7 +479,7 @@ export default function AdminPlatformSettings() {
                     <div className="grid sm:grid-cols-2 gap-x-6">
                       <NumInput label="Min barter duration (days)" value={barterSettings.min_barter_days} onChange={setBarter("min_barter_days")} />
                       <NumInput label="Max barter duration (days)" value={barterSettings.max_barter_days} onChange={setBarter("max_barter_days")} />
-                      <NumInput label="Credits per creator slot" value={barterSettings.barter_credits_cost} onChange={setBarter("barter_credits_cost")} hint="Deducted from brand on approval" />
+                      <NumInput label="Credits required PER SLOT to post a campaign" value={barterSettings.barter_credits_cost} onChange={setBarter("barter_credits_cost")} hint="Per slot — total = this × number of slots (deducted on approval)." />
                       <NumInput label="Min product value ₹" value={barterSettings.min_barter_product_value} onChange={setBarter("min_barter_product_value")} />
                       <NumInput label="Max slots per barter campaign" value={barterSettings.max_barter_slots} onChange={setBarter("max_barter_slots")} />
                     </div>

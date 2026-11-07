@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { ArrowLeft, ArrowRight, X, Check, Package, Info } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
+import CampaignCreditInfo from "@/components/CampaignCreditInfo";
 
 interface Slab { id: string; label: string; minFollowers: number; maxFollowers: number | null; }
 interface Category { id: string; name: string; }
@@ -160,20 +161,20 @@ export default function BrandCreateBarter() {
     }).catch(() => {});
   }, []);
 
+  // Load per-slot posting cost + balance up front so the slot step can show the
+  // live total (perSlot × slots) from the moment the brand reaches it.
   useEffect(() => {
-    if (step === 4) {
-      if (barterCost === null) {
-        apiFetch("/api/brand/barter/posting-cost").then(r => r.ok ? r.json() : null).then(d => {
-          if (d) setBarterCost(d.cost);
-        }).catch(() => {});
-      }
-      if (creditBalance === null) {
-        apiFetch("/api/brand/credits/balance").then(r => r.ok ? r.json() : null).then(d => {
-          if (d != null) setCreditBalance(typeof d.total === "number" ? d.total : d.balance ?? 0);
-        }).catch(() => {});
-      }
+    if (barterCost === null) {
+      apiFetch("/api/brand/barter/posting-cost").then(r => r.ok ? r.json() : null).then(d => {
+        if (d) setBarterCost(d.cost);
+      }).catch(() => {});
     }
-  }, [step, barterCost, creditBalance, apiFetch]);
+    if (creditBalance === null) {
+      apiFetch("/api/brand/credits/balance").then(r => r.ok ? r.json() : null).then(d => {
+        if (d != null) setCreditBalance(typeof d.total === "number" ? d.total : d.balance ?? 0);
+      }).catch(() => {});
+    }
+  }, [barterCost, creditBalance, apiFetch]);
 
   const set = (k: keyof FormState, v: any) => setForm(f => ({ ...f, [k]: v }));
   const clearErrors = () => setErrors({});
@@ -414,6 +415,9 @@ export default function BrandCreateBarter() {
               <Input value={form.slotCount} onChange={(v: string) => set("slotCount", v)} onBlur={() => { touch("slotCount"); validateField("slotCount"); }} placeholder="e.g. 5" type="number" min="1" max={maxSlots} />
             </Field>
 
+            {/* Per-slot posting credits + live total + balance */}
+            <CampaignCreditInfo perSlot={barterCost} slots={parseInt(form.slotCount) || 0} balance={creditBalance} />
+
             <Field label={`Campaign Duration (days) * (${minDays}–${maxDays})`} hint="How long the campaign stays live for creators to apply" error={touched.has("durationDays") ? errors.durationDays : undefined} dataField="durationDays">
               <Input value={form.durationDays} onChange={(v: string) => set("durationDays", v)} onBlur={() => { touch("durationDays"); validateField("durationDays"); }} placeholder={`e.g. 30`} type="number" min={minDays} max={maxDays} />
             </Field>
@@ -599,43 +603,11 @@ export default function BrandCreateBarter() {
               </p>
             </div>
 
-            {/* Credits info box */}
-            {(() => {
-              const cost = barterCost ?? 5;
-              const hasEnough = creditBalance !== null && creditBalance >= cost;
-              const loadingBalance = creditBalance === null;
-              return (
-                <div className="rounded-xl px-4 py-4 mb-5" style={{ background: `${PINK}10`, border: `1px solid ${PINK}30` }}>
-                  <div className="flex items-start gap-2.5">
-                    <Info className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: PINK }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold mb-2" style={{ color: PINK, fontFamily: POPPINS }}>How Approval Works</p>
-                      <p className="text-white/90 text-xs leading-relaxed mb-1" style={{ fontFamily: POPPINS }}>
-                        <span className="font-semibold text-white">{barterCost === null ? "…" : `${cost} credit${cost === 1 ? "" : "s"}`}</span> will be required to post this barter campaign.
-                      </p>
-                      <p className="text-white/75 text-xs leading-relaxed mb-1" style={{ fontFamily: POPPINS }}>
-                        Credits are charged only if the campaign is approved by our team. If you don't have enough credits at approval time, the campaign cannot go live.
-                      </p>
-                      {!loadingBalance && (
-                        <p className="text-xs mt-1.5" style={{ fontFamily: POPPINS, color: hasEnough ? "#4ade80" : "#f87171" }}>
-                          {hasEnough
-                            ? `Your balance: ${creditBalance} credit${creditBalance === 1 ? "" : "s"} — you're all set.`
-                            : `Your balance: ${creditBalance} credit${(creditBalance ?? 0) === 1 ? "" : "s"} — you need ${cost - (creditBalance ?? 0)} more.`}
-                        </p>
-                      )}
-                      {!loadingBalance && !hasEnough && (
-                        <button
-                          onClick={() => navigate(`${BASE_URL}/home-brand/credits`)}
-                          className="mt-2.5 px-4 py-1.5 rounded-full text-xs font-semibold text-white"
-                          style={{ background: PINK, fontFamily: POPPINS }}>
-                          Buy Credits
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+            {/* Posting credits — per slot × slots, with the balance block if short */}
+            <CampaignCreditInfo perSlot={barterCost} slots={parseInt(form.slotCount) || 0} balance={creditBalance} />
+            <p className="text-white/60 text-xs leading-relaxed mb-4" style={{ fontFamily: POPPINS }}>
+              Credits are charged only if the campaign is approved by our team.
+            </p>
 
             {/* Product photos preview */}
             {form.productPhotos.length > 0 && (
@@ -694,11 +666,18 @@ export default function BrandCreateBarter() {
               </div>
             )}
 
-            <button onClick={handleSubmit} disabled={submitting}
-              className="w-full py-3.5 rounded-2xl text-white font-bold text-base"
-              style={{ background: submitting ? "rgba(240,24,122,0.5)" : PINK, fontFamily: POPPINS }}>
-              {submitting ? "Submitting…" : "Submit for Review"}
-            </button>
+            {(() => {
+              const slots = parseInt(form.slotCount) || 0;
+              const required = barterCost === null ? null : barterCost * slots;
+              const blocked = required !== null && creditBalance !== null && creditBalance < required;
+              return (
+                <button onClick={handleSubmit} disabled={submitting || blocked}
+                  className="w-full py-3.5 rounded-2xl text-white font-bold text-base disabled:opacity-50"
+                  style={{ background: submitting || blocked ? "rgba(240,24,122,0.5)" : PINK, fontFamily: POPPINS }}>
+                  {submitting ? "Submitting…" : blocked ? "Not enough credits to post" : "Submit for Review"}
+                </button>
+              );
+            })()}
           </div>
         )}
 

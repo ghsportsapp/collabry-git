@@ -29,19 +29,19 @@ export async function activateCreditHoldCampaigns(brandId: string): Promise<void
   const { campaignCost, barterCost, barterDurationDays } = await getCosts();
 
   const [camps, barters] = await Promise.all([
-    pool.query<{ id: string; name: string; deliveryWindowDays: string | null }>(
-      `SELECT id, name, "deliveryWindowDays" FROM "Campaign" WHERE "brandId"=$1 AND status='CREDIT_HOLD'`,
+    pool.query<{ id: string; name: string; deliveryWindowDays: string | null; slotCount: number }>(
+      `SELECT id, name, "deliveryWindowDays", "slotCount" FROM "Campaign" WHERE "brandId"=$1 AND status='CREDIT_HOLD'`,
       [brandId]
     ),
-    pool.query<{ id: string; name: string }>(
-      `SELECT id, name FROM "BarterCampaign" WHERE "brandId"=$1 AND status='CREDIT_HOLD'`,
+    pool.query<{ id: string; name: string; slotCount: number }>(
+      `SELECT id, name, "slotCount" FROM "BarterCampaign" WHERE "brandId"=$1 AND status='CREDIT_HOLD'`,
       [brandId]
     ),
   ]);
 
   type Item =
-    | { _type: "Campaign"; id: string; name: string; deliveryWindowDays: string | null }
-    | { _type: "BarterCampaign"; id: string; name: string };
+    | { _type: "Campaign"; id: string; name: string; deliveryWindowDays: string | null; slotCount: number }
+    | { _type: "BarterCampaign"; id: string; name: string; slotCount: number };
 
   const items: Item[] = [
     ...camps.rows.map(r => ({ _type: "Campaign" as const, ...r })),
@@ -51,7 +51,9 @@ export async function activateCreditHoldCampaigns(brandId: string): Promise<void
   if (items.length === 0) return;
 
   for (const item of items) {
-    const creditsCost = item._type === "Campaign" ? campaignCost : barterCost;
+    // Costs are now PER SLOT — scale by the campaign's slot count.
+    const perSlot = item._type === "Campaign" ? campaignCost : barterCost;
+    const creditsCost = perSlot * (Number(item.slotCount) || 1);
     const client = await pool.connect();
     try {
       await client.query("BEGIN");

@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
-import { ArrowLeft, ArrowRight, CheckCircle, Info, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle, X } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
 import { trackEvent } from "@/lib/analytics";
+import CampaignCreditInfo from "@/components/CampaignCreditInfo";
 
 interface Slab { id: string; label: string; minFollowers: number; maxFollowers: number | null; }
 interface Category { id: string; name: string; }
@@ -189,20 +190,20 @@ export default function BrandCreateCampaign() {
     }).catch(() => {});
   }, []);
 
+  // Load per-slot posting cost + balance up front so the slot step can show the
+  // live total (perSlot × slots) from the moment the brand reaches it.
   useEffect(() => {
-    if (step === 4) {
-      if (postingCost === null) {
-        apiFetch("/api/brand/campaigns/posting-cost").then(r => r.ok ? r.json() : null).then(d => {
-          if (d) setPostingCost(d.cost);
-        }).catch(() => {});
-      }
-      if (creditBalance === null) {
-        apiFetch("/api/brand/credits/balance").then(r => r.ok ? r.json() : null).then(d => {
-          if (d != null) setCreditBalance(typeof d.total === "number" ? d.total : d.balance ?? 0);
-        }).catch(() => {});
-      }
+    if (postingCost === null) {
+      apiFetch("/api/brand/campaigns/posting-cost").then(r => r.ok ? r.json() : null).then(d => {
+        if (d) setPostingCost(d.cost);
+      }).catch(() => {});
     }
-  }, [step, postingCost, creditBalance, apiFetch]);
+    if (creditBalance === null) {
+      apiFetch("/api/brand/credits/balance").then(r => r.ok ? r.json() : null).then(d => {
+        if (d != null) setCreditBalance(typeof d.total === "number" ? d.total : d.balance ?? 0);
+      }).catch(() => {});
+    }
+  }, [postingCost, creditBalance, apiFetch]);
 
   const set = (k: keyof FormState, v: any) => setForm(f => ({ ...f, [k]: v }));
 
@@ -530,6 +531,10 @@ export default function BrandCreateCampaign() {
               error={touched.has("slots") ? errors["slots"] : undefined}
               dataField="slots"
             />
+
+            {/* Per-slot posting credits + live total + balance */}
+            <CampaignCreditInfo perSlot={postingCost} slots={parseInt(form.slotCount) || 0} balance={creditBalance} />
+
             <FormInput
               label="Content Delivery Timeline (days) *"
               value={form.timelineDays}
@@ -732,42 +737,11 @@ export default function BrandCreateCampaign() {
         {/* ── STEP 4: Review & Submit ── */}
         {step === 4 && (
           <div>
-            {(() => {
-              const cost = postingCost ?? 5;
-              const hasEnough = creditBalance !== null && creditBalance >= cost;
-              const loadingBalance = creditBalance === null;
-              return (
-                <div className="rounded-xl px-4 py-4 mb-5" style={{ background: `${PINK}10`, border: `1px solid ${PINK}30` }}>
-                  <div className="flex items-start gap-2.5">
-                    <Info className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: PINK }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold mb-2" style={{ color: PINK, fontFamily: POPPINS }}>How Approval Works</p>
-                      <p className="text-white/90 text-xs leading-relaxed mb-1" style={{ fontFamily: POPPINS }}>
-                        <span className="font-semibold text-white">{cost} credit{cost === 1 ? "" : "s"}</span> will be required to post this campaign.
-                      </p>
-                      <p className="text-white/75 text-xs leading-relaxed mb-1" style={{ fontFamily: POPPINS }}>
-                        Credits are charged only if the campaign is approved by our team. If you don't have enough credits at approval time, the campaign cannot go live.
-                      </p>
-                      {!loadingBalance && (
-                        <p className="text-xs mt-1.5" style={{ fontFamily: POPPINS, color: hasEnough ? "#4ade80" : "#f87171" }}>
-                          {hasEnough
-                            ? `Your balance: ${creditBalance} credit${creditBalance === 1 ? "" : "s"} — you're all set.`
-                            : `Your balance: ${creditBalance} credit${(creditBalance ?? 0) === 1 ? "" : "s"} — you need ${cost - (creditBalance ?? 0)} more.`}
-                        </p>
-                      )}
-                      {!loadingBalance && !hasEnough && (
-                        <button
-                          onClick={() => navigate(`${BASE_URL}/home-brand/credits`)}
-                          className="mt-2.5 px-4 py-1.5 rounded-full text-xs font-semibold text-white"
-                          style={{ background: PINK, fontFamily: POPPINS }}>
-                          Buy Credits
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+            {/* Posting credits — per slot × slots, with the balance block if short */}
+            <CampaignCreditInfo perSlot={postingCost} slots={slots} balance={creditBalance} />
+            <p className="text-white/60 text-xs leading-relaxed mb-5" style={{ fontFamily: POPPINS }}>
+              Credits are charged only if the campaign is approved by our team.
+            </p>
 
             <div className="rounded-2xl px-5 py-4 mb-5 space-y-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
               {([
@@ -810,10 +784,12 @@ export default function BrandCreateCampaign() {
                 <div className="flex justify-between items-start border-t border-white/5 pt-2.5">
                   <div>
                     <span className="text-white/90 text-sm" style={{ fontFamily: POPPINS }}>Posting cost (credits)</span>
-                    <p className="text-white/70 text-xs mt-0.5" style={{ fontFamily: POPPINS }}>Deducted from your balance only after admin approval.</p>
+                    <p className="text-white/70 text-xs mt-0.5" style={{ fontFamily: POPPINS }}>
+                      {postingCost === null ? "Deducted from your balance only after admin approval." : `${postingCost}/slot × ${slots} slot${slots === 1 ? "" : "s"} — deducted from your balance only after admin approval.`}
+                    </p>
                   </div>
                   <span className="text-white font-semibold text-sm" style={{ fontFamily: POPPINS }}>
-                    {postingCost === null ? "…" : `${postingCost} credit${postingCost === 1 ? "" : "s"}`}
+                    {postingCost === null ? "…" : `${postingCost * slots} credit${postingCost * slots === 1 ? "" : "s"}`}
                   </span>
                 </div>
               </div>
@@ -825,11 +801,17 @@ export default function BrandCreateCampaign() {
               </div>
             )}
 
-            <button onClick={handleSubmit} disabled={submitting}
-              className="w-full py-3 rounded-full text-white font-bold text-sm transition-opacity"
-              style={{ background: submitting ? `${PINK}80` : PINK, fontFamily: POPPINS }}>
-              {submitting ? "Submitting…" : "Submit for Review"}
-            </button>
+            {(() => {
+              const required = postingCost === null ? null : postingCost * slots;
+              const blocked = required !== null && creditBalance !== null && creditBalance < required;
+              return (
+                <button onClick={handleSubmit} disabled={submitting || blocked}
+                  className="w-full py-3 rounded-full text-white font-bold text-sm transition-opacity disabled:opacity-50"
+                  style={{ background: submitting || blocked ? `${PINK}80` : PINK, fontFamily: POPPINS }}>
+                  {submitting ? "Submitting…" : blocked ? "Not enough credits to post" : "Submit for Review"}
+                </button>
+              );
+            })()}
           </div>
         )}
 

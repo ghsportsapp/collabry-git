@@ -75,7 +75,7 @@ export default function AdminCampaignSettings({ embedded = false }: { embedded?:
             <NumInput label="Default campaign duration (days)" value={settings.default_campaign_days} onChange={set("default_campaign_days")} />
             <NumInput label="Min price per creator ₹" value={settings.min_campaign_price} onChange={set("min_campaign_price")} />
             <NumInput label="Max slots per campaign" value={settings.max_campaign_slots} onChange={set("max_campaign_slots")} />
-            <NumInput label="Credits required to post campaign" value={settings.campaign_credits_cost} onChange={set("campaign_credits_cost")} hint="0 = no credits required" />
+            <NumInput label="Credits required PER SLOT to post a campaign" value={settings.campaign_credits_cost} onChange={set("campaign_credits_cost")} hint="Per slot — total required = this × number of slots. 0 = no credits required." />
           </div>
           <div className="mt-2">
             <label className={labelClass}>Campaign approval required</label>
@@ -101,7 +101,7 @@ export default function AdminCampaignSettings({ embedded = false }: { embedded?:
           <div className="grid sm:grid-cols-2 gap-x-6">
             <NumInput label="Min barter duration (days)" value={settings.min_barter_days} onChange={set("min_barter_days")} />
             <NumInput label="Max barter duration (days)" value={settings.max_barter_days} onChange={set("max_barter_days")} />
-            <NumInput label="Credits per creator slot (deducted on approval)" value={settings.barter_credits_cost} onChange={set("barter_credits_cost")} />
+            <NumInput label="Credits required PER SLOT to post a campaign" value={settings.barter_credits_cost} onChange={set("barter_credits_cost")} hint="Per slot — total required = this × number of slots (deducted on approval)." />
             <NumInput label="Min product value ₹" value={settings.min_barter_product_value} onChange={set("min_barter_product_value")} />
             <NumInput label="Max slots per barter campaign" value={settings.max_barter_slots} onChange={set("max_barter_slots")} />
           </div>
