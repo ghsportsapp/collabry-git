@@ -485,7 +485,8 @@ router.post("/admin/deal-discount/:id", async (req: Request, res: Response): Pro
   try {
     await client.query("BEGIN");
     const d = await client.query(
-      `SELECT id, status, source, "barterId" FROM "Deal" WHERE id=$1 FOR UPDATE`, [id]
+      `SELECT id, status, source, "barterId", "brandId", "totalAgreedValue", "gstRateLocked"
+         FROM "Deal" WHERE id=$1 FOR UPDATE`, [id]
     );
     if (d.rows.length === 0) { await client.query("ROLLBACK"); res.status(404).json({ error: "Deal not found" }); return; }
     const deal = d.rows[0];
@@ -507,6 +508,58 @@ router.post("/admin/deal-discount/:id", async (req: Request, res: Response): Pro
       [id, percent, adminId, percent === 0 ? null : reason]
     );
     await client.query("COMMIT");
+
+    // ── Brand-facing notify (post-commit; failures never fail the discount) ──
+    // Only the brand that owns the deal, only when a discount is actually applied.
+    try {
+      const brandId = deal.brandId as string | null;
+      if (brandId) {
+        // Clear any earlier unseen gift popup for this deal so a re-apply/clear
+        // leaves exactly one popup carrying the latest numbers (or none on clear).
+        await pool.query(
+          `UPDATE "Popup" SET status='DISMISSED'
+             WHERE "userId"=$1 AND "userType"='BRAND' AND type='DEAL_DISCOUNT'
+               AND "relatedEntityId"=$2 AND status='PENDING'`,
+          [brandId, id]
+        );
+
+        if (percent > 0) {
+          const round2 = (n: number) => +n.toFixed(2);
+          const subtotal = Number(deal.totalAgreedValue) || 0;
+          let gstRate = Number(deal.gstRateLocked);
+          if (!isFinite(gstRate) || gstRate <= 0) {
+            const g = await pool.query(`SELECT value FROM "PlatformConfig" WHERE key='gst_rate'`);
+            gstRate = g.rows.length ? Number(g.rows[0].value) : 18;
+            if (!isFinite(gstRate) || gstRate <= 0) gstRate = 18;
+          }
+          // Mirror computeDirectDealAmounts rounding so the numbers match the UI.
+          const prevTotal = round2(subtotal + round2(subtotal * gstRate / 100));
+          const discBase = round2(subtotal * (1 - percent / 100));
+          const newTotal = round2(discBase + round2(discBase * gstRate / 100));
+          const inr = (n: number) => n.toLocaleString("en-IN");
+
+          await createNotification({
+            userId: brandId, userType: "BRAND", type: "DEAL_DISCOUNT",
+            title: "🎉 Discount applied to your deal",
+            body: `Good news! Collabry applied a ${percent}% discount on your deal. Previous: ₹${inr(prevTotal)} → Now: ₹${inr(newTotal)}. Your creator still receives their full payment — we've reduced our own fee, not theirs. 💛`,
+            relatedEntityType: "Deal", relatedEntityId: id,
+          });
+          await createPopup({
+            userId: brandId, userType: "BRAND", type: "DEAL_DISCOUNT",
+            title: "A little gift from Collabry",
+            body: `We've applied a ${percent}% discount on your deal. Previous ₹${inr(prevTotal)} → Now ₹${inr(newTotal)}. Your creator's payment stays exactly the same — we've simply taken less for ourselves. 💛`,
+            ctaText: "Got it", ctaPath: "", isCelebration: true,
+            relatedEntityId: id,
+            // Structured numbers for GlobalPopup's dedicated discount box.
+            externalNote: JSON.stringify({ pct: percent, prev: prevTotal, now: newTotal }),
+          });
+        }
+      }
+    } catch (notifyErr: any) {
+      // Best-effort: the discount is already committed; log and move on.
+      console.error("deal-discount notify failed", { dealId: id, err: notifyErr?.message });
+    }
+
     res.json({ ok: true, dealId: id, discountPercent: percent });
   } catch (e: any) {
     await client.query("ROLLBACK");

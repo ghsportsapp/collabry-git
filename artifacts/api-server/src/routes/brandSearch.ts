@@ -1268,7 +1268,7 @@ router.get("/brand/notifications/stream", (req: Request, res: Response): void =>
 router.get("/brand/popups/pending", requireBrand, async (req: Request, res: Response): Promise<void> => {
   const brandId = (req as any).brandId as string;
   const r = await pool.query(
-    `SELECT id,type,title,body,"ctaText","ctaPath","isCelebration","secondCtaText","secondCtaPath" FROM "Popup"
+    `SELECT id,type,title,body,"ctaText","ctaPath","isCelebration","secondCtaText","secondCtaPath","externalNote" FROM "Popup"
      WHERE "userId"=$1 AND "userType"='BRAND' AND status='PENDING' AND "expiresAt">NOW()
      ORDER BY "createdAt" ASC`,
     [brandId],

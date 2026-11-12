@@ -134,6 +134,14 @@ export default function GlobalPopup({ popup, onDismiss, creatorStatus, onLogout 
   const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
   const isInvoice = popup.type === "INVOICE_READY";
   const isBanPopup = popup.type === "ACCOUNT_BANNED";
+  const isDiscount = popup.type === "DEAL_DISCOUNT";
+  // Structured prices ride on externalNote (JSON) — the box text is static,
+  // never parsed out of the body (same pattern as the revision/invoice boxes).
+  let discountData: { pct?: number; prev?: number; now?: number } | null = null;
+  if (isDiscount && popup.externalNote) {
+    try { discountData = JSON.parse(popup.externalNote); } catch { discountData = null; }
+  }
+  const inr = (n: number | undefined) => (typeof n === "number" ? n.toLocaleString("en-IN") : "—");
 
   useEffect(() => {
     const t = requestAnimationFrame(() => setVisible(true));
@@ -223,8 +231,44 @@ export default function GlobalPopup({ popup, onDismiss, creatorStatus, onLogout 
           {popup.title}
         </h2>
 
+        {/* Dedicated discount box — a warm "gift" layout driven by type + externalNote, never the body text */}
+        {isDiscount && (
+          <>
+            <p className="text-sm" style={{ fontFamily: POPPINS, color: "rgba(255,255,255,0.82)", lineHeight: 1.6, marginBottom: 16 }}>
+              {typeof discountData?.pct === "number"
+                ? `We've applied a ${discountData.pct}% discount on your deal.`
+                : "We've applied a discount on your deal."}
+            </p>
+            <div style={{
+              marginBottom: 16, borderRadius: 16, overflow: "hidden",
+              border: "1px solid rgba(240,24,122,0.30)",
+              background: "linear-gradient(135deg, rgba(240,24,122,0.10) 0%, rgba(30,10,40,0.85) 100%)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, padding: "16px 14px" }}>
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ fontSize: 9.5, fontWeight: 800, color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 3px", fontFamily: POPPINS }}>Previous</p>
+                  <p style={{ fontSize: 17, fontWeight: 600, color: "rgba(255,255,255,0.55)", textDecoration: "line-through", margin: 0, fontFamily: POPPINS }}>₹{inr(discountData?.prev)}</p>
+                </div>
+                <span style={{ fontSize: 20, color: PINK, fontWeight: 700 }}>→</span>
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ fontSize: 9.5, fontWeight: 800, color: PINK, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 3px", fontFamily: POPPINS }}>New price</p>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: "white", margin: 0, fontFamily: POPPINS }}>₹{inr(discountData?.now)}</p>
+                </div>
+              </div>
+            </div>
+            <div style={{
+              marginBottom: 20, borderRadius: 12, padding: "11px 14px", textAlign: "left",
+              background: "rgba(109,203,119,0.10)", border: "1px solid rgba(109,203,119,0.22)",
+            }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.88)", margin: 0, lineHeight: 1.5, fontFamily: POPPINS }}>
+                💛 Your creator's payment stays exactly the same — we've simply taken less for ourselves.
+              </p>
+            </div>
+          </>
+        )}
+
         {/* Body text — trim recommendation lines for revision popups since we render a dedicated box */}
-        {(() => {
+        {!isDiscount && (() => {
           const isRevision =
             popup.type?.includes("REVISION_REQUESTED") ||
             popup.title?.toLowerCase().includes("revision");
@@ -309,18 +353,20 @@ export default function GlobalPopup({ popup, onDismiss, creatorStatus, onLogout 
               {popup.secondCtaText}
             </button>
           )}
-          <button
-            onClick={() => close()}
-            className="w-full py-2.5 rounded-2xl text-sm font-medium transition-opacity hover:opacity-80"
-            style={{
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              color: "rgba(255,255,255,0.7)",
-              fontFamily: POPPINS,
-            }}
-          >
-            {popup.ctaText ? "Dismiss" : "Close"}
-          </button>
+          {!isDiscount && (
+            <button
+              onClick={() => close()}
+              className="w-full py-2.5 rounded-2xl text-sm font-medium transition-opacity hover:opacity-80"
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                color: "rgba(255,255,255,0.7)",
+                fontFamily: POPPINS,
+              }}
+            >
+              {popup.ctaText ? "Dismiss" : "Close"}
+            </button>
+          )}
         </div>
       </div>
     </div>
