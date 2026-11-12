@@ -328,12 +328,13 @@ router.patch("/creator/profile/basic", requireCreator, async (req: Request, res:
   if (gender !== undefined) addSet("gender", gender.trim() || null);
   if (state !== undefined) addSet("state", state?.trim() || null);
   if (city !== undefined) addSet("city", city?.trim() || null);
-  // Languages (text[], admin-only visibility). Sanitise to non-empty strings; an
-  // empty array is allowed server-side (the edit UI enforces ≥1), same as city.
+  // Languages (text[], admin-only visibility). At least one is mandatory — reject
+  // an empty selection so a creator can't clear all languages and save with 0.
   if (languages !== undefined) {
     const cleaned = Array.isArray(languages)
       ? languages.filter((l: unknown): l is string => typeof l === "string" && l.trim().length > 0).map((l: string) => l.trim()).slice(0, 40)
       : [];
+    if (cleaned.length === 0) { res.status(400).json({ error: "Select at least one language" }); return; }
     addSet("languages", cleaned);
   }
   if (sets.length === 0) { res.status(400).json({ error: "Nothing to update" }); return; }

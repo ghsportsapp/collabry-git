@@ -441,6 +441,13 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
   };
 
   const doSave = async () => {
+    // At least one language is mandatory (same rule as categories) — block a save
+    // that would clear all languages.
+    if (s.languages.length === 0) {
+      onToast("Select at least one language you make videos in");
+      document.querySelector('[data-section="languages"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     if (phoneChanged) {
       const phone = s.phone.trim();
       if (!phone) { onToast("Phone number is required"); return; }

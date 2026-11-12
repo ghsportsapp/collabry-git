@@ -452,12 +452,12 @@ export default function CreatorSignup() {
 
   // Step structure (Portfolio removed — added from home page; Audience+Goals merged)
   const hasCustomFields = customFields.length > 0;
-  const totalSteps = hasCustomFields ? 7 : 6;
+  const totalSteps = hasCustomFields ? 8 : 7;
   const reviewStep = totalSteps;
-  const customFieldsStep = hasCustomFields ? 6 : null;
+  const customFieldsStep = hasCustomFields ? 7 : null;
   const stepLabels = hasCustomFields
-    ? ["Instagram", "Personal", "Categories", "Audience", "Pricing", "Fields", "Review"]
-    : ["Instagram", "Personal", "Categories", "Audience", "Pricing", "Review"];
+    ? ["Instagram", "Personal", "Categories", "Languages", "Audience", "Pricing", "Fields", "Review"]
+    : ["Instagram", "Personal", "Categories", "Languages", "Audience", "Pricing", "Review"];
 
   const infoContent = signupConfig[`creator_signup_info_${step}`] ?? "";
 
@@ -516,15 +516,18 @@ export default function CreatorSignup() {
     }
     if (s === 3) {
       if (isFieldRequired("categories") && form.categories.length === 0) errs.categories = "Select at least 1 category";
-      if (form.languages.length === 0) errs.languages = "Select at least 1 language you make videos in";
     }
     if (s === 4) {
+      // Languages (own step, after Categories)
+      if (form.languages.length === 0) errs.languages = "Select at least 1 language you make videos in";
+    }
+    if (s === 5) {
       // Audience + Goals merged
       if (!form.audienceAge) errs.audienceAge = "Select your audience's primary age group";
       if (locations.length > 0 && !form.audienceLocation) errs.audienceLocation = "Select your audience's primary location";
       if (contentTypes.length > 0 && !form.contentType) errs.contentType = "Select your primary content type";
     }
-    if (s === 5) { if (!form.selectedSlabId) errs.selectedSlabId = "Select a pricing tier"; }
+    if (s === 6) { if (!form.selectedSlabId) errs.selectedSlabId = "Select a pricing tier"; }
     // Step 7 (portfolio) — optional, no minimum required
     // Custom fields step
     if (customFieldsStep && s === customFieldsStep) {
@@ -547,7 +550,7 @@ export default function CreatorSignup() {
     if (!validate(step)) return;
     // On the pricing step, confirm the chosen pricing before moving on — for
     // ANY tier, not just higher-than-suggested ones (no nudge toward suggested).
-    if (step === 5 && form.selectedSlabId) { setShowHigherSlabModal(true); return; }
+    if (step === 6 && form.selectedSlabId) { setShowHigherSlabModal(true); return; }
     setStep(s => s + 1);
   };
   const prev = () => setStep(s => s - 1);
@@ -1006,35 +1009,39 @@ export default function CreatorSignup() {
                   {form.categories.length}/7 selected
                   {form.categories.length >= 7 && <span className="text-amber-400 ml-2">· Limit reached</span>}
                 </p>
-
-                {/* Languages — multi-select, no cap. Admin-only visibility (never shown to brands). */}
-                <div className="pt-4 mt-2 border-t" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-                  <h2 className="text-white font-bold text-lg">Languages you're comfortable making videos in <span className="text-[#E14F69]">*</span></h2>
-                  <p className="text-white/70 text-xs mt-0.5">Select all that apply — there's no limit.</p>
-                  {errors.languages && <p className="text-red-400 text-xs mt-2">{errors.languages}</p>}
-                  <div data-field="languages" className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1 mt-3">
-                    {CREATOR_LANGUAGES.map((lang) => {
-                      const sel = form.languages.includes(lang);
-                      return (
-                        <button key={lang} type="button" onClick={() => {
-                          if (sel) setField("languages", form.languages.filter(l => l !== lang));
-                          else setField("languages", [...form.languages, lang]);
-                        }}
-                          className="flex items-center gap-2 p-3 rounded-xl text-left text-sm transition-all"
-                          style={{ background: sel ? "rgba(240,24,122,0.20)" : "rgba(255,255,255,0.04)", border: `1px solid ${sel ? "#E14F69" : "rgba(255,255,255,0.10)"}`, color: sel ? "#E14F69" : "rgba(255,255,255,0.90)", cursor: "pointer" }}>
-                          {sel && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
-                          {lang}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-white/70 text-xs mt-2">{form.languages.length} selected</p>
-                </div>
               </div>
             )}
 
-            {/* ── STEP 4: Audience + Goals (merged) ── */}
+            {/* ── STEP 4: Languages (own step, after Categories) ── */}
             {step === 4 && (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-white font-bold text-lg">Languages you're comfortable making videos in <span className="text-[#E14F69]">*</span></h2>
+                  <p className="text-white/70 text-xs mt-0.5">Select all that apply — there's no limit.</p>
+                </div>
+                {errors.languages && <p className="text-red-400 text-xs">{errors.languages}</p>}
+                <div data-field="languages" className="grid grid-cols-2 gap-2 max-h-[22rem] overflow-y-auto pr-1">
+                  {CREATOR_LANGUAGES.map((lang) => {
+                    const sel = form.languages.includes(lang);
+                    return (
+                      <button key={lang} type="button" onClick={() => {
+                        if (sel) setField("languages", form.languages.filter(l => l !== lang));
+                        else setField("languages", [...form.languages, lang]);
+                      }}
+                        className="flex items-center gap-2 p-3 rounded-xl text-left text-sm transition-all"
+                        style={{ background: sel ? "rgba(240,24,122,0.20)" : "rgba(255,255,255,0.04)", border: `1px solid ${sel ? "#E14F69" : "rgba(255,255,255,0.10)"}`, color: sel ? "#E14F69" : "rgba(255,255,255,0.90)", cursor: "pointer" }}>
+                        {sel && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
+                        {lang}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-white/70 text-xs">{form.languages.length} selected</p>
+              </div>
+            )}
+
+            {/* ── STEP 5: Audience + Goals (merged) ── */}
+            {step === 5 && (
               <div className="space-y-5">
                 {randomCategoryMessage && (
                   <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: "#F0187A", color: "#fff", boxShadow: "0 0 6px 1px rgba(255,255,255,0.70)" }}>
@@ -1111,8 +1118,8 @@ export default function CreatorSignup() {
               </div>
             )}
 
-            {/* ── STEP 5: Pricing ── */}
-            {step === 5 && (
+            {/* ── STEP 6: Pricing ── */}
+            {step === 6 && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div><h2 className="text-white font-bold text-lg">Pricing Tier</h2><p className="text-white/70 text-xs">Set your content pricing based on your reach</p></div>
