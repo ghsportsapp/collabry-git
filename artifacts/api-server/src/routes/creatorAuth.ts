@@ -78,6 +78,7 @@ router.post("/auth/creator/signup", async (req: Request, res: Response): Promise
     portfolio = [],
     bio, youtubeHandle: ytHandle, otherSocialHandle,
     email, state, city,
+    languages = [],
     customFieldValues = [],
   } = req.body as Record<string, any>;
 
@@ -99,6 +100,11 @@ router.post("/auth/creator/signup", async (req: Request, res: Response): Promise
   if (!password || password.length < 8) { res.status(400).json({ error: "Password must be at least 8 characters" }); return; }
   if (!categories || categories.length < 1) { res.status(400).json({ error: "At least one category is required" }); return; }
   if (categories.length > 7) { res.status(400).json({ error: "You can select a maximum of 7 categories" }); return; }
+  // Languages the creator makes videos in — at least one, no cap. Stored admin-only.
+  const cleanLanguages: string[] = Array.isArray(languages)
+    ? languages.filter((l: unknown): l is string => typeof l === "string" && l.trim().length > 0).map((l: string) => l.trim()).slice(0, 40)
+    : [];
+  if (cleanLanguages.length < 1) { res.status(400).json({ error: "Select at least one language you make videos in" }); return; }
   // Portfolio is optional during signup — creators can add it later from home page
   if (!email?.trim()) { res.status(400).json({ error: "Email address is required" }); return; }
   const cleanEmail = email.trim().toLowerCase();
@@ -174,10 +180,10 @@ router.post("/auth/creator/signup", async (req: Request, res: Response): Promise
         "campaignGoal",
         "purchaseBehaviour",
         "reelPriceMin", "reelPriceMax", "storyPriceMin", "storyPriceMax", "postPriceMin", "postPriceMax",
-        "passwordHash", images, state, "city", "audienceType", status, "kycStatus", "averageRating", "ratingCount",
+        "passwordHash", images, state, "city", "languages", "audienceType", status, "kycStatus", "averageRating", "ratingCount",
         "hiddenFromSearch", "hiddenFromMatchmaking", "excludedFromMatchmaking",
         "createdAt", "updatedAt"
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,'','PENDING','NOT_SUBMITTED',0,0,false,false,false,NOW(),NOW())`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,'','PENDING','NOT_SUBMITTED',0,0,false,false,false,NOW(),NOW())`,
       [
         creatorId, cleanHandle, null, fullName.trim(), new Date(dateOfBirth), cleanPhone, gender?.trim() || null,
         cleanEmail, profilePhotoUrl || null, bio?.trim() || null, ytHandle?.trim() || null, otherSocialHandle?.trim() || null,
@@ -188,7 +194,7 @@ router.post("/auth/creator/signup", async (req: Request, res: Response): Promise
         parseFloat(reelPriceMin), parseFloat(reelPriceMax),
         parseFloat(storyPriceMin), parseFloat(storyPriceMax),
         parseFloat(postPriceMin), parseFloat(postPriceMax),
-        passwordHash, imagesArr, state?.trim() || null, city?.trim() || null,
+        passwordHash, imagesArr, state?.trim() || null, city?.trim() || null, cleanLanguages,
       ]
     );
 

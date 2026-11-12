@@ -10,7 +10,7 @@ router.get("/creator/profile", requireCreator, async (req: Request, res: Respons
   const creatorId = (req as any).creatorId as string;
   const [creatorR, catsR, portfolioR] = await Promise.all([
     pool.query(`SELECT id, email, "instagramHandle", "fullName", "dateOfBirth", phone, "profilePhotoUrl", bio,
-                gender, state, "city", "youtubeHandle", "otherSocialHandle",
+                gender, state, "city", "languages", "youtubeHandle", "otherSocialHandle",
                 EXTRACT(YEAR FROM AGE(NOW(), "dateOfBirth"))::int as "creatorAge",
                 "followerCount", "audienceGenderFemale", "audienceGenderMale", "audienceAge",
                 "audienceLocation", "contentType", images, "pendingImages",
@@ -318,7 +318,7 @@ router.patch("/creator/phone", requireCreator, async (req: Request, res: Respons
 // Update basic profile + social handles (no re-review)
 router.patch("/creator/profile/basic", requireCreator, async (req: Request, res: Response): Promise<void> => {
   const creatorId = (req as any).creatorId as string;
-  const { fullName, bio, youtubeHandle, otherSocialHandle, gender, state, city } = req.body as Record<string, any>;
+  const { fullName, bio, youtubeHandle, otherSocialHandle, gender, state, city, languages } = req.body as Record<string, any>;
   const sets: string[] = []; const params: unknown[] = [];
   const addSet = (col: string, val: unknown) => { params.push(val); sets.push(`"${col}"=$${params.length}`); };
   if (fullName !== undefined && fullName.trim()) addSet("fullName", fullName.trim());
@@ -328,6 +328,14 @@ router.patch("/creator/profile/basic", requireCreator, async (req: Request, res:
   if (gender !== undefined) addSet("gender", gender.trim() || null);
   if (state !== undefined) addSet("state", state?.trim() || null);
   if (city !== undefined) addSet("city", city?.trim() || null);
+  // Languages (text[], admin-only visibility). Sanitise to non-empty strings; an
+  // empty array is allowed server-side (the edit UI enforces ≥1), same as city.
+  if (languages !== undefined) {
+    const cleaned = Array.isArray(languages)
+      ? languages.filter((l: unknown): l is string => typeof l === "string" && l.trim().length > 0).map((l: string) => l.trim()).slice(0, 40)
+      : [];
+    addSet("languages", cleaned);
+  }
   if (sets.length === 0) { res.status(400).json({ error: "Nothing to update" }); return; }
   params.push(creatorId);
   await pool.query(`UPDATE "Creator" SET ${sets.join(",")}, "updatedAt"=NOW() WHERE id=$${params.length}`, params);

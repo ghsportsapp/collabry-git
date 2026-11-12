@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, Upload, X, Plus, AlertCircle, ChevronRight, ChevronLeft, Check, Info, Instagram } from "lucide-react";
 import { useCreatorAuth } from "@/contexts/CreatorAuthContext";
 import { districtsForState } from "@/data/indiaStatesDistricts";
+import { CREATOR_LANGUAGES } from "@/data/creatorLanguages";
 import MultiImageUpload from "@/components/MultiImageUpload";
 import { pixelTrack } from "@/lib/pixel";
 import { trackSignup, identifyUser } from "@/lib/analytics";
@@ -56,6 +57,7 @@ interface FormState {
   youtubeHandle: string;
   otherSocialHandle: string;
   categories: { categoryId: string; categoryName: string; subcategoryId?: string }[];
+  languages: string[];
   audienceGenderFemale: string;
   audienceGenderMale: string;
   audienceAge: string;
@@ -74,6 +76,7 @@ const EMPTY_FORM: FormState = {
   fullName: "", dateOfBirth: "", phone: "", email: "", password: "", confirmPassword: "",
   gender: "", state: "", city: "", bio: "", youtubeHandle: "", otherSocialHandle: "",
   categories: [],
+  languages: [],
   audienceGenderFemale: "50", audienceGenderMale: "50", audienceAge: "", audienceLocation: "",
   contentType: "",
   selectedSlabId: "", selectedSlabLabel: "", higherSlabNote: "",
@@ -513,6 +516,7 @@ export default function CreatorSignup() {
     }
     if (s === 3) {
       if (isFieldRequired("categories") && form.categories.length === 0) errs.categories = "Select at least 1 category";
+      if (form.languages.length === 0) errs.languages = "Select at least 1 language you make videos in";
     }
     if (s === 4) {
       // Audience + Goals merged
@@ -572,6 +576,7 @@ export default function CreatorSignup() {
         youtubeHandle: form.youtubeHandle.trim() || undefined,
         otherSocialHandle: form.otherSocialHandle.trim() || undefined,
         categories: form.categories.map(c => ({ categoryId: c.categoryId, subcategoryId: c.subcategoryId })),
+        languages: form.languages,
         audienceGenderFemale: parseInt(form.audienceGenderFemale), audienceGenderMale: parseInt(form.audienceGenderMale),
         audienceAge: form.audienceAge, audienceLocation: form.audienceLocation,
         contentType: form.contentType,
@@ -1001,6 +1006,30 @@ export default function CreatorSignup() {
                   {form.categories.length}/7 selected
                   {form.categories.length >= 7 && <span className="text-amber-400 ml-2">· Limit reached</span>}
                 </p>
+
+                {/* Languages — multi-select, no cap. Admin-only visibility (never shown to brands). */}
+                <div className="pt-4 mt-2 border-t" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+                  <h2 className="text-white font-bold text-lg">Languages you're comfortable making videos in <span className="text-[#E14F69]">*</span></h2>
+                  <p className="text-white/70 text-xs mt-0.5">Select all that apply — there's no limit.</p>
+                  {errors.languages && <p className="text-red-400 text-xs mt-2">{errors.languages}</p>}
+                  <div data-field="languages" className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1 mt-3">
+                    {CREATOR_LANGUAGES.map((lang) => {
+                      const sel = form.languages.includes(lang);
+                      return (
+                        <button key={lang} type="button" onClick={() => {
+                          if (sel) setField("languages", form.languages.filter(l => l !== lang));
+                          else setField("languages", [...form.languages, lang]);
+                        }}
+                          className="flex items-center gap-2 p-3 rounded-xl text-left text-sm transition-all"
+                          style={{ background: sel ? "rgba(240,24,122,0.20)" : "rgba(255,255,255,0.04)", border: `1px solid ${sel ? "#E14F69" : "rgba(255,255,255,0.10)"}`, color: sel ? "#E14F69" : "rgba(255,255,255,0.90)", cursor: "pointer" }}>
+                          {sel && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
+                          {lang}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-white/70 text-xs mt-2">{form.languages.length} selected</p>
+                </div>
               </div>
             )}
 
@@ -1176,6 +1205,7 @@ export default function CreatorSignup() {
                     isFieldVisible("youtubeHandle") && form.youtubeHandle ? ["YouTube", form.youtubeHandle] : null,
                     isFieldVisible("otherSocialHandle") && form.otherSocialHandle ? ["Other Social", form.otherSocialHandle] : null,
                     ["Categories", form.categories.map(c => c.categoryName).join(", ") || "—"],
+                    ["Languages", form.languages.join(", ") || "—"],
                     ["Audience", `${form.audienceGenderFemale}% F · ${form.audienceAge} · ${form.audienceLocation}`],
                     ["Pricing Tier", (() => {
                       const s = allSlabs.find(sl => sl.id === form.selectedSlabId);

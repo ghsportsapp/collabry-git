@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   Camera, Lock, ChevronRight, X, Plus, Trash2, LogOut,
-  Sparkles, CheckCircle, AlertCircle, Link as LinkIcon, MapPin,
+  Sparkles, CheckCircle, Check, AlertCircle, Link as LinkIcon, MapPin,
 } from "lucide-react";
 import { useCreatorAuth } from "@/contexts/CreatorAuthContext";
 import { districtsForState } from "@/data/indiaStatesDistricts";
+import { CREATOR_LANGUAGES, sanitizeLanguages } from "@/data/creatorLanguages";
 import { CreatorLayout, PINK, BG, POPPINS } from "@/components/CreatorNavLayout";
 import MultiImageUpload from "@/components/MultiImageUpload";
 
@@ -284,6 +285,7 @@ function FunQuestionsSection({ token, onToast }: { token: string; onToast: (msg:
 
 interface EditState {
   fullName: string; bio: string; youtubeHandle: string; otherSocialHandle: string; gender: string; state: string; city: string;
+  languages: string[];
   phone: string;
   username: string;
   followerCount: string;
@@ -358,6 +360,7 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
   const [s, setS] = useState<EditState>({
     fullName: creator.fullName ?? "", bio: creator.bio ?? "",
     gender: creator.gender ?? "", state: creator.state ?? "", city: creator.city ?? "",
+    languages: sanitizeLanguages(creator.languages),
     phone: creator.phone ?? "",
     username: creator.instagramHandle ?? "",
     youtubeHandle: creator.youtubeHandle ?? "", otherSocialHandle: creator.otherSocialHandle ?? "",
@@ -406,7 +409,7 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
   const slabChanged = !pricingLocked && s.editSlabId !== "" && s.editSlabId !== resolvedOrigSlabId;
   // Follower-count and username changes require admin re-verification — pricing is direct
   const anyReview = followerChanged || usernameChanged;
-  const basicChanged = s.fullName !== creator.fullName || s.bio !== (creator.bio ?? "") || s.gender !== (creator.gender ?? "") || s.state !== (creator.state ?? "") || s.city !== (creator.city ?? "") || s.youtubeHandle !== (creator.youtubeHandle ?? "") || s.otherSocialHandle !== (creator.otherSocialHandle ?? "");
+  const basicChanged = s.fullName !== creator.fullName || s.bio !== (creator.bio ?? "") || s.gender !== (creator.gender ?? "") || s.state !== (creator.state ?? "") || s.city !== (creator.city ?? "") || s.youtubeHandle !== (creator.youtubeHandle ?? "") || s.otherSocialHandle !== (creator.otherSocialHandle ?? "") || JSON.stringify(s.languages) !== JSON.stringify(sanitizeLanguages(creator.languages));
   const phoneChanged = s.phone !== (creator.phone ?? "");
 
   const scrollToPwSection = () => setTimeout(() => {
@@ -455,7 +458,7 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
     }
     setSaving(true); setShowPopup(false);
     try {
-      if (basicChanged) await apiFetch(token, "/api/creator/profile/basic", { method: "PATCH", body: JSON.stringify({ fullName: s.fullName, bio: s.bio, gender: s.gender, state: s.state || null, city: s.city || null, youtubeHandle: s.youtubeHandle, otherSocialHandle: s.otherSocialHandle }) });
+      if (basicChanged) await apiFetch(token, "/api/creator/profile/basic", { method: "PATCH", body: JSON.stringify({ fullName: s.fullName, bio: s.bio, gender: s.gender, state: s.state || null, city: s.city || null, languages: s.languages, youtubeHandle: s.youtubeHandle, otherSocialHandle: s.otherSocialHandle }) });
       if (phoneChanged) {
         const pr = await apiFetch(token, "/api/creator/phone", { method: "PATCH", body: JSON.stringify({ phone: s.phone }) });
         if (!pr.ok) { const pd = await pr.json(); onToast(pd.error ?? "Failed to update phone"); setSaving(false); return; }
@@ -600,6 +603,31 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
           </div>
           <StateEditDropdown value={s.state} onChange={v => setS(prev => ({ ...prev, state: v, city: "" }))} />
           <DistrictEditDropdown stateValue={s.state} value={s.city} onChange={v => upd("city", v)} />
+
+          {/* Languages — multi-select, no cap. Admin-only visibility (never shown to brands). */}
+          <div data-section="languages">
+            <p className="text-white/70 text-[11px] mb-1.5 uppercase tracking-wider" style={{ fontFamily: POPPINS }}>Languages you make videos in</p>
+            <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+              {CREATOR_LANGUAGES.map((lang) => {
+                const sel = s.languages.includes(lang);
+                return (
+                  <button key={lang} type="button" onClick={() => {
+                    const next = new Set(s.languages);
+                    if (sel) next.delete(lang); else next.add(lang);
+                    // Keep canonical order so change-detection stays stable.
+                    upd("languages", CREATOR_LANGUAGES.filter(l => next.has(l)));
+                  }}
+                    className="flex items-center gap-2 p-2.5 rounded-xl text-left text-sm transition-all"
+                    style={{ background: sel ? "rgba(240,24,122,0.20)" : "rgba(255,255,255,0.04)", border: `1px solid ${sel ? "#E14F69" : "rgba(255,255,255,0.10)"}`, color: sel ? "#E14F69" : "rgba(255,255,255,0.90)", fontFamily: POPPINS }}>
+                    {sel && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
+                    {lang}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-white/50 text-[11px] mt-1.5" style={{ fontFamily: POPPINS }}>{s.languages.length} selected</p>
+          </div>
+
           <div data-section="bio">
             <FieldLabel text="Bio (max 150)" />
             <textarea value={s.bio} onChange={e => upd("bio", e.target.value)} maxLength={150} placeholder="Tell brands about yourself..." rows={3}

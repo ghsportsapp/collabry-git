@@ -110,6 +110,10 @@ export default function AdminCreatorProfileModal({ creatorId, onBack }: { creato
                 <Field label="Gender" value={c.gender} />
                 <Field label="State / UT" value={c.state} />
                 <Field label="City / District" value={c.city} />
+                {/* Admin-only — languages are never shown on the brand side. */}
+                <div className="col-span-2">
+                  <Field label="Languages" value={Array.isArray(c.languages) && c.languages.length ? c.languages.join(", ") : ""} />
+                </div>
                 <Field label="YouTube" value={c.youtubeHandle} />
                 <Field label="Other Social" value={c.otherSocialHandle} />
                 <Field label="KYC" value={c.kycStatus} />

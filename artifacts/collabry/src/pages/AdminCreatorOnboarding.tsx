@@ -723,6 +723,8 @@ export default function AdminCreatorOnboarding() {
                 ["Gender", c.gender || "—"],
                 ["State / UT", c.state || "—"],
                 ["City / District", c.city || "—"],
+                // Admin-only — languages are never exposed on the brand side.
+                ["Languages", Array.isArray(c.languages) && c.languages.length ? c.languages.join(", ") : "—"],
                 ["YouTube", c.youtubeHandle || "—"],
                 ["Other Social", c.otherSocialHandle || "—"],
                 ["KYC", c.kycStatus],
