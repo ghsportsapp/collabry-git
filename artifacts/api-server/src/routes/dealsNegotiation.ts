@@ -979,14 +979,24 @@ router.get("/brand/deals", requireBrand, async (req: Request, res: Response): Pr
 });
 
 // ── Direct-deal payment helpers (shared by the no-gateway stub + Razorpay verify) ──
-async function computeDirectDealAmounts(deal: any): Promise<{ subtotal: number; commissionRate: number; gstRate: number; gstAmount: number; totalPayable: number; creatorPayout: number }> {
+async function computeDirectDealAmounts(deal: any): Promise<{ subtotal: number; originalSubtotal: number; discountPercent: number; discountAmount: number; discountedBase: number; commissionRate: number; gstRate: number; gstAmount: number; totalPayable: number; creatorPayout: number }> {
   const subtotal = num(deal.totalAgreedValue);
+  // Admin discount on the pre-GST base. Missing column (pre-migration) → 0.
+  // Clamped to [0,100] defensively so GST/total can never go below 0 or imply a
+  // negative brand charge, regardless of what is on the row.
+  const rawPct = num(deal.discountPercent);
+  const discountPercent = Math.min(100, Math.max(0, isNaN(rawPct) ? 0 : rawPct));
   const commissionRate = num(deal.commissionRateLocked) || (await readCommissionRate());
   const gstRate = num(deal.gstRateLocked) > 0 ? num(deal.gstRateLocked) : (await readGstRate());
-  const gstAmount = +(subtotal * gstRate / 100).toFixed(2);
-  const totalPayable = +(subtotal + gstAmount).toFixed(2);
+  const discountedBase = +(subtotal * (1 - discountPercent / 100)).toFixed(2);
+  const discountAmount = +(subtotal - discountedBase).toFixed(2);
+  const gstAmount = +(discountedBase * gstRate / 100).toFixed(2);
+  const totalPayable = +(discountedBase + gstAmount).toFixed(2);
+  // INVARIANT: the creator payout is ALWAYS the full subtotal × (1 − commission).
+  // The discount reduces the platform's take, never the creator's — the platform
+  // is allowed to go below commission and negative (Option B, platform-funded).
   const creatorPayout = +(subtotal * (1 - commissionRate / 100)).toFixed(2);
-  return { subtotal, commissionRate, gstRate, gstAmount, totalPayable, creatorPayout };
+  return { subtotal, originalSubtotal: subtotal, discountPercent, discountAmount, discountedBase, commissionRate, gstRate, gstAmount, totalPayable, creatorPayout };
 }
 
 // Moves a PENDING_PAYMENT direct deal into escrow + records the Payment row.
@@ -1270,10 +1280,18 @@ function serializeRequest(r: any) {
 
 function serializeDeal(d: any) {
   const subtotal = num(d.totalAgreedValue);
+  // Admin discount on the pre-GST base (missing/0 → no discount, clamped [0,100]).
+  const rawPct = num(d.discountPercent);
+  const discountPercent = Math.min(100, Math.max(0, isNaN(rawPct) ? 0 : rawPct));
+  const discountedBase = +(subtotal * (1 - discountPercent / 100)).toFixed(2);
+  const discountAmount = +(subtotal - discountedBase).toFixed(2);
   const gstRate = d.gstRateLocked != null ? num(d.gstRateLocked) : 18;
-  const gst = d.gstAmount != null ? num(d.gstAmount) : +(subtotal * gstRate / 100).toFixed(2);
-  const total = d.totalPayable != null ? num(d.totalPayable) : +(subtotal + gst).toFixed(2);
+  // Once paid, gstAmount/totalPayable are frozen on the row already reflecting the
+  // discount; before payment they are null, so fall back to the DISCOUNTED base.
+  const gst = d.gstAmount != null ? num(d.gstAmount) : +(discountedBase * gstRate / 100).toFixed(2);
+  const total = d.totalPayable != null ? num(d.totalPayable) : +(discountedBase + gst).toFixed(2);
   const commissionRate = num(d.commissionRateLocked) || num(d.commissionRate) || 5;
+  // Creator payout NEVER changes with the discount — always full subtotal.
   const creatorPayout = d.creatorPayout != null ? num(d.creatorPayout) : +(subtotal * (1 - commissionRate / 100)).toFixed(2);
   return {
     id: d.id,
@@ -1286,6 +1304,7 @@ function serializeDeal(d: any) {
     reelCount: d.reelCount, storyCount: d.storyCount, postCount: d.postCount,
     pricePerReel: num(d.agreedPricePerReel), pricePerStory: num(d.agreedPricePerStory), pricePerPost: num(d.agreedPricePerPost),
     subtotal, gstAmount: gst, totalPayable: total, creatorPayout, commissionRate, gstRate,
+    originalSubtotal: subtotal, discountPercent, discountAmount, discountedBase,
     timelineDays: d.timelineDays, timelineStartAt: d.timelineStartAt, deadlineAt: d.deadlineAt,
     productRequired: d.productRequired,
     productShippedAt: d.productShippedAt ?? null,

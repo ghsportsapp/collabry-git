@@ -464,6 +464,56 @@ router.get("/platform-config/deal-tutorial-video", async (_req: Request, res: Re
   res.json({ url });
 });
 
+// ─── Per-deal admin discount (SUPER ADMIN only via adminGuard SUPER_PREFIXES) ──
+// POST /admin/deal-discount/:id  { percent: 0..100, reason?: string }
+// Absolute, idempotent set of a percentage discount on a brand-payment deal's
+// pre-GST base. 0 clears it. Allowed ONLY while status='PENDING_PAYMENT' and the
+// deal is non-barter; once the brand pays, amounts freeze on the row and this
+// rejects. The creator payout is unaffected (computed from the full subtotal at
+// payment); the discount reduces the brand's payable and the platform's take.
+router.post("/admin/deal-discount/:id", async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params as Record<string, string>;
+  const adminId = (req as any).admin?.id ?? (req as any).adminId ?? null;
+  const body = (req.body ?? {}) as { percent?: unknown; reason?: unknown };
+  const rawPct = Number(body.percent);
+  if (!isFinite(rawPct)) { res.status(400).json({ error: "percent must be a number 0–100" }); return; }
+  // Clamp to [0,100] and keep at most 2 decimals so the stored value is sane.
+  const percent = Math.min(100, Math.max(0, Math.round(rawPct * 100) / 100));
+  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 500) || null : null;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const d = await client.query(
+      `SELECT id, status, source, "barterId" FROM "Deal" WHERE id=$1 FOR UPDATE`, [id]
+    );
+    if (d.rows.length === 0) { await client.query("ROLLBACK"); res.status(404).json({ error: "Deal not found" }); return; }
+    const deal = d.rows[0];
+    if (deal.status !== "PENDING_PAYMENT") {
+      await client.query("ROLLBACK");
+      res.status(400).json({ error: `Discount can only be changed while payment is pending (deal is ${deal.status}).` });
+      return;
+    }
+    if (deal.source === "BARTER" || deal.barterId) {
+      await client.query("ROLLBACK");
+      res.status(403).json({ error: "Barter deals carry no brand payment to discount." });
+      return;
+    }
+    // 0 clears: drop the reason too, but still record who/when the change was made.
+    await client.query(
+      `UPDATE "Deal"
+          SET "discountPercent"=$2, "discountByAdminId"=$3, "discountAt"=NOW(), "discountReason"=$4
+        WHERE id=$1`,
+      [id, percent, adminId, percent === 0 ? null : reason]
+    );
+    await client.query("COMMIT");
+    res.json({ ok: true, dealId: id, discountPercent: percent });
+  } catch (e: any) {
+    await client.query("ROLLBACK");
+    res.status(500).json({ error: e?.message ?? "Failed to set discount" });
+  } finally { client.release(); }
+});
+
 // ─── All Deals (for Deal Management page) ────────────────────────────────────
 router.get("/admin/deals", async (req: Request, res: Response): Promise<void> => {
   const { status, source, search } = req.query as { status?: string; source?: string; search?: string };
@@ -526,13 +576,30 @@ router.get("/admin/deals", async (req: Request, res: Response): Promise<void> =>
      )
      SELECT d.id, d.source, d.status, d."escrowStatus", d."totalAgreedValue",
             d."orderId",
+            -- Admin discount on the pre-GST base. Read through to_jsonb so the query
+            -- still runs if 006_deal_discount.sql has not been applied yet (missing
+            -- key → NULL → 0). Clamped defensively to [0,100].
+            LEAST(100, GREATEST(0, COALESCE((to_jsonb(d) ->> 'discountPercent')::numeric, 0))) AS "discountPercent",
+            ROUND(d."totalAgreedValue"
+              * LEAST(100, GREATEST(0, COALESCE((to_jsonb(d) ->> 'discountPercent')::numeric, 0))) / 100.0, 2) AS "discountAmount",
+            d."totalAgreedValue" AS "originalSubtotal",
+            (to_jsonb(d) ->> 'discountReason') AS "discountReason",
+            (to_jsonb(d) ->> 'discountAt')::timestamptz AS "discountAt",
+            -- Before payment totalPayable/gstAmount are NULL; fall back to the
+            -- DISCOUNTED base so the admin list matches what the brand will pay.
             COALESCE(d."totalPayable",
-              ROUND(d."totalAgreedValue" * (1 + COALESCE(d."gstRateLocked", cfg.gst_rate) / 100.0), 2)
+              ROUND(d."totalAgreedValue"
+                * (1 - LEAST(100, GREATEST(0, COALESCE((to_jsonb(d) ->> 'discountPercent')::numeric, 0))) / 100.0)
+                * (1 + COALESCE(d."gstRateLocked", cfg.gst_rate) / 100.0), 2)
             ) AS "totalPayable",
             COALESCE(d."gstAmount",
-              ROUND(d."totalAgreedValue" * COALESCE(d."gstRateLocked", cfg.gst_rate) / 100.0, 2)
+              ROUND(d."totalAgreedValue"
+                * (1 - LEAST(100, GREATEST(0, COALESCE((to_jsonb(d) ->> 'discountPercent')::numeric, 0))) / 100.0)
+                * COALESCE(d."gstRateLocked", cfg.gst_rate) / 100.0, 2)
             ) AS "gstAmount",
             COALESCE(d."commissionRateLocked", d."commissionRate", cfg.comm_rate) AS "commissionRate",
+            COALESCE(d."gstRateLocked", cfg.gst_rate) AS "gstRate",
+            -- Creator payout is UNCHANGED by the discount — always full subtotal.
             COALESCE(d."creatorPayout",
               ROUND(d."totalAgreedValue" * (1 - COALESCE(d."commissionRateLocked", d."commissionRate", cfg.comm_rate) / 100.0), 2)
             ) AS "creatorPayout",

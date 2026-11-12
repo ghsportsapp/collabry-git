@@ -35,7 +35,10 @@ type Decision =
 const OPEN_PREFIXES = ["/admin/search/filter-options"];
 
 // Reserved to super admins (not grantable sections).
-const SUPER_PREFIXES = ["/admin/partial-profile-visibility", "/admin/manage-admins"];
+// deal-discount sets a brand-payment discount that can push the platform take
+// below commission / negative, so it is super-admin only — distinct from the
+// deal-management-gated /admin/deals surface.
+const SUPER_PREFIXES = ["/admin/partial-profile-visibility", "/admin/manage-admins", "/admin/deal-discount"];
 
 // Landing content + team members are shared by the three landing editors.
 const LANDING_FAMILY = ["landing", "brand-landing", "creator-landing"];

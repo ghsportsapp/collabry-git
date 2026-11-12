@@ -41,6 +41,7 @@ interface DealRow {
   reelCount: number; storyCount: number; postCount: number;
   pricePerReel: number; pricePerStory: number; pricePerPost: number;
   subtotal: number; gstAmount: number; totalPayable: number; creatorPayout: number; commissionRate: number; gstRate: number;
+  originalSubtotal?: number; discountPercent?: number; discountAmount?: number; discountedBase?: number;
   timelineDays: number; deadlineAt: string | null; createdAt: string;
   paymentReferenceId: string | null;
   productRequired: boolean; productShippedAt: string | null; productReceivedAt: string | null;
@@ -480,9 +481,28 @@ function ViewOrderModal({ deal, onClose }: { deal: DealRow; onClose: () => void 
           {/* Payment */}
           <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
             <p className="text-white/70 text-[10px] font-bold uppercase tracking-wider mb-2">Payment Breakdown</p>
-            <Row label="Subtotal" value={INR(deal.subtotal)} />
-            <Row label={`GST (${deal.gstRate ?? 18}%)`} value={INR(deal.gstAmount)} />
-            <Row label="Total Paid" value={INR(deal.totalPayable)} bold />
+            {Number(deal.discountPercent ?? 0) > 0 ? (
+              <>
+                <Row label="Original price" value={INR(deal.originalSubtotal ?? deal.subtotal)} />
+                <div className="flex items-center justify-between py-0.5">
+                  <span className="text-[13px]" style={{ color: "#4ade80", fontFamily: POPPINS }}>
+                    Discount from Collabry ({deal.discountPercent}%)
+                  </span>
+                  <span className="text-[13px] font-semibold" style={{ color: "#4ade80", fontFamily: POPPINS }}>
+                    −₹{Number(deal.discountAmount ?? 0).toLocaleString("en-IN")}
+                  </span>
+                </div>
+                <Row label="Discounted price" value={INR(deal.discountedBase ?? ((deal.originalSubtotal ?? deal.subtotal) - (deal.discountAmount ?? 0)))} />
+                <Row label={`GST (${deal.gstRate ?? 18}%)`} value={INR(deal.gstAmount)} />
+                <Row label="Total Paid" value={INR(deal.totalPayable)} bold />
+              </>
+            ) : (
+              <>
+                <Row label="Subtotal" value={INR(deal.subtotal)} />
+                <Row label={`GST (${deal.gstRate ?? 18}%)`} value={INR(deal.gstAmount)} />
+                <Row label="Total Paid" value={INR(deal.totalPayable)} bold />
+              </>
+            )}
           </div>
 
           {/* Timeline */}
@@ -573,9 +593,28 @@ function PendingTab({ requests, pendingPaymentDeals, paying, onSimulatePayment, 
             {d.postCount > 0 && <span>{d.postCount} Posts</span>}
           </div>
           <div className="rounded-lg p-3 mb-3" style={{ background: "rgba(0,0,0,0.30)" }}>
-            <Row label="Subtotal" value={`₹${d.subtotal.toLocaleString("en-IN")}`} />
-            <Row label={`GST (${d.gstRate ?? 18}%)`} value={`₹${d.gstAmount.toLocaleString("en-IN")}`} />
-            <Row label="Total Payable" value={`₹${d.totalPayable.toLocaleString("en-IN")}`} bold />
+            {Number(d.discountPercent ?? 0) > 0 ? (
+              <>
+                <Row label="Original price" value={`₹${(d.originalSubtotal ?? d.subtotal).toLocaleString("en-IN")}`} />
+                <div className="flex items-center justify-between py-0.5">
+                  <span className="text-[13px]" style={{ color: "#4ade80", fontFamily: POPPINS }}>
+                    Discount from Collabry ({d.discountPercent}%)
+                  </span>
+                  <span className="text-[13px] font-semibold" style={{ color: "#4ade80", fontFamily: POPPINS }}>
+                    −₹{Number(d.discountAmount ?? 0).toLocaleString("en-IN")}
+                  </span>
+                </div>
+                <Row label="Discounted price" value={`₹${Number(d.discountedBase ?? (d.subtotal - (d.discountAmount ?? 0))).toLocaleString("en-IN")}`} />
+                <Row label={`GST (${d.gstRate ?? 18}%)`} value={`₹${d.gstAmount.toLocaleString("en-IN")}`} />
+                <Row label="Total Payable" value={`₹${d.totalPayable.toLocaleString("en-IN")}`} bold />
+              </>
+            ) : (
+              <>
+                <Row label="Subtotal" value={`₹${d.subtotal.toLocaleString("en-IN")}`} />
+                <Row label={`GST (${d.gstRate ?? 18}%)`} value={`₹${d.gstAmount.toLocaleString("en-IN")}`} />
+                <Row label="Total Payable" value={`₹${d.totalPayable.toLocaleString("en-IN")}`} bold />
+              </>
+            )}
           </div>
           <button onClick={() => onSimulatePayment(d.id, d.totalPayable)} disabled={paying === d.id}
             className="w-full py-2.5 rounded-full text-white text-sm font-semibold disabled:opacity-50"

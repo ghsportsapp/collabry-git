@@ -370,7 +370,7 @@ function StageChangeBell(
 }
 
 function AllDealsList() {
-  const { adminFetch } = useAdminAuth();
+  const { adminFetch, isSuperAdmin } = useAdminAuth();
   const [, navigate] = useLocation();
   const [deals, setDeals] = useState<any[] | null>(null);
   const [status, setStatus] = useState("ALL");
@@ -407,6 +407,13 @@ function AllDealsList() {
   const [refundReason, setRefundReason] = useState("");
   const [refundLoading, setRefundLoading] = useState(false);
   const [refundMsg, setRefundMsg] = useState("");
+
+  // Discount modal (super-admin only)
+  const [discountDeal, setDiscountDeal] = useState<any | null>(null);
+  const [discountPct, setDiscountPct] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
+  const [discountLoading, setDiscountLoading] = useState(false);
+  const [discountMsg, setDiscountMsg] = useState("");
 
   // Invoice upload modal
   const [invoiceDeal, setInvoiceDeal] = useState<any | null>(null);
@@ -648,6 +655,37 @@ function AllDealsList() {
     finally { setInvoiceLoading(false); }
   }
 
+  // ── Discount (super-admin only) ──
+  // Settable only while PENDING_PAYMENT and non-barter. The brand-payment deals
+  // this applies to collect through the simulate-payment flow.
+  const canDiscount = (d: any) =>
+    isSuperAdmin && d.status === "PENDING_PAYMENT" && d.source !== "BARTER";
+
+  function openDiscountModal(deal: any) {
+    setDiscountDeal(deal);
+    setDiscountPct(Number(deal.discountPercent ?? 0) > 0 ? String(deal.discountPercent) : "");
+    setDiscountReason(deal.discountReason ?? "");
+    setDiscountMsg("");
+  }
+
+  async function confirmDiscount() {
+    if (!discountDeal) return;
+    const pct = Number(discountPct || 0);
+    if (!isFinite(pct) || pct < 0 || pct > 100) { setDiscountMsg("Enter a percentage between 0 and 100."); return; }
+    setDiscountLoading(true); setDiscountMsg("");
+    try {
+      const r = await adminFetch(`${BASE_URL}/api/admin/deal-discount/${discountDeal.id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ percent: pct, reason: discountReason.trim() || undefined }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setDiscountMsg(d.error ?? "Failed to set discount"); return; }
+      setDiscountMsg(pct === 0 ? "✅ Discount cleared" : `✅ Discount set to ${pct}%`);
+      setTimeout(() => { setDiscountDeal(null); load(page); }, 1200);
+    } catch { setDiscountMsg("Network error"); }
+    finally { setDiscountLoading(false); }
+  }
+
   return (
     <div>
       {/* ── Chat Drawer ── */}
@@ -825,6 +863,83 @@ function AllDealsList() {
         </div>
       )}
 
+      {/* ── Discount Modal (super-admin only) ── */}
+      {discountDeal && (() => {
+        const sub = Number(discountDeal.originalSubtotal ?? discountDeal.totalAgreedValue ?? 0);
+        const gstRate = Number(discountDeal.gstRate ?? 18);
+        const commRate = Number(discountDeal.commissionRate ?? 5);
+        const raw = Number(discountPct || 0);
+        const pct = isFinite(raw) ? Math.min(100, Math.max(0, raw)) : 0;
+        const base = +(sub * (1 - pct / 100)).toFixed(2);
+        const discAmt = +(sub - base).toFixed(2);
+        const gst = +(base * gstRate / 100).toFixed(2);
+        const total = +(base + gst).toFixed(2);
+        const payout = +(sub * (1 - commRate / 100)).toFixed(2);   // unchanged
+        const take = +(base - payout).toFixed(2);                  // platform take ex-GST
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center px-4"
+            style={{ background: "rgba(0,0,0,0.82)" }}
+            onClick={e => { if (e.target === e.currentTarget) setDiscountDeal(null); }}>
+            <div className="w-full max-w-md rounded-2xl p-6 space-y-4"
+              style={{ background: "#0F0F18", border: "1px solid rgba(74,222,128,0.30)", boxShadow: "0 24px 80px rgba(0,0,0,0.85)", fontFamily: POPPINS }}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-white font-bold text-base">Set Discount</h3>
+                  <p className="text-white/70 text-[11px] mt-0.5">{discountDeal.brandName} → @{discountDeal.creatorHandle}</p>
+                </div>
+                <button onClick={() => setDiscountDeal(null)}><X className="w-5 h-5 text-white/70" /></button>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-white/80 text-xs font-semibold uppercase tracking-wider">Discount %</label>
+                <input type="number" min={0} max={100} step={0.5} value={discountPct}
+                  onChange={e => setDiscountPct(e.target.value)} placeholder="0–100"
+                  className="w-full px-3 py-2.5 rounded-lg text-white text-sm outline-none"
+                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)" }} />
+                <p className="text-white/45 text-[10px]">Applies to the pre-GST base. Creator payout is never affected. 0 clears the discount.</p>
+              </div>
+
+              <div className="rounded-xl p-3.5 space-y-1.5 tabular-nums"
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="flex items-center justify-between"><span className="text-white/60 text-xs">Original base</span><span className="text-white/90 text-xs font-semibold">{fmtINR(sub)}</span></div>
+                <div className="flex items-center justify-between"><span className="text-xs" style={{ color: "#4ade80" }}>Discount ({pct}%)</span><span className="text-xs font-semibold" style={{ color: "#4ade80" }}>−{fmtINR(discAmt)}</span></div>
+                <div className="flex items-center justify-between"><span className="text-white/60 text-xs">Discounted base</span><span className="text-white/90 text-xs font-semibold">{fmtINR(base)}</span></div>
+                <div className="flex items-center justify-between"><span className="text-white/60 text-xs">GST ({gstRate}%)</span><span className="text-white/90 text-xs font-semibold">{fmtINR(gst)}</span></div>
+                <div className="flex items-center justify-between pt-1 mt-1 border-t" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+                  <span className="text-white text-xs font-bold">Brand pays</span><span className="text-white text-sm font-bold">{fmtINR(total)}</span>
+                </div>
+                <div className="flex items-center justify-between"><span className="text-white/60 text-xs">Creator payout</span><span className="text-xs font-semibold" style={{ color: "#4ade80" }}>{fmtINR(payout)} <span className="text-white/40 font-normal">(unchanged)</span></span></div>
+                <div className="flex items-center justify-between"><span className="text-white/60 text-xs">Platform take (ex-GST)</span><span className="text-xs font-semibold" style={{ color: take < 0 ? "#f87171" : "rgba(255,255,255,0.90)" }}>{take < 0 ? `−${fmtINR(Math.abs(take))}` : fmtINR(take)}</span></div>
+                {take < 0 && <p className="text-[10px]" style={{ color: "#f87171" }}>⚠ Platform funds this deal at a loss (discount exceeds commission).</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-white/80 text-xs font-semibold uppercase tracking-wider">Reason <span className="text-white/40">(optional)</span></label>
+                <input type="text" value={discountReason} onChange={e => setDiscountReason(e.target.value)}
+                  placeholder="e.g. Launch offer, retention…" maxLength={500}
+                  className="w-full px-3 py-2.5 rounded-lg text-white text-sm outline-none"
+                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)" }} />
+              </div>
+
+              {discountMsg && <p className={`text-sm text-center ${discountMsg.startsWith("✅") ? "text-green-400" : "text-red-400"}`}>{discountMsg}</p>}
+
+              <div className="flex gap-3">
+                <button onClick={() => setDiscountDeal(null)}
+                  className="flex-1 py-2.5 rounded-full text-white/90 text-sm font-semibold"
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)" }}>
+                  Cancel
+                </button>
+                <button disabled={discountLoading} onClick={confirmDiscount}
+                  className="flex-1 py-2.5 rounded-full text-sm font-bold disabled:opacity-50"
+                  style={{ background: "rgba(74,222,128,0.85)", color: "#06240f" }}>
+                  {discountLoading ? "Saving…" : pct === 0 ? "Clear Discount" : `Apply ${pct}%`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Invoice Upload Modal ── */}
       <input ref={invoiceFileRef} type="file" accept="image/jpeg,image/png,image/jpg,application/pdf" className="hidden" onChange={handleInvoiceFile} />
       {invoiceDeal && (
@@ -997,7 +1112,15 @@ function AllDealsList() {
             if (d.storyCount > 0) breakdown.push(`${d.storyCount} Stor${d.storyCount > 1 ? "ies" : "y"}`);
             if (d.postCount > 0) breakdown.push(`${d.postCount} Photo${d.postCount > 1 ? "s" : ""}`);
 
-            const platformFee = Number(d.totalAgreedValue || 0) - Number(d.creatorPayout || 0);
+            // Discount (on the pre-GST base). When present, the platform's ACTUAL
+            // take is discountedBase − creatorPayout, which can go negative (Option
+            // B: the platform funds the discount beyond its commission).
+            const discPct = Number(d.discountPercent || 0);
+            const hasDiscount = discPct > 0;
+            const origSub = Number(d.originalSubtotal ?? d.totalAgreedValue ?? 0);
+            const discAmt = Number(d.discountAmount ?? 0);
+            const discountedBase = +(origSub - discAmt).toFixed(2);
+            const platformFee = +(((hasDiscount ? discountedBase : Number(d.totalAgreedValue || 0)) - Number(d.creatorPayout || 0))).toFixed(2);
             const showBreakdown = Number(d.creatorPayout) > 0;
 
             const refunded = d.payoutStatus === "REFUNDED_TO_BRAND";
@@ -1045,6 +1168,13 @@ function AllDealsList() {
                   <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
                     {sourceBadge(d.source)}
                     {stageBadge(d)}
+                    {hasDiscount && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                        style={{ background: "rgba(74,222,128,0.14)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.35)" }}
+                        title={`Discount applied: ${discPct}% (−${fmtINR(discAmt)})${d.discountReason ? ` · ${d.discountReason}` : ""}`}>
+                        −{discPct}% DISCOUNT
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1075,7 +1205,14 @@ function AllDealsList() {
                     <div className="flex items-end gap-x-6 gap-y-2 flex-wrap">
                       <div className="min-w-[5.5rem]">
                         <p className="text-white/45 text-[10px] uppercase tracking-wider mb-0.5">Deal Amount</p>
-                        <p className="text-white font-bold text-sm tabular-nums">{fmtINR(d.totalAgreedValue)}</p>
+                        {hasDiscount ? (
+                          <p className="text-sm tabular-nums">
+                            <span className="text-white/45 line-through mr-1">{fmtINR(origSub)}</span>
+                            <span className="text-white font-bold">{fmtINR(discountedBase)}</span>
+                          </p>
+                        ) : (
+                          <p className="text-white font-bold text-sm tabular-nums">{fmtINR(d.totalAgreedValue)}</p>
+                        )}
                       </div>
                       {showBreakdown && (
                         <>
@@ -1084,8 +1221,10 @@ function AllDealsList() {
                             <p className="text-white/85 text-sm font-semibold tabular-nums">{fmtINR(d.gstAmount)}</p>
                           </div>
                           <div className="min-w-[5.5rem]">
-                            <p className="text-white/45 text-[10px] uppercase tracking-wider mb-0.5">Platform Fee</p>
-                            <p className="text-white/85 text-sm font-semibold tabular-nums">{fmtINR(platformFee)}</p>
+                            <p className="text-white/45 text-[10px] uppercase tracking-wider mb-0.5">Platform {platformFee < 0 ? "Loss" : "Fee"}</p>
+                            <p className="text-sm font-semibold tabular-nums" style={{ color: platformFee < 0 ? "#f87171" : "rgba(255,255,255,0.85)" }}>
+                              {platformFee < 0 ? `−${fmtINR(Math.abs(platformFee))}` : fmtINR(platformFee)}
+                            </p>
                           </div>
                           <div className="min-w-[6rem]">
                             <p className="text-white/45 text-[10px] uppercase tracking-wider mb-0.5">Creator Payout</p>
@@ -1097,6 +1236,38 @@ function AllDealsList() {
                         <p className="text-white/45 text-[10px] uppercase tracking-wider mb-0.5">Payment</p>
                         {payoutStatusBadge(d.payoutStatus)}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Discount detail + copy-ready line for the (manually uploaded) brand invoice */}
+                  {!isBarter && hasDiscount && (
+                    <div className="mt-2 pt-2 border-t" style={{ borderColor: "rgba(74,222,128,0.18)" }}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <p className="text-[11px]" style={{ color: "#4ade80" }}>
+                          Discount applied: {discPct}% (−{fmtINR(discAmt)})
+                          {d.discountReason && <span className="text-white/60"> · {d.discountReason}</span>}
+                        </p>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const lines = [
+                              `Original: ${fmtINR(origSub)}`,
+                              `Discount (${discPct}%): -${fmtINR(discAmt)}`,
+                              `Discounted base: ${fmtINR(discountedBase)}`,
+                              `GST (${d.gstRate ?? 18}%): ${fmtINR(d.gstAmount)}`,
+                              `Total payable: ${fmtINR(d.totalPayable)}`,
+                            ].join("\n");
+                            navigator.clipboard?.writeText(lines).catch(() => {});
+                          }}
+                          className="text-[10px] px-2 py-0.5 rounded-full text-white/80 hover:text-white"
+                          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
+                          title="Copy the discounted breakdown to paste into the brand invoice">
+                          Copy invoice breakdown
+                        </button>
+                      </div>
+                      <p className="text-white/50 text-[10px] mt-1 tabular-nums">
+                        {fmtINR(origSub)} − {fmtINR(discAmt)} = {fmtINR(discountedBase)} base · +{fmtINR(d.gstAmount)} GST · Brand pays {fmtINR(d.totalPayable)} · Creator payout {fmtINR(d.creatorPayout)} (unchanged)
+                      </p>
                     </div>
                   )}
 
@@ -1143,6 +1314,14 @@ function AllDealsList() {
                       className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold text-white"
                       style={{ background: "rgba(239,68,68,0.70)", border: "1px solid rgba(239,68,68,0.30)" }}>
                       ↩ Refund Brand
+                    </button>
+                  )}
+
+                  {canDiscount(d) && (
+                    <button onClick={(e) => { e.stopPropagation(); openDiscountModal(d); }}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold"
+                      style={{ background: "rgba(74,222,128,0.12)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.30)" }}>
+                      {hasDiscount ? `% Edit Discount (${discPct}%)` : "% Set Discount"}
                     </button>
                   )}
 
