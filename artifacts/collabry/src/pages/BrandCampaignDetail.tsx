@@ -542,7 +542,7 @@ function SelectConfirmModal({ app, onClose, onConfirm, slotsFull }: { app: any; 
             </div>
           </div>
         )}
-        <div className="rounded-xl p-3.5 mb-5" style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.25)" }}>
+        <div className="rounded-xl p-3.5 mb-3" style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.25)" }}>
           <div className="flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#F59E0B" }} />
             <div>
@@ -551,6 +551,15 @@ function SelectConfirmModal({ app, onClose, onConfirm, slotsFull }: { app: any; 
                 The creator has 48 hours to start the deal or reject it. If they don't respond, the selection auto-expires and the slot reopens.
               </p>
             </div>
+          </div>
+        </div>
+        {/* Non-blocking warning: selecting consumes a slot that can't be reopened once filled. */}
+        <div className="rounded-xl p-3 mb-5" style={{ background: "rgba(225,79,105,0.10)", border: "1px solid rgba(225,79,105,0.28)" }}>
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#E14F69" }} />
+            <p className="text-white/90 text-xs leading-relaxed">
+              This will fill <span className="font-semibold">1 slot</span> of your campaign — and this slot won't reopen once filled.
+            </p>
           </div>
         </div>
         <div className="flex gap-2">

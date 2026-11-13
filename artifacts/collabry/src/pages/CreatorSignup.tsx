@@ -821,7 +821,7 @@ export default function CreatorSignup() {
             {step === 2 && (
               <div className="space-y-4">
                 {slabMessage && (
-                  <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: "#F0187A", color: "#fff", boxShadow: "0 0 6px 1px rgba(255,255,255,0.70)" }}>
+                  <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: "#E14F69", color: "#fff", boxShadow: "0 0 6px 1px rgba(255,255,255,0.70)" }}>
                     <p className="text-sm leading-relaxed font-medium">{slabMessage}</p>
                   </div>
                 )}
@@ -1015,6 +1015,11 @@ export default function CreatorSignup() {
             {/* ── STEP 4: Languages (own step, after Categories) ── */}
             {step === 4 && (
               <div className="space-y-4">
+                {randomCategoryMessage && (
+                  <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: "#E14F69", color: "#fff", boxShadow: "0 0 6px 1px rgba(255,255,255,0.70)" }}>
+                    <p className="text-sm leading-relaxed font-medium">{randomCategoryMessage}</p>
+                  </div>
+                )}
                 <div>
                   <h2 className="text-white font-bold text-lg">Languages you're comfortable making videos in <span className="text-[#E14F69]">*</span></h2>
                   <p className="text-white/70 text-xs mt-0.5">Select all that apply — there's no limit.</p>
@@ -1043,11 +1048,6 @@ export default function CreatorSignup() {
             {/* ── STEP 5: Audience + Goals (merged) ── */}
             {step === 5 && (
               <div className="space-y-5">
-                {randomCategoryMessage && (
-                  <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: "#F0187A", color: "#fff", boxShadow: "0 0 6px 1px rgba(255,255,255,0.70)" }}>
-                    <p className="text-sm leading-relaxed font-medium">{randomCategoryMessage}</p>
-                  </div>
-                )}
                 <div className="flex items-center justify-between">
                   <div><h2 className="text-white font-bold text-lg">About Your Audience</h2><p className="text-white/70 text-xs">Tell brands who follows you</p></div>
                   {infoContent && <button onClick={() => setShowInfoModal(true)} className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ml-2" style={{ background: "rgba(240,24,122,0.15)", border: "1px solid rgba(240,24,122,0.30)" }}><Info className="w-3.5 h-3.5 text-[#E14F69]" /></button>}
@@ -1127,7 +1127,7 @@ export default function CreatorSignup() {
                 </div>
                 {loadingSlabs ? <div className="text-white/70 text-sm text-center py-4">Loading tiers...</div> : (
                   <div>
-                    <div className="p-3 rounded-xl mb-3" style={{ background: "#F0187A", boxShadow: "0 0 6px 1px rgba(255,255,255,0.70)" }}>
+                    <div className="p-3 rounded-xl mb-3" style={{ background: "#E14F69", boxShadow: "0 0 6px 1px rgba(255,255,255,0.70)" }}>
                       <p className="text-white text-xs">We suggest creators choose their pricing based on their followers and engagement. Below are the default price ranges for every tier — you can select whichever fits your profile.</p>
                     </div>
                     <p className="text-white/60 text-xs mb-2">Please select your pricing slab.</p>
