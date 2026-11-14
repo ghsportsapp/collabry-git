@@ -21,8 +21,11 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
   const [actionLoading, setActionLoading] = useState(false);
   const [showApplicants, setShowApplicants] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [refVideoInput, setRefVideoInput] = useState("");
 
   useEffect(() => { if (!adminId) navigate("/admin-collabryangad/login"); }, [adminId]);
+  // Sync the editable URL field to whichever barter campaign is open.
+  useEffect(() => { setRefVideoInput(selected?.referenceVideoUrl ?? ""); }, [selected?.id]);
 
   const load = useCallback(async () => {
     setBarters(null);
@@ -55,6 +58,25 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
       } else {
         setMsg({ text: d.error ?? "Action failed", ok: false });
       }
+    } catch { setMsg({ text: "Error occurred", ok: false }); }
+    setActionLoading(false);
+    setTimeout(() => setMsg(null), 5000);
+  };
+
+  // Set/clear the reference video URL without closing the detail panel.
+  const saveBarterRefVideo = async (url: string) => {
+    if (!selected) return;
+    setActionLoading(true);
+    try {
+      const r = await adminFetch(`/api/admin/barter/${selected.id}/reference-video`, {
+        method: "POST", body: JSON.stringify({ url }),
+      });
+      const d = await r.json();
+      if (r.ok) {
+        setMsg({ text: url ? "Reference video saved." : "Reference video cleared.", ok: true });
+        setSelected((prev: any) => prev ? { ...prev, referenceVideoUrl: d.referenceVideoUrl } : prev);
+        setBarters(prev => prev ? prev.map((b: any) => b.id === selected.id ? { ...b, referenceVideoUrl: d.referenceVideoUrl } : b) : prev);
+      } else setMsg({ text: d.error ?? "Failed to save video", ok: false });
     } catch { setMsg({ text: "Error occurred", ok: false }); }
     setActionLoading(false);
     setTimeout(() => setMsg(null), 5000);
@@ -233,6 +255,34 @@ export default function AdminBarter({ embedded = false }: { embedded?: boolean }
                       </div>
                     </div>
                   ))}
+
+                  {/* Reference Video URL — admin-only; shown to creators as a link-out */}
+                  <div>
+                    <p className="text-[10px] mb-1" style={{ color: "rgba(255,255,255,0.45)", fontFamily: POPPINS }}>Reference Video URL (shown to creators)</p>
+                    <input type="url" value={refVideoInput} onChange={e => setRefVideoInput(e.target.value)}
+                      placeholder="https://… (paste a link; leave empty to clear)"
+                      className="w-full rounded-xl px-3 py-2 text-xs text-white outline-none"
+                      style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", fontFamily: POPPINS }} />
+                    <div className="flex gap-2 mt-2">
+                      <button onClick={() => saveBarterRefVideo(refVideoInput.trim())}
+                        disabled={actionLoading || refVideoInput.trim() === (selected.referenceVideoUrl ?? "")}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
+                        style={{ background: PINK, fontFamily: POPPINS }}>Save Video</button>
+                      {selected.referenceVideoUrl && (
+                        <button onClick={() => { setRefVideoInput(""); saveBarterRefVideo(""); }}
+                          disabled={actionLoading}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40"
+                          style={{ border: "1px solid rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.8)", fontFamily: POPPINS }}>Clear</button>
+                      )}
+                    </div>
+                    {selected.referenceVideoUrl && (
+                      <a href={/^https?:\/\//i.test(selected.referenceVideoUrl) ? selected.referenceVideoUrl : `https://${selected.referenceVideoUrl}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="block text-[10px] mt-1.5 truncate hover:underline" style={{ color: PINK, fontFamily: POPPINS }}>
+                        Current: {selected.referenceVideoUrl}
+                      </a>
+                    )}
+                  </div>
 
                   {/* Product photos */}
                   {selected.productPhotos?.length > 0 && (

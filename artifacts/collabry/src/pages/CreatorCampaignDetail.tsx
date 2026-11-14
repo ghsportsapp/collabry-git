@@ -325,6 +325,10 @@ export default function CreatorCampaignDetail() {
   const appStatus = campaign?.applicationStatus;
   const hasApplied = appStatus != null;
   const canApply = !hasApplied && ["LIVE", "PARTIALLY_FILLED"].includes(campaign?.status) && (campaign?.slotsRemaining ?? 1) > 0;
+  // Admin-set reference video (optional). Normalise a scheme-less URL so the
+  // link-out opens correctly in a new tab.
+  const refVideoUrl: string | undefined = campaign?.referenceVideoUrl || undefined;
+  const refVideoHref = refVideoUrl ? (/^https?:\/\//i.test(refVideoUrl) ? refVideoUrl : `https://${refVideoUrl}`) : "";
   const canWithdraw = hasApplied && ["PENDING", "SHORTLISTED"].includes(appStatus);
   const isSelected = appStatus === "SELECTED" && !campaign?.dealId;
 
@@ -633,11 +637,32 @@ export default function CreatorCampaignDetail() {
             {/* ── CTA BUTTONS ── */}
             <div className="mt-6 space-y-3">
               {canApply && (
-                <button onClick={handleApply} disabled={applying}
-                  className="w-full py-4 rounded-2xl text-white font-bold text-base transition-opacity"
-                  style={{ background: applying ? "rgba(240,24,122,0.5)" : PINK, fontFamily: POPPINS }}>
-                  {applying ? "Submitting…" : "Apply Now"}
-                </button>
+                <>
+                  {/* Apply Now (full-width when no reference video; on desktop it
+                      shrinks to sit beside the "Watch Reference Video" button). */}
+                  <div className="flex items-stretch gap-3">
+                    <button onClick={handleApply} disabled={applying}
+                      className="flex-1 py-4 rounded-2xl text-white font-bold text-base transition-opacity"
+                      style={{ background: applying ? "rgba(240,24,122,0.5)" : PINK, fontFamily: POPPINS }}>
+                      {applying ? "Submitting…" : "Apply Now"}
+                    </button>
+                    {refVideoUrl && (
+                      <a href={refVideoHref} target="_blank" rel="noopener noreferrer"
+                        className="hidden sm:flex flex-1 items-center justify-center text-center py-4 rounded-2xl font-bold text-base transition-opacity hover:opacity-90"
+                        style={{ border: `1.5px solid ${PINK}`, color: PINK, fontFamily: POPPINS }}>
+                        Watch Reference Video
+                      </a>
+                    )}
+                  </div>
+                  {/* Mobile: underlined text link below Apply Now (no filled button). */}
+                  {refVideoUrl && (
+                    <a href={refVideoHref} target="_blank" rel="noopener noreferrer"
+                      className="sm:hidden block text-center underline text-sm"
+                      style={{ color: PINK, fontFamily: POPPINS }}>
+                      Watch reference video of this campaign
+                    </a>
+                  )}
+                </>
               )}
 
               {isSelected && !selectionExpired && (

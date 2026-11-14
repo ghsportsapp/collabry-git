@@ -1658,6 +1658,19 @@ router.get("/admin/campaigns/:id", async (req: Request, res: Response): Promise<
   res.json(r.rows[0]);
 });
 
+// Admin: set/clear a campaign's reference video URL (campaign-management section
+// via adminGuard prefix). Empty/blank clears it. Shown to creators as a link-out.
+router.post("/admin/campaigns/:id/reference-video", async (req: Request, res: Response): Promise<void> => {
+  const raw = (req.body ?? {}).url;
+  const url = typeof raw === "string" ? raw.trim().slice(0, 2000) : "";
+  const r = await pool.query(
+    `UPDATE "Campaign" SET "referenceVideoUrl"=$1 WHERE id=$2 RETURNING id`,
+    [url || null, req.params["id"]]
+  );
+  if (r.rowCount === 0) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ ok: true, referenceVideoUrl: url || null });
+});
+
 /* ── Admin: view a campaign's applicants (read-only) ───────────────────────
    Reuses buildCreatorFilters + readPaging/pagedApplicants so filters and paging
    match the brand surfaces exactly. Selects only the fields ApplicantCard needs
@@ -1893,6 +1906,19 @@ router.get("/admin/barter", async (req: Request, res: Response): Promise<void> =
     [status]
   );
   res.json(r.rows);
+});
+
+// Admin: set/clear a barter campaign's reference video URL (campaign-management
+// section via adminGuard prefix). Empty/blank clears it.
+router.post("/admin/barter/:id/reference-video", async (req: Request, res: Response): Promise<void> => {
+  const raw = (req.body ?? {}).url;
+  const url = typeof raw === "string" ? raw.trim().slice(0, 2000) : "";
+  const r = await pool.query(
+    `UPDATE "BarterCampaign" SET "referenceVideoUrl"=$1 WHERE id=$2 RETURNING id`,
+    [url || null, req.params["id"]]
+  );
+  if (r.rowCount === 0) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ ok: true, referenceVideoUrl: url || null });
 });
 
 router.post("/admin/barter/:id/approve", async (req: Request, res: Response): Promise<void> => {

@@ -40,6 +40,7 @@ export default function AdminCampaigns({ embedded = false }: { embedded?: boolea
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [showHoldForm, setShowHoldForm] = useState(false);
   const [showApplicants, setShowApplicants] = useState(false);
+  const [refVideoInput, setRefVideoInput] = useState("");
 
   useEffect(() => { if (!adminId) navigate("/admin-collabryangad/login"); }, [adminId]);
 
@@ -58,7 +59,7 @@ export default function AdminCampaigns({ embedded = false }: { embedded?: boolea
 
   const loadDetail = async (id: string) => {
     const r = await adminFetch(`/api/admin/campaigns/${id}`);
-    if (r.ok) { setSelectedCamp(await r.json()); setShowRejectForm(false); setShowHoldForm(false); }
+    if (r.ok) { const d = await r.json(); setSelectedCamp(d); setRefVideoInput(d.referenceVideoUrl ?? ""); setShowRejectForm(false); setShowHoldForm(false); }
   };
 
   const doAction = async (action: string, payload?: any) => {
@@ -237,6 +238,34 @@ export default function AdminCampaigns({ embedded = false }: { embedded?: boolea
                     </div>
                   </div>
                 ))}
+
+                {/* Reference Video URL — admin-only; shown to creators as a link-out */}
+                <div>
+                  <p className="text-[10px] mb-1" style={{ color: "rgba(255,255,255,0.45)", fontFamily: POPPINS }}>Reference Video URL (shown to creators)</p>
+                  <input type="url" value={refVideoInput} onChange={e => setRefVideoInput(e.target.value)}
+                    placeholder="https://… (paste a link; leave empty to clear)"
+                    className="w-full rounded-xl px-3 py-2 text-xs text-white outline-none"
+                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", fontFamily: POPPINS }} />
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={() => doAction("reference-video", { url: refVideoInput.trim() })}
+                      disabled={actionLoading || refVideoInput.trim() === (selectedCamp.referenceVideoUrl ?? "")}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
+                      style={{ background: PINK, fontFamily: POPPINS }}>Save Video</button>
+                    {selectedCamp.referenceVideoUrl && (
+                      <button onClick={() => { setRefVideoInput(""); doAction("reference-video", { url: "" }); }}
+                        disabled={actionLoading}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40"
+                        style={{ border: "1px solid rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.8)", fontFamily: POPPINS }}>Clear</button>
+                    )}
+                  </div>
+                  {selectedCamp.referenceVideoUrl && (
+                    <a href={/^https?:\/\//i.test(selectedCamp.referenceVideoUrl) ? selectedCamp.referenceVideoUrl : `https://${selectedCamp.referenceVideoUrl}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="block text-[10px] mt-1.5 truncate hover:underline" style={{ color: PINK, fontFamily: POPPINS }}>
+                      Current: {selectedCamp.referenceVideoUrl}
+                    </a>
+                  )}
+                </div>
 
                 {/* Product Photos */}
                 {selectedCamp.productRequired && selectedCamp.productPhotos?.length > 0 && (
