@@ -71,7 +71,7 @@ function StateEditDropdown({ value, onChange }: { value: string; onChange: (v: s
   }, []);
   const filtered = INDIA_STATES_LIST.filter(s => s.toLowerCase().includes(search.toLowerCase()));
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} data-section="state" className="relative">
       <p className="text-white/70 text-[11px] mb-1.5 uppercase tracking-wider" style={{ fontFamily: POPPINS }}>State / UT</p>
       {value ? (
         <div className="flex items-center gap-2 px-3.5 py-3 rounded-xl text-sm text-white cursor-pointer"
@@ -443,6 +443,17 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
   };
 
   const doSave = async () => {
+    // State and City are mandatory (same block-on-save pattern as languages).
+    if (!s.state?.trim()) {
+      onToast("Select your state / UT");
+      document.querySelector('[data-section="state"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (!s.city?.trim()) {
+      onToast("Select your city / district");
+      document.querySelector('[data-section="city-district"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     // At least one language is mandatory (same rule as categories) — block a save
     // that would clear all languages.
     if (s.languages.length === 0) {
@@ -1305,6 +1316,14 @@ export default function CreatorProfile() {
                 <p className="text-sm sm:text-base font-semibold break-words leading-snug" style={{ color: PINK, fontFamily: POPPINS }}>{value}</p>
               </div>
             ))}
+          </div>
+          {/* Row 3: Languages — shown on the creator's OWN profile only (hidden from
+              the brand-facing profile, same as it's excluded from brand APIs). */}
+          <div className="mt-4 min-w-0">
+            <p className="text-[10px] sm:text-xs mb-1" style={{ color: "rgba(255,255,255,0.70)", fontFamily: POPPINS }}>Languages</p>
+            <p className="text-sm sm:text-base font-semibold break-words leading-snug" style={{ color: PINK, fontFamily: POPPINS }}>
+              {Array.isArray(creator.languages) && creator.languages.length > 0 ? creator.languages.join(", ") : "—"}
+            </p>
           </div>
         </div>
 

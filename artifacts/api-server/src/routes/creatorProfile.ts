@@ -326,8 +326,18 @@ router.patch("/creator/profile/basic", requireCreator, async (req: Request, res:
   if (youtubeHandle !== undefined) addSet("youtubeHandle", youtubeHandle.trim() || null);
   if (otherSocialHandle !== undefined) addSet("otherSocialHandle", otherSocialHandle.trim() || null);
   if (gender !== undefined) addSet("gender", gender.trim() || null);
-  if (state !== undefined) addSet("state", state?.trim() || null);
-  if (city !== undefined) addSet("city", city?.trim() || null);
+  // State and City are mandatory — reject an empty value (same enforcement as
+  // languages) so a creator can't save with no state/city.
+  if (state !== undefined) {
+    const v = String(state ?? "").trim();
+    if (!v) { res.status(400).json({ error: "Select your state / UT" }); return; }
+    addSet("state", v);
+  }
+  if (city !== undefined) {
+    const v = String(city ?? "").trim();
+    if (!v) { res.status(400).json({ error: "Select your city / district" }); return; }
+    addSet("city", v);
+  }
   // Languages (text[], admin-only visibility). At least one is mandatory — reject
   // an empty selection so a creator can't clear all languages and save with 0.
   if (languages !== undefined) {

@@ -99,7 +99,7 @@ export default function CityPromptPopup({ onBlockingChange }: { onBlockingChange
       className="fixed inset-0 flex items-center justify-center p-4"
       style={{
         zIndex: 200,
-        background: "rgba(0,0,0,0.65)",
+        background: "rgba(0,0,0,0.7)",
         transition: "opacity 0.3s ease",
         opacity: visible ? 1 : 0,
         pointerEvents: visible ? "auto" : "none",
