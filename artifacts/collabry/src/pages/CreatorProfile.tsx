@@ -305,7 +305,9 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
     if (!scrollTo || !scrollBodyRef.current) return;
     const timer = setTimeout(() => {
       const el = scrollBodyRef.current?.querySelector(`[data-section="${scrollTo}"]`);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Center the target section (city-district / languages / etc.) rather than
+      // pinning it to the very top, so the nudge-popup deep-links land mid-screen.
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 150);
     return () => clearTimeout(timer);
   }, [scrollTo]);
@@ -612,7 +614,8 @@ function EditOverlay({ token, creator, initialCats, initialPortfolio, allCategor
           <DistrictEditDropdown stateValue={s.state} value={s.city} onChange={v => upd("city", v)} />
 
           {/* Languages — multi-select, no cap. Admin-only visibility (never shown to brands). */}
-          <div data-section="languages">
+          {/* Stable anchor so the "Add languages" nudge can deep-link + center-scroll here. */}
+          <div id="languages-field" data-section="languages">
             <p className="text-white/70 text-[11px] mb-1.5 uppercase tracking-wider" style={{ fontFamily: POPPINS }}>Languages you make videos in</p>
             <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
               {CREATOR_LANGUAGES.map((lang) => {
