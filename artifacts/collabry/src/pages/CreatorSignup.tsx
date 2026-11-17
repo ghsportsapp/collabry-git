@@ -1021,8 +1021,8 @@ export default function CreatorSignup() {
                   </div>
                 )}
                 <div>
-                  <h2 className="text-white font-bold text-lg">Languages you're comfortable making videos in <span className="text-[#E14F69]">*</span></h2>
-                  <p className="text-white/70 text-xs mt-0.5">Select all that apply — there's no limit.</p>
+                  <h2 className="text-white font-bold text-lg">Languages you're comfortable making videos in</h2>
+                  <p className="text-white/70 text-xs mt-0.5">Most brands are looking for regional-language videos — please select the ones you're genuinely comfortable making videos in.</p>
                 </div>
                 {errors.languages && <p className="text-red-400 text-xs">{errors.languages}</p>}
                 <div data-field="languages" className="grid grid-cols-2 gap-2 max-h-[22rem] overflow-y-auto pr-1">
