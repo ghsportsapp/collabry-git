@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
+import { logger } from "../lib/logger";
 
 /**
  * "Deals Sent" admin tracker — DIRECT deals only, built over DealRequest.
@@ -13,6 +14,24 @@ import { pool } from "@workspace/db";
 const router: IRouter = Router();
 
 const PAGE_SIZE = 30;
+
+type AsyncHandler = (req: Request, res: Response) => Promise<void>;
+
+// Wrap a handler so any thrown error (e.g. a SQL/query failure) is logged and
+// returned as an explicit 500 with a message, instead of bubbling to Express and
+// rendering as a silent empty list on the admin page.
+function guard(label: string, fn: AsyncHandler): AsyncHandler {
+  return async (req: Request, res: Response): Promise<void> => {
+    try {
+      await fn(req, res);
+    } catch (e: any) {
+      logger.error({ err: e, path: req.path, label }, `deals-sent: ${label} failed`);
+      if (!res.headersSent) {
+        res.status(500).json({ error: `Failed to ${label}`, message: e?.message ?? "Internal error" });
+      }
+    }
+  };
+}
 
 // Per-chain (per root) status is always recomputed here, never cached on a row.
 function deriveStatus(row: {
@@ -35,7 +54,7 @@ const num = (v: unknown): number | null => {
 };
 
 // GET /admin/deals-sent?page=&search=
-router.get("/admin/deals-sent", async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/deals-sent", guard("load the deals-sent list", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   const page = Math.max(1, parseInt(String(req.query["page"] ?? "1"), 10) || 1);
   const offset = (page - 1) * PAGE_SIZE;
@@ -55,20 +74,24 @@ router.get("/admin/deals-sent", async (req: Request, res: Response): Promise<voi
   const lastViewed: Date = vr.rows[0]?.lastTrackerViewedAt ?? new Date();
 
   // One tracker row per chain = per round-1 root (parentRequestId IS NULL).
-  // Brand/Creator are LEFT JOINed so a row still shows if either was removed.
   const searchSql = hasSearch
     ? `AND (b."brandName" ILIKE $1 OR cr."instagramHandle" ILIKE $1 OR cr."fullName" ILIKE $1)`
     : "";
-  const baseFrom = `
+  // Brand/Creator are LEFT JOINed so a row still shows if either was removed.
+  // NOTE: lateral joins must live in the FROM list (before WHERE), so `joins`
+  // and `whereSql` are kept separate — baking WHERE into the FROM and appending
+  // the laterals after it is invalid SQL.
+  const joins = `
     FROM "DealRequest" dr
-    LEFT JOIN "Brand" b   ON b.id = dr."brandId"
-    LEFT JOIN "Creator" cr ON cr.id = dr."creatorId"
+    LEFT JOIN "Brand" b    ON b.id  = dr."brandId"
+    LEFT JOIN "Creator" cr ON cr.id = dr."creatorId"`;
+  const whereSql = `
     WHERE dr."parentRequestId" IS NULL
       AND dr."trackerHiddenAt" IS NULL
       ${searchSql}`;
 
   const countParams = hasSearch ? [searchParam] : [];
-  const countRes = await pool.query(`SELECT COUNT(*)::int AS c ${baseFrom}`, countParams);
+  const countRes = await pool.query(`SELECT COUNT(*)::int AS c ${joins} ${whereSql}`, countParams);
   const total = countRes.rows[0]?.c ?? 0;
 
   const listParams = hasSearch ? [searchParam, PAGE_SIZE, offset] : [PAGE_SIZE, offset];
@@ -88,7 +111,7 @@ router.get("/admin/deals-sent", async (req: Request, res: Response): Promise<voi
        latest."totalDealValue"       AS "latestOfferedTotal",
        deal."createdAt"              AS "acceptedAt",
        deal."totalAgreedValue"       AS "acceptedAmount"
-     ${baseFrom}
+     ${joins}
      LEFT JOIN LATERAL (
        SELECT ch.status, ch."expiresAt", ch."respondedAt", ch."rejectionReason", ch."totalDealValue"
          FROM "DealRequest" ch
@@ -104,6 +127,7 @@ router.get("/admin/deals-sent", async (req: Request, res: Response): Promise<voi
         ORDER BY d."createdAt" ASC
         LIMIT 1
      ) deal ON true
+     ${whereSql}
      ORDER BY dr."createdAt" DESC, dr.id DESC
      LIMIT ${limIdx} OFFSET ${offIdx}`,
     listParams,
@@ -163,11 +187,11 @@ router.get("/admin/deals-sent", async (req: Request, res: Response): Promise<voi
     total,
     pageSize: PAGE_SIZE,
   });
-});
+}));
 
 // GET /admin/deals-sent/:rootId/locate — which unfiltered page holds this chain,
 // so a notification click can jump to the right page then scroll to the row.
-router.get("/admin/deals-sent/:rootId/locate", async (req: Request, res: Response): Promise<void> => {
+router.get("/admin/deals-sent/:rootId/locate", guard("locate the deal page", async (req: Request, res: Response): Promise<void> => {
   const { rootId } = req.params as Record<string, string>;
   const r = await pool.query(
     `SELECT COUNT(*)::int AS ahead
@@ -181,10 +205,10 @@ router.get("/admin/deals-sent/:rootId/locate", async (req: Request, res: Respons
   if (r.rowCount === 0) { res.status(404).json({ error: "Not found" }); return; }
   const ahead = r.rows[0]?.ahead ?? 0;
   res.json({ page: Math.floor(ahead / PAGE_SIZE) + 1 });
-});
+}));
 
 // POST /admin/deals-sent/:rootId/seen — stamp the global seen flag (row click).
-router.post("/admin/deals-sent/:rootId/seen", async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals-sent/:rootId/seen", guard("mark the deal seen", async (req: Request, res: Response): Promise<void> => {
   const { rootId } = req.params as Record<string, string>;
   await pool.query(
     `UPDATE "DealRequest" SET "trackerSeenAt"=NOW()
@@ -192,11 +216,11 @@ router.post("/admin/deals-sent/:rootId/seen", async (req: Request, res: Response
     [rootId],
   );
   res.json({ ok: true });
-});
+}));
 
 // POST /admin/deals-sent/:rootId/hide — the tracker Delete (global hide). The
 // underlying DealRequest/Deal rows are untouched; this only filters the tracker.
-router.post("/admin/deals-sent/:rootId/hide", async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals-sent/:rootId/hide", guard("hide the deal", async (req: Request, res: Response): Promise<void> => {
   const { rootId } = req.params as Record<string, string>;
   const r = await pool.query(
     `UPDATE "DealRequest" SET "trackerHiddenAt"=NOW()
@@ -205,11 +229,11 @@ router.post("/admin/deals-sent/:rootId/hide", async (req: Request, res: Response
   );
   if (r.rowCount === 0) { res.status(404).json({ error: "Not found" }); return; }
   res.json({ ok: true });
-});
+}));
 
 // POST /admin/deals-sent/mark-viewed — advance this admin's baseline, clearing
 // the notification bar.
-router.post("/admin/deals-sent/mark-viewed", async (req: Request, res: Response): Promise<void> => {
+router.post("/admin/deals-sent/mark-viewed", guard("mark the list viewed", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
   await pool.query(
     `INSERT INTO "AdminDealsSentView" ("adminId","lastTrackerViewedAt") VALUES ($1, NOW())
@@ -217,6 +241,6 @@ router.post("/admin/deals-sent/mark-viewed", async (req: Request, res: Response)
     [adminId],
   );
   res.json({ ok: true });
-});
+}));
 
 export default router;
