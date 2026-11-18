@@ -7,7 +7,7 @@ const POPPINS = "'Poppins', sans-serif";
 const PINK = "#F0187A";
 const BG = "#0A0A0F";
 
-// The 16 grantable sections (manage-admins is NOT grantable to normal admins).
+// The grantable sections (manage-admins is NOT grantable to normal admins).
 const SECTIONS: Array<{ key: string; label: string }> = [
   { key: "landing", label: "Landing Page" },
   { key: "brand-landing", label: "Brand Landing" },
@@ -23,6 +23,7 @@ const SECTIONS: Array<{ key: string; label: string }> = [
   { key: "pricing", label: "Pricing & Slabs" },
   { key: "campaign-management", label: "Campaign Management" },
   { key: "deal-management", label: "Deal Management" },
+  { key: "deals-sent", label: "Deals Sent" },
   { key: "matchmaking", label: "Matchmaking" },
   { key: "landing-videos", label: "Videos" },
   { key: "chatbot", label: "Chatbot" },

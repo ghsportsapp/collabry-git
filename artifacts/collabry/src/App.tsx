@@ -57,6 +57,7 @@ const AdminCampaignSettings = lazy(() => import("@/pages/AdminCampaignSettings")
 const AdminDealSettings = lazy(() => import("@/pages/AdminDealSettings"));
 const AdminCampaignManagement = lazy(() => import("@/pages/AdminCampaignManagement"));
 const AdminDealManagement = lazy(() => import("@/pages/AdminDealManagement"));
+const AdminDealsSent = lazy(() => import("@/pages/AdminDealsSent"));
 const AdminDeals = lazy(() => import("@/pages/AdminDeals"));
 const CreatorSignup = lazy(() => import("@/pages/CreatorSignup"));
 const CreatorLogin = lazy(() => import("@/pages/CreatorLogin"));
@@ -157,6 +158,7 @@ function Router() {
       <AR path="/admin-collabryangad/campaign-management" component={AdminCampaignManagement as any} section="campaign-management" />
       <AR path="/admin-collabryangad/deal-management" component={AdminDealManagement as any} section="deal-management" />
       <AR path="/admin-collabryangad/deals" component={AdminDeals} section="deal-management" />
+      <AR path="/admin-collabryangad/deals-sent" component={AdminDealsSent as any} section="deals-sent" />
       <AR path="/admin-collabryangad/campaigns" component={AdminCampaignsPage as any} section="campaign-management" />
       <AR path="/admin-collabryangad/barter" component={AdminBarterPage as any} section="campaign-management" />
       <AR path="/admin-collabryangad/platform-settings" component={AdminPlatformSettings} section="super" />

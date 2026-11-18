@@ -77,6 +77,9 @@ const SECTION_PREFIXES: Array<{ prefix: string; sections: string[] }> = [
   { prefix: "/admin/campaigns", sections: ["campaign-management"] },
   { prefix: "/admin/barter", sections: ["campaign-management"] },
   { prefix: "/admin/campaign-settings", sections: ["campaign-management"] },
+  // deals-sent (direct-deal tracker) — its own grantable section. Listed before
+  // /admin/deals so the longest-prefix sort keeps it distinct from All Deals.
+  { prefix: "/admin/deals-sent", sections: ["deals-sent"] },
   // deal-management
   { prefix: "/admin/deals", sections: ["deal-management"] },
   { prefix: "/admin/deal-settings", sections: ["deal-management"] },

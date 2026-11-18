@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Layout, Settings, Users, ArrowRight, CreditCard, Tag, LogOut, FileText, Star, Megaphone, Sliders, Info, Video, Sparkles, Image as ImageIcon, Shield, MessageCircle } from "lucide-react";
+import { Layout, Settings, Users, ArrowRight, CreditCard, Tag, LogOut, FileText, Star, Megaphone, Sliders, Info, Video, Sparkles, Image as ImageIcon, Shield, MessageCircle, Send } from "lucide-react";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { clearAdminSession } from "@/lib/adminAuth";
 
@@ -20,6 +20,7 @@ const pages = [
   { id: "pricing", title: "Pricing & Slabs", desc: "Configure follower-based pricing slabs shown as recommendations to creators during signup.", icon: CreditCard, href: "/admin-collabryangad/pricing", status: "Live", statusColor: "bg-green-500" },
   { id: "campaign-management", title: "Campaign Management", desc: "All-in-one hub for paid campaigns, barter review queue, and campaign settings (rules for paid + barter).", icon: Megaphone, href: "/admin-collabryangad/campaign-management", status: "Live", statusColor: "bg-green-500" },
   { id: "deal-management", title: "Deal Management", desc: "Configure deal settings (timelines, helper text) and view every finalized deal across paid, barter and matchmaking.", icon: Settings, href: "/admin-collabryangad/deal-management", status: "Live", statusColor: "bg-green-500" },
+  { id: "deals-sent", title: "Deals Sent", desc: "Track direct deals from the moment a brand sends one — Sent, Accepted, Rejected or Expired — before they reach Deal Management.", icon: Send, href: "/admin-collabryangad/deals-sent", status: "Live", statusColor: "bg-green-500" },
   { id: "matchmaking", title: "Matchmaking Config", desc: "Configure scoring weights, parameter cards, adjacency rules, field options, result filters and creator profile visibility for the brand matchmaking engine.", icon: Sliders, href: "/admin-collabryangad/matchmaking", status: "Live", statusColor: "bg-green-500" },
   { id: "landing-videos", title: "Videos", desc: "Upload and manage videos and thumbnails for landing pages and other sections.", icon: Video, href: "/admin-collabryangad/landing-videos", status: "Live", statusColor: "bg-green-500" },
   { id: "chatbot", title: "Chatbot", desc: "Build the scripted brand & creator chatbots — welcome message and the nested question/answer menu tree shown in the on-site widget.", icon: MessageCircle, href: "/admin-collabryangad/chatbot", status: "Live", statusColor: "bg-green-500" },
