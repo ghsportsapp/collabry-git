@@ -273,6 +273,7 @@ router.get("/platform-config/deal", async (_req: Request, res: Response): Promis
   settings.max_revision_brief_chars = settings.max_revision_brief_chars ?? "2000";
   settings.commission_rate = settings.commission_rate ?? "5";
   settings.gst_rate = settings.gst_rate ?? "18";
+  settings.first_deal_discount_percent = settings.first_deal_discount_percent ?? "20";
   res.json(settings);
 });
 

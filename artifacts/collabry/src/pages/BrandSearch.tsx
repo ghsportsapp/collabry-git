@@ -8,6 +8,7 @@ import {
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
+import { FirstDealOfferBanner } from "@/components/FirstDealOffer";
 import UnlockCelebration from "@/components/UnlockCelebration";
 
 const CARD_BG = "#2D0D1F";
@@ -399,6 +400,11 @@ export default function BrandSearch() {
         <p className="mt-2 text-sm" style={{ color: "rgba(255,255,255,0.75)", fontFamily: POPPINS }}>
           Search. Filter. Collaborate. Discover verified creators across every niche.
         </p>
+      </div>
+
+      {/* ── First-deal offer: slim banner (only while eligible) ── */}
+      <div className="max-w-6xl mx-auto px-4 -mt-3 mb-6">
+        <FirstDealOfferBanner variant="strip" />
       </div>
 
       {/* ── Main layout ── */}

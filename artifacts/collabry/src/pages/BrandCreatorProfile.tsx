@@ -4,6 +4,7 @@ import { ArrowLeft, ShieldCheck, X, Plus, Minus, Link as LinkIcon, Instagram, Lo
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
+import { FirstDealOfferBanner, FirstDealDiscountPopup, type FirstDealDiscountInfo } from "@/components/FirstDealOffer";
 
 interface FullProfile {
   creator: {
@@ -74,6 +75,8 @@ export default function BrandCreatorProfile() {
   const [noCredits, setNoCredits] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showRequest, setShowRequest] = useState(false);
+  // Set from the send response's firstDealDiscount; drives the post-send popup.
+  const [sendDiscount, setSendDiscount] = useState<FirstDealDiscountInfo | null>(null);
   const [campaignCtx, setCampaignCtx] = useState<{ campaignId: string; appId: string; campaignType?: "barter" | "paid"; slotsFull?: boolean; appStatus?: string } | null>(null);
   const [selectLoading, setSelectLoading] = useState(false);
   const [selectDone, setSelectDone] = useState(false);
@@ -280,6 +283,9 @@ export default function BrandCreatorProfile() {
           <ArrowLeft className="w-3.5 h-3.5" />
           {campaignCtx ? "Back to Campaign" : isMatchmaking ? "Back to Results" : isUnlocked ? "Back to Unlocked Profiles" : "Back to Search"}
         </button>
+
+        {/* ── First-deal offer: highlighted strip at the TOP (only while eligible) ── */}
+        <FirstDealOfferBanner variant="strip" className="mb-4" />
 
         {error && <p className="text-red-400 text-sm mb-4" style={{ fontFamily: POPPINS }}>{error}</p>}
         {!data && !error && (
@@ -625,7 +631,19 @@ export default function BrandCreatorProfile() {
       {showRequest && data && (
         <RequestModal creator={data.creator} onClose={() => setShowRequest(false)}
           apiFetch={apiFetch} source={isMatchmaking ? "MATCHMAKING" : "SEARCH"}
-          onSuccess={() => { setShowRequest(false); navigate("/home-brand"); }} />
+          onSuccess={(fdd) => {
+            setShowRequest(false);
+            // On a first-deal discount, show the celebration popup and navigate when
+            // it's dismissed; otherwise go straight home (normal flow).
+            if (fdd) setSendDiscount(fdd);
+            else navigate("/home-brand");
+          }} />
+      )}
+
+      {/* Post-send first-deal discount popup (only when the send actually applied it) */}
+      {sendDiscount && (
+        <FirstDealDiscountPopup info={sendDiscount}
+          onClose={() => { setSendDiscount(null); navigate("/home-brand"); }} />
       )}
 
       {/* Report Modal */}
@@ -805,7 +823,7 @@ function CreatorRatingsCard({ creatorId, apiFetch, averageRating }: {
 function RequestModal({ creator, onClose, onSuccess, apiFetch, source = "SEARCH" }: {
   creator: FullProfile["creator"];
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (firstDealDiscount: FirstDealDiscountInfo | null) => void;
   apiFetch: (path: string, options?: RequestInit) => Promise<Response>;
   source?: string;
 }) {
@@ -893,7 +911,10 @@ function RequestModal({ creator, onClose, onSuccess, apiFetch, source = "SEARCH"
           source,
         }),
       });
-      if (r.ok) onSuccess();
+      if (r.ok) {
+        const d = await r.json().catch(() => ({}));
+        onSuccess((d?.firstDealDiscount ?? null) as FirstDealDiscountInfo | null);
+      }
       else { const d = await r.json(); setErr(d.error ?? "Request failed"); }
     } catch (e: any) { setErr(e.message); }
     finally { setSubmitting(false); }

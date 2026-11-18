@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation } from "wouter";
-import { Eye, EyeOff, Upload, X, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, Upload, X, CheckCircle, XCircle, AlertCircle, Gift } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { pixelTrack } from "@/lib/pixel";
@@ -77,6 +77,7 @@ export default function BrandSignup() {
   const landing = useBrandLandingContent();
   const popupImage: PopupImage | null = parsePopupImage(landing.get("brand.homepage.popup.image"));
   const [signupPopup, setSignupPopup] = useState<PopupImage | null>(null);
+  const [firstDealPct, setFirstDealPct] = useState<number>(0);
   useEffect(() => { preloadPopupImage(popupImage); }, [popupImage?.imageUrl]);
 
   const [form, setForm] = useState({ brandName: "", contactName: "", email: "", websiteUrl: "", categoryId: "", subcategoryId: "", instagramHandle: "", password: "", confirmPassword: "" });
@@ -158,6 +159,11 @@ export default function BrandSignup() {
       setCategories(cats ?? []);
       setUnifiedFields(fields ?? []);
     });
+    // First-deal discount % for the onboarding line (public config, read not hardcoded).
+    fetch(`${BASE_URL}/api/platform-config/deal`).then(r => r.ok ? r.json() : null).then(d => {
+      const p = Number(d?.first_deal_discount_percent);
+      if (isFinite(p) && p > 0) setFirstDealPct(p);
+    }).catch(() => {});
   }, []);
 
   const subcategories = categories.find(c => c.id === form.categoryId)?.subcategories ?? [];
@@ -495,7 +501,17 @@ export default function BrandSignup() {
             </Link>
           </div>
 
-          <p className="text-white/80 text-xs mb-6 leading-relaxed">India's trusted influencer marketplace. Verified creators. Secure payments. Real results.</p>
+          <p className="text-white/80 text-xs mb-3 leading-relaxed">India's trusted influencer marketplace. Verified creators. Secure payments. Real results.</p>
+
+          {firstDealPct > 0 && (
+            <div className="flex items-center gap-2 mb-6 rounded-xl px-3 py-2.5"
+              style={{ background: "rgba(225,79,105,0.12)", border: "1px solid rgba(225,79,105,0.35)" }}>
+              <Gift className="w-4 h-4 flex-shrink-0" style={{ color: "#E14F69" }} />
+              <p className="text-white text-xs font-semibold leading-snug">
+                Plus, get <span style={{ color: "#E14F69" }}>{firstDealPct}% off your first deal</span> — the creator is still paid in full.
+              </p>
+            </div>
+          )}
 
           {errors._form && (
             <div data-field="_form" className="mb-4 p-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-xs">{errors._form}</div>

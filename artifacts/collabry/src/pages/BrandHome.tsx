@@ -21,6 +21,7 @@ import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
 import { useBrandLandingContent } from "@/hooks/useBrandLandingContent";
+import { FirstDealOfferBanner } from "@/components/FirstDealOffer";
 import HowItWorks from "@/components/landing/HowItWorks";
 import ComparisonTable from "@/components/landing/ComparisonTable";
 
@@ -287,6 +288,9 @@ export default function BrandHome() {
           </div>
         </div>
 
+        {/* ── First-deal offer: in-app notification (only while eligible) ── */}
+        <FirstDealOfferBanner variant="notification" className="mb-5" />
+
         {/* ── Total Spent ── */}
         <TotalSpentWidget apiFetch={apiFetch} />
 
@@ -479,6 +483,9 @@ export default function BrandHome() {
               Four powerful ways to connect
             </p>
           </div>
+
+          {/* ── First-deal offer: on-page banner (only while eligible) ── */}
+          <FirstDealOfferBanner variant="banner" className="mb-5" />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
             <ModeCard icon={<SearchIcon className="w-5 h-5" style={{ color: PINK }} />}
