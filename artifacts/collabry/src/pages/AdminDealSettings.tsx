@@ -334,6 +334,7 @@ export default function AdminDealSettings({ embedded = false }: { embedded?: boo
     require_courier_awb: "false",
     max_script_brief_chars: "2000",
     max_revision_brief_chars: "2000",
+    first_deal_discount_percent: "20",
   });
   const [shipping, setShipping] = useState({ ...SHIPPING_DEFAULTS });
   const [saving, setSaving] = useState(false);
@@ -353,6 +354,7 @@ export default function AdminDealSettings({ embedded = false }: { embedded?: boo
       const dealPatches = [
         "min_timeline_days", "timeline_description_text", "max_deal_finalize_days",
         "require_courier_awb", "max_script_brief_chars", "max_revision_brief_chars",
+        "first_deal_discount_percent",
       ].map(key => adminFetch(`${BASE_URL}/api/admin/deal-settings`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key, value: (settings as any)[key] }),
@@ -416,6 +418,17 @@ export default function AdminDealSettings({ embedded = false }: { embedded?: boo
             onChange={e => setSettings(s => ({ ...s, timeline_description_text: e.target.value }))}
           />
           <p className="text-white/70 text-xs mt-1">This text is shown below the timeline input in all request and campaign forms</p>
+        </div>
+
+        <div className="mb-5">
+          <label className={labelClass}>First-deal discount %</label>
+          <input
+            type="number" min="0" max="100" step="0.5"
+            className={inputClass}
+            value={settings.first_deal_discount_percent}
+            onChange={e => setSettings(s => ({ ...s, first_deal_discount_percent: e.target.value }))}
+          />
+          <p className="text-white/70 text-xs mt-1">Automatic discount applied to a brand's first direct deal. Locked onto the deal at send time, so changing it affects only future first deals. The creator's payout stays full — the platform absorbs the discount. Set to 0 to disable.</p>
         </div>
       </div>
 

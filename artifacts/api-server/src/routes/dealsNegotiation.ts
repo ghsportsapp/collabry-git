@@ -111,6 +111,7 @@ interface RequestRow {
   createdAt: Date;
   proposedBy: string;
   parentRequestId: string | null;
+  rootRequestId: string | null;
   postedBy: string | null;
   aboutProduct: string | null;
   reelScript: string | null;
@@ -1176,6 +1177,20 @@ async function createDealFromRequest(client: PoolClient, req0: RequestRow): Prom
   const postedBy = req0.postedBy && ["CREATOR","BRAND","BOTH"].includes(req0.postedBy) ? req0.postedBy : "CREATOR";
   // Snapshot all shipping/issue/non-delivery config so admin changes never affect active deals
   const snap = await readShippingConfigSnapshot(client);
+
+  // First-deal auto-discount: the % was locked onto the round-1 root at send time
+  // (brandSearch.ts). Resolve it via rootRequestId (fallback to this row's id if it
+  // IS the root) and carry it onto the new Deal so the EXISTING discount path
+  // (computeDirectDealAmounts / serializeDeal) charges the discounted pre-GST base.
+  // A later manual admin discount writes the SAME column (last-writer-wins, no
+  // stacking). Creator payout is unaffected — it is always the full subtotal.
+  const rootId = req0.rootRequestId ?? req0.id;
+  const fdd = await client.query(
+    `SELECT "firstDealDiscountPercent" AS pct FROM "DealRequest" WHERE id=$1`, [rootId]
+  );
+  const rawFdd = num(fdd.rows[0]?.pct);
+  const firstDealDiscountPercent = Math.min(100, Math.max(0, isNaN(rawFdd) ? 0 : rawFdd));
+
   const ins = await client.query(
     `INSERT INTO "Deal" (id,"requestId","brandId","creatorId",source,status,
        "reelCount","storyCount","postCount",
@@ -1186,9 +1201,9 @@ async function createDealFromRequest(client: PoolClient, req0: RequestRow): Prom
        "max_delivery_days_snapshot","delivery_warning_day_snapshot",
        "max_delivery_extensions_snapshot","brand_response_hours_snapshot",
        "awb_correction_limit_snapshot","image_retention_days_snapshot",
-       "percent_split_snapshot","gstRateLocked","productImageUrl")
+       "percent_split_snapshot","gstRateLocked","productImageUrl","discountPercent")
      VALUES (gen_random_uuid(),$1,$2,$3,$4,'PENDING_PAYMENT',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'NONE',NOW(),
-             $18,$19,$20,$21,$22,$23,$24,$25,$26)
+             $18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
      RETURNING id`,
     [req0.id, req0.brandId, req0.creatorId, req0.source,
      req0.reelCount, req0.storyCount, req0.postCount,
@@ -1197,7 +1212,7 @@ async function createDealFromRequest(client: PoolClient, req0: RequestRow): Prom
      req0.timelineDays, req0.productRequired, req0.deliveryWindowDays, postedBy,
      snap.maxDeliveryDays, snap.warningDay, snap.maxExtensions,
      snap.brandResponseHours, snap.awbCorrectionLimit, snap.imageRetentionDays,
-     JSON.stringify(snap.splits), gstRate, req0.productImageUrl ?? null]
+     JSON.stringify(snap.splits), gstRate, req0.productImageUrl ?? null, firstDealDiscountPercent]
   );
   const dealId = ins.rows[0].id as string;
 

@@ -810,6 +810,75 @@ router.get("/brand/unlocked-creators", requireBrand, async (req: Request, res: R
   });
 });
 
+// ── First-deal auto-discount helpers ──
+type Queryable = { query: (text: string, params?: any[]) => Promise<any> };
+
+// Eligibility is DERIVED (no stored flag): a brand is eligible iff it has no
+// direct-deal chain currently PENDING / NEGOTIATING / ACCEPTED, with LAZY EXPIRY
+// applied — a PENDING/NEGOTIATING latest node past its expiresAt counts as EXPIRED
+// and does NOT consume the offer, so it re-grants automatically on reject/expiry.
+// Mirrors the Deals Sent tracker's deriveStatus/expiry logic. Campaign/barter deals
+// never create DealRequest rows, so they can never grant or consume the offer.
+// Accepts an optional client so the send path can re-check inside its transaction.
+async function isFirstDealEligible(brandId: string, q: Queryable = pool): Promise<boolean> {
+  const r = await q.query(
+    `SELECT NOT EXISTS (
+       SELECT 1 FROM "DealRequest" root
+        WHERE root."brandId" = $1
+          AND root."parentRequestId" IS NULL
+          AND (
+            -- any node in this chain accepted → consumes the offer (no re-grant,
+            -- even if the deal is later cancelled/refunded)
+            EXISTS (
+              SELECT 1 FROM "DealRequest" n
+               WHERE n."rootRequestId" = root.id AND n.status = 'ACCEPTED'
+            )
+            -- or the latest node is still live and not past its expiry
+            OR EXISTS (
+              SELECT 1 FROM (
+                SELECT ch.status, ch."expiresAt"
+                  FROM "DealRequest" ch
+                 WHERE ch."rootRequestId" = root.id
+                 ORDER BY ch."roundNumber" DESC, ch."createdAt" DESC
+                 LIMIT 1
+              ) latest
+              WHERE latest.status IN ('PENDING','NEGOTIATING')
+                AND (latest."expiresAt" IS NULL OR latest."expiresAt" >= NOW())
+            )
+          )
+     ) AS eligible`,
+    [brandId]
+  );
+  return r.rows[0]?.eligible === true;
+}
+
+async function readFirstDealDiscountPercent(q: Queryable = pool): Promise<number> {
+  const r = await q.query(`SELECT value FROM "PlatformConfig" WHERE key='first_deal_discount_percent'`);
+  if (r.rows.length === 0) return 20;
+  const n = Number(r.rows[0].value);
+  if (!isFinite(n) || n < 0) return 20;
+  return Math.min(100, n);
+}
+
+async function readGstRatePct(q: Queryable = pool): Promise<number> {
+  const r = await q.query(`SELECT value FROM "PlatformConfig" WHERE key='gst_rate'`);
+  if (r.rows.length === 0) return 18;
+  const n = Number(r.rows[0].value);
+  return !isFinite(n) || n <= 0 ? 18 : n;
+}
+
+// GET /api/brand/first-deal-offer — { eligible, percent } for the marketing
+// surfaces. Live-derived: flips to eligible:false once a direct deal is live/
+// accepted, and back to true automatically if that deal is later rejected/expired.
+router.get("/brand/first-deal-offer", requireBrand, async (req: Request, res: Response): Promise<void> => {
+  const brandId = (req as any).brandId as string;
+  const [eligible, percent] = await Promise.all([
+    isFirstDealEligible(brandId),
+    readFirstDealDiscountPercent(),
+  ]);
+  res.json({ eligible, percent });
+});
+
 // ── POST /api/brand/requests ──
 const CONTACT_REGEX = /(\+?\d[\d\s\-]{8,}\d|[\w.-]+@[\w-]+\.[\w.-]+|https?:\/\/|www\.)/i;
 
@@ -889,26 +958,54 @@ router.post("/brand/requests", requireBrand, async (req: Request, res: Response)
   const total = rc * pricePerReel + sc * pricePerStory + pc * pricePerPost;
   const minTlRow2 = await pool.query(`SELECT value FROM "PlatformConfig" WHERE key='max_deal_finalize_days'`);
   const roundHrsSend = minTlRow2.rows.length > 0 ? (parseFloat(minTlRow2.rows[0].value) || 2) * 24 : 48;
-  const inserted = await pool.query(
-    `INSERT INTO "DealRequest" (id,"brandId","creatorId",source,status,
-       "reelCount","storyCount","postCount",
-       "offeredPricePerReel","offeredPricePerStory","offeredPricePerPost",
-       "timelineDays","productRequired","productDescription","productImageUrl","deliveryWindowDays",brief,
-       "aboutProduct","reelScript","storyScript","postContent",
-       "reelSlabMin","reelSlabMax","storySlabMin","storySlabMax","postSlabMin","postSlabMax",
-       "roundNumber","totalDealValue","postedBy","expiresAt","createdAt")
-     VALUES (gen_random_uuid(),$1,$2,'SEARCH','PENDING',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,1,$25,$26,NOW() + INTERVAL '${roundHrsSend} hours',NOW())
-     RETURNING id`,
-    [brandId, creatorId, rc, sc, pc, pricePerReel, pricePerStory, pricePerPost,
-     parseInt(timelineDays), Boolean(productRequired), productDescription ?? null, imgUrl,
-     deliveryWindowDays ? parseInt(deliveryWindowDays) : null,
-     aboutText,
-     aboutText, reelScript?.trim() ?? null, storyScript?.trim() ?? null, postContent?.trim() ?? null,
-     // Record the CURRENT range this request was validated against (so counter-offers
-     // in this chain bound to the up-to-date range, not the stale unlock snapshot).
-     price.reelPriceMin, price.reelPriceMax, price.storyPriceMin, price.storyPriceMax, price.postPriceMin, price.postPriceMax,
-     total, postedBy]
-  );
+
+  // First-deal auto-discount: if the brand is eligible, snapshot the CURRENT config
+  // % onto this root. The eligibility re-check and the insert run inside ONE
+  // transaction under a per-brand advisory lock, so two near-simultaneous sends
+  // while eligible can't both receive it — one wins the lock, snapshots the % and
+  // creates the live chain; the other blocks, then re-checks after the first commits
+  // and sees the now-live chain (not eligible). Lazy expiry is applied in the check.
+  const configPct = await readFirstDealDiscountPercent();
+  const gstRateNow = await readGstRatePct();
+
+  const client = await pool.connect();
+  let insertedId: string;
+  let firstDealPct = 0;
+  try {
+    await client.query("BEGIN");
+    // Serialize concurrent sends by this brand for the eligibility decision.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [brandId]);
+    const eligible = await isFirstDealEligible(brandId, client);
+    firstDealPct = eligible ? configPct : 0;
+    const insertedTx = await client.query(
+      `INSERT INTO "DealRequest" (id,"brandId","creatorId",source,status,
+         "reelCount","storyCount","postCount",
+         "offeredPricePerReel","offeredPricePerStory","offeredPricePerPost",
+         "timelineDays","productRequired","productDescription","productImageUrl","deliveryWindowDays",brief,
+         "aboutProduct","reelScript","storyScript","postContent",
+         "reelSlabMin","reelSlabMax","storySlabMin","storySlabMax","postSlabMin","postSlabMax",
+         "roundNumber","totalDealValue","postedBy","firstDealDiscountPercent","expiresAt","createdAt")
+       VALUES (gen_random_uuid(),$1,$2,'SEARCH','PENDING',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,1,$25,$26,$27,NOW() + INTERVAL '${roundHrsSend} hours',NOW())
+       RETURNING id`,
+      [brandId, creatorId, rc, sc, pc, pricePerReel, pricePerStory, pricePerPost,
+       parseInt(timelineDays), Boolean(productRequired), productDescription ?? null, imgUrl,
+       deliveryWindowDays ? parseInt(deliveryWindowDays) : null,
+       aboutText,
+       aboutText, reelScript?.trim() ?? null, storyScript?.trim() ?? null, postContent?.trim() ?? null,
+       // Record the CURRENT range this request was validated against (so counter-offers
+       // in this chain bound to the up-to-date range, not the stale unlock snapshot).
+       price.reelPriceMin, price.reelPriceMax, price.storyPriceMin, price.storyPriceMax, price.postPriceMin, price.postPriceMax,
+       total, postedBy, firstDealPct]
+    );
+    insertedId = insertedTx.rows[0].id as string;
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    client.release();
+    throw e;
+  }
+  client.release();
+  const inserted = { rows: [{ id: insertedId }] };
   // Notify creator about new deal request
   const brandRow = await pool.query(`SELECT "brandName" FROM "Brand" WHERE id=$1`, [brandId]);
   const brandName = brandRow.rows[0]?.brandName ?? "A brand";
@@ -935,7 +1032,22 @@ router.post("/brand/requests", requireBrand, async (req: Request, res: Response)
     ctaText: "See Details", ctaPath: "/home-creator/requests",
     isCelebration: true, relatedEntityId: inserted.rows[0].id,
   });
-  res.json({ ok: true, requestId: inserted.rows[0].id });
+
+  // Build the send-popup payload when a first-deal discount was locked onto this
+  // root. GST is ESTIMATED from the current rate (the authoritative GST is locked
+  // at payment); the frontend labels it as such.
+  let firstDealDiscount:
+    | null
+    | { percent: number; subtotal: number; discountAmount: number; discountedBase: number; estGst: number; estTotal: number } = null;
+  if (firstDealPct > 0) {
+    const round2 = (n: number) => +n.toFixed(2);
+    const discountedBase = round2(total * (1 - firstDealPct / 100));
+    const discountAmount = round2(total - discountedBase);
+    const estGst = round2(discountedBase * gstRateNow / 100);
+    const estTotal = round2(discountedBase + estGst);
+    firstDealDiscount = { percent: firstDealPct, subtotal: round2(total), discountAmount, discountedBase, estGst, estTotal };
+  }
+  res.json({ ok: true, requestId: inserted.rows[0].id, firstDealDiscount });
 });
 
 // ── POST /api/brand/credits/direct-purchase (no gateway — credits added immediately) ──

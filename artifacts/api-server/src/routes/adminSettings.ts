@@ -111,7 +111,7 @@ router.get("/partial-profile-visibility", async (_req: Request, res: Response): 
 
 // ─── Deal Settings ────────────────────────────────────────────────────────────
 
-const DEAL_KEYS = ["min_timeline_days", "timeline_description_text", "max_deal_finalize_days", "require_courier_awb", "max_script_brief_chars", "max_revision_brief_chars"];
+const DEAL_KEYS = ["min_timeline_days", "timeline_description_text", "max_deal_finalize_days", "require_courier_awb", "max_script_brief_chars", "max_revision_brief_chars", "first_deal_discount_percent"];
 
 router.get("/admin/deal-settings", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(`SELECT key, value FROM "PlatformConfig" WHERE key = ANY($1::text[])`, [DEAL_KEYS]);
@@ -123,12 +123,23 @@ router.get("/admin/deal-settings", async (_req: Request, res: Response): Promise
   settings.require_courier_awb = settings.require_courier_awb ?? "false";
   settings.max_script_brief_chars = settings.max_script_brief_chars ?? "2000";
   settings.max_revision_brief_chars = settings.max_revision_brief_chars ?? "2000";
+  settings.first_deal_discount_percent = settings.first_deal_discount_percent ?? "20";
   res.json(settings);
 });
 
 router.patch("/admin/deal-settings", async (req: Request, res: Response): Promise<void> => {
   const { key, value } = req.body as { key: string; value: string };
   if (!DEAL_KEYS.includes(key)) { res.status(400).json({ error: "Invalid key" }); return; }
+  // The first-deal discount is a percentage locked onto future sends — validate 0–100.
+  if (key === "first_deal_discount_percent") {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0 || n > 100) {
+      res.status(400).json({ error: "First-deal discount % must be a number between 0 and 100" }); return;
+    }
+    await setConfig(key, String(Math.round(n * 100) / 100));
+    res.json({ ok: true });
+    return;
+  }
   await setConfig(key, String(value));
   res.json({ ok: true });
 });
