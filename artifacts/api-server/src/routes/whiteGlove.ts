@@ -237,6 +237,27 @@ router.get("/brand/white-glove/my-membership", requireBrand, async (req: Request
   }
 });
 
+// Shared active-membership check (same rule as my-membership above): the brand's
+// furthest-expiry purchase, active = now < expiresAt. Expired → not a member.
+// Fails CLOSED (false) on error so enforcement can't be bypassed by a DB blip.
+export async function isActiveWhiteGloveMember(brandId: string): Promise<boolean> {
+  try {
+    const r = await pool.query(
+      `SELECT ("createdAt" + make_interval(months => months)) AS "expiresAt"
+         FROM "WhiteGlovePurchase"
+        WHERE "brandId" = $1
+        ORDER BY ("createdAt" + make_interval(months => months)) DESC
+        LIMIT 1`,
+      [brandId],
+    );
+    if (r.rows.length === 0) return false;
+    return Date.now() < new Date(r.rows[0].expiresAt).getTime();
+  } catch (e) {
+    logger.error({ err: e, brandId }, "White Glove membership check failed");
+    return false;
+  }
+}
+
 // ── GET /api/admin/white-glove/purchases ──
 // Returns brand contact details in bulk, so it sits behind the real admin secret.
 router.get("/admin/white-glove/purchases", requireAdminSecret, async (_req: Request, res: Response): Promise<void> => {

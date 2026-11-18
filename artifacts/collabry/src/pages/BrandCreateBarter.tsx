@@ -121,6 +121,9 @@ export default function BrandCreateBarter() {
   const [minProductValue, setMinProductValue] = useState(0);
   const [barterCost, setBarterCost] = useState<number | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  // White Glove membership gate (barter is members-only). null = still loading.
+  const [whiteGloveActive, setWhiteGloveActive] = useState<boolean | null>(null);
+  const [showWgPopup, setShowWgPopup] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
 
   const scrollToFirstError = (errs: Record<string, string>) => {
@@ -175,6 +178,15 @@ export default function BrandCreateBarter() {
       }).catch(() => {});
     }
   }, [barterCost, creditBalance, apiFetch]);
+
+  // Active White Glove membership — gates the final post (not form-filling).
+  useEffect(() => {
+    if (!brandId) return;
+    apiFetch("/api/brand/white-glove/my-membership")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setWhiteGloveActive(!!d?.active))
+      .catch(() => setWhiteGloveActive(false));
+  }, [brandId, apiFetch]);
 
   const set = (k: keyof FormState, v: any) => setForm(f => ({ ...f, [k]: v }));
   const clearErrors = () => setErrors({});
@@ -302,6 +314,9 @@ export default function BrandCreateBarter() {
       return;
     }
     if (!validate()) return;
+    // White Glove gate: block the final post for non-members (form-filling stays
+    // open). If membership is still unknown (null), let the server decide.
+    if (whiteGloveActive === false) { setShowWgPopup(true); return; }
     setSubmitting(true);
     try {
       const r = await apiFetch("/api/brand/barter/create", {
@@ -329,7 +344,11 @@ export default function BrandCreateBarter() {
         }),
       });
       const data = await r.json();
-      if (!r.ok) { setErrors({ submit: data.error ?? "Failed to submit" }); setSubmitting(false); return; }
+      if (!r.ok) {
+        // Server-side White Glove rejection → same members-only popup.
+        if (r.status === 403 || data.error === "WHITE_GLOVE_REQUIRED") { setShowWgPopup(true); setSubmitting(false); return; }
+        setErrors({ submit: data.error ?? "Failed to submit" }); setSubmitting(false); return;
+      }
       try { localStorage.removeItem(BARTER_DRAFT_KEY); } catch {}
       setSubmitted(true);
     } catch { setErrors({ submit: "Something went wrong. Please try again." }); }
@@ -339,6 +358,25 @@ export default function BrandCreateBarter() {
   if (authLoading || !brandId) return null;
 
   const fmtInr = (v: string) => { const n = parseFloat(v); return isNaN(n) ? "—" : `₹${n.toLocaleString("en-IN")}`; };
+
+  // White Glove informational notice — shown on the first page and the review step.
+  const whiteGloveNotice = (
+    <div className="rounded-xl px-4 py-3 mb-4 flex items-start gap-2.5"
+      style={{ background: "rgba(240,24,122,0.08)", border: "1px solid rgba(240,24,122,0.25)" }}>
+      <Info className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: PINK }} />
+      <p className="text-white/85 text-xs leading-relaxed" style={{ fontFamily: POPPINS }}>
+        You need to be a White Glove member to run a barter campaign.{" "}
+        <button
+          type="button"
+          onClick={() => navigate("/contact-us")}
+          className="font-semibold underline underline-offset-2 hover:opacity-80 transition-opacity"
+          style={{ color: PINK, background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: POPPINS }}>
+          Contact us
+        </button>{" "}
+        for more details.
+      </p>
+    </div>
+  );
 
   if (submitted) {
     return (
@@ -401,6 +439,7 @@ export default function BrandCreateBarter() {
         {/* STEP 0: Basics */}
         {step === 0 && (
           <div>
+            {whiteGloveNotice}
             <Field label="Campaign Name *" error={touched.has("name") ? errors.name : undefined} dataField="name">
               <Input value={form.name} onChange={(v: string) => set("name", v)} onBlur={() => { touch("name"); validateField("name"); }} placeholder="e.g. Share Your Skincare Routine" />
             </Field>
@@ -586,22 +625,7 @@ export default function BrandCreateBarter() {
         {/* STEP 4: Review & Submit */}
         {step === 4 && (
           <div>
-            {/* White Glove informational notice (text only — no gating/enforcement). */}
-            <div className="rounded-xl px-4 py-3 mb-4 flex items-start gap-2.5"
-              style={{ background: "rgba(240,24,122,0.08)", border: "1px solid rgba(240,24,122,0.25)" }}>
-              <Info className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: PINK }} />
-              <p className="text-white/85 text-xs leading-relaxed" style={{ fontFamily: POPPINS }}>
-                You need to be a White Glove member to run a barter campaign.{" "}
-                <button
-                  type="button"
-                  onClick={() => navigate("/contact-us")}
-                  className="font-semibold underline underline-offset-2 hover:opacity-80 transition-opacity"
-                  style={{ color: PINK, background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: POPPINS }}>
-                  Contact us
-                </button>{" "}
-                for more details.
-              </p>
-            </div>
+            {whiteGloveNotice}
 
             {/* Posting credits — per slot × slots, with the balance block if short */}
             <CampaignCreditInfo perSlot={barterCost} slots={parseInt(form.slotCount) || 0} balance={creditBalance} />
@@ -689,6 +713,33 @@ export default function BrandCreateBarter() {
           </button>
         )}
       </div>
+
+      {/* White Glove members-only popup — blocks the final post for non-members */}
+      {showWgPopup && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.7)" }}
+          onClick={e => { if (e.target === e.currentTarget) setShowWgPopup(false); }}>
+          <div className="w-full max-w-sm rounded-2xl p-6 text-center"
+            style={{ background: "#141019", border: "1px solid rgba(240,24,122,0.45)", boxShadow: "0 24px 60px rgba(0,0,0,0.65)" }}>
+            <h2 className="text-white font-bold text-lg mb-2" style={{ fontFamily: POPPINS }}>White Glove members only</h2>
+            <p className="text-white/80 text-sm leading-relaxed mb-6" style={{ fontFamily: POPPINS }}>
+              You're not a White Glove member yet. Barter campaigns are available only to White Glove members.
+            </p>
+            <div className="flex flex-col gap-2.5">
+              <button onClick={() => navigate("/white-glove-service")}
+                className="w-full py-3 rounded-xl text-white font-bold text-sm"
+                style={{ background: PINK, fontFamily: POPPINS }}>
+                Explore White Glove
+              </button>
+              <button onClick={() => navigate("/contact-us")}
+                className="w-full py-3 rounded-xl font-semibold text-sm"
+                style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.25)", color: "rgba(255,255,255,0.85)", fontFamily: POPPINS }}>
+                Contact Us
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </BrandLayout>
   );
 }

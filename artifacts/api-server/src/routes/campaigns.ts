@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { pool } from "@workspace/db";
 import { requireBrand } from "../middleware/requireBrand";
 import { buildCreatorFilters } from "../lib/creatorFilters";
+import { isActiveWhiteGloveMember } from "./whiteGlove";
 
 /** Applicant lists page at 50, like the rest of the brand surfaces. */
 const APPLICANTS_PAGE_SIZE = 50;
@@ -986,6 +987,14 @@ router.get("/brand/barter", requireBrand, async (req: Request, res: Response): P
 
 router.post("/brand/barter/create", requireBrand, async (req: Request, res: Response): Promise<void> => {
   const brandId = (req as any).brandId as string;
+
+  // Barter campaigns are White Glove-only — reject non-members server-side so the
+  // gate can't be bypassed from the client. Expired membership counts as non-member.
+  if (!(await isActiveWhiteGloveMember(brandId))) {
+    res.status(403).json({ error: "WHITE_GLOVE_REQUIRED", message: "Barter campaigns are available only to active White Glove members." });
+    return;
+  }
+
   const { name, contentType, categories, productName, productDescription, productValueInr,
     productPhotos, contentRequirements, script, keyMessage, dosAndDonts, followerSlabs,
     targetGender, targetAge, targetLocation,
