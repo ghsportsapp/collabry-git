@@ -50,14 +50,20 @@ function toBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
 /** Validates and converts a picked file. Resolves with `{ error }` for anything
  *  the admin should fix — the caller shows it inline and never hits the network. */
 export async function prepareBannerImage(
-  file: File
+  file: File,
+  // Input cap on the SOURCE file. The image is compressed to a small WebP
+  // (≤TARGET_BYTES) before upload regardless, so this only bounds how large a
+  // source the browser will decode. Defaults to 5 MB (hero banners); callers
+  // that accept a bigger source — e.g. the signup popup — pass a higher value.
+  maxBytes: number = MAX_BYTES
 ): Promise<PreparedBanner | { error: string }> {
   if (!ALLOWED.includes(file.type)) {
     return { error: "Only JPG, PNG, or WebP images are allowed" };
   }
-  if (file.size > MAX_BYTES) {
+  if (file.size > maxBytes) {
     const mb = (file.size / (1024 * 1024)).toFixed(1);
-    return { error: `Image is ${mb} MB — maximum is 5 MB` };
+    const capMb = Math.round(maxBytes / (1024 * 1024));
+    return { error: `Image is ${mb} MB — maximum is ${capMb} MB` };
   }
 
   let img: HTMLImageElement;

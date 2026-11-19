@@ -108,7 +108,9 @@ export default function AdminBrandLandingEditor() {
     setPopupError(null);
     setPopupBusy(true);
     try {
-      const prepared = await prepareBannerImage(file);
+      // Popup accepts a larger source (10 MB) than hero banners; it is still
+      // compressed to a small WebP before upload, so the served image stays tiny.
+      const prepared = await prepareBannerImage(file, 10 * 1024 * 1024);
       if ("error" in prepared) { setPopupError(prepared.error); return; }
 
       const formData = new FormData();
@@ -492,7 +494,7 @@ export default function AdminBrandLandingEditor() {
           {/* Home Page Popup Image */}
           <SectionBlock title="Home Page Popup Image">
             <p className="text-[#9CA3AF] text-xs mb-3">
-              One square (1:1) image, max 5 MB. Converted to WebP on upload. Shown once,
+              One square (1:1) image, max 10 MB. Converted to WebP on upload. Shown once,
               immediately after a brand signs up, then it continues to the home page.
               Leave empty for no popup — new brands go straight to the home page.
             </p>
