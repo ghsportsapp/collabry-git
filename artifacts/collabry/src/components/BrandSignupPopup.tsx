@@ -56,10 +56,7 @@ export default function BrandSignupPopup({ image, onClose }: {
       className="fixed inset-0 flex items-center justify-center px-5"
       style={{
         zIndex: 300,
-        /* Near-opaque, not a dim: at 50% the signup form behind it (logo
-           upload, category dropdown) stayed legible through the overlay.
-           Built on the site's #0A0A0F base. */
-        background: "rgba(10,10,15,0.96)",
+        background: "rgba(0,0,0,0.7)",
         transition: "opacity 0.3s ease",
         opacity: shown ? 1 : 0,
       }}
