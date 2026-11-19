@@ -21,6 +21,7 @@ import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
 import { useBrandLandingContent } from "@/hooks/useBrandLandingContent";
+import BrandSignupPopup, { parsePopupImage, type PopupImage } from "@/components/BrandSignupPopup";
 import { FirstDealOfferBanner } from "@/components/FirstDealOffer";
 import HowItWorks from "@/components/landing/HowItWorks";
 import ComparisonTable from "@/components/landing/ComparisonTable";
@@ -169,6 +170,31 @@ export default function BrandHome() {
 
   const c = useBrandLandingContent();
 
+  // ── Welcome popup (shown over the HOME page, exactly once right after signup) ──
+  // BrandSignup arms a same-tab sessionStorage flag then navigates here. We read it
+  // once on mount and clear it immediately, so a refresh or any later home visit
+  // never re-shows it. The image is admin-set content; it may resolve a tick after
+  // mount, so a second effect opens the popup once both the flag and image are ready.
+  const [signupPopupArmed, setSignupPopupArmed] = useState(false);
+  const [signupPopup, setSignupPopup] = useState<PopupImage | null>(null);
+  const signupPopupImage = parsePopupImage(c.get("brand.homepage.popup.image"));
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("collabry_signup_popup") === "1") {
+        sessionStorage.removeItem("collabry_signup_popup");
+        setSignupPopupArmed(true);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (signupPopupArmed && signupPopupImage && !signupPopup) {
+      setSignupPopup(signupPopupImage);
+      setSignupPopupArmed(false);
+    }
+  }, [signupPopupArmed, signupPopupImage, signupPopup]);
+
   useEffect(() => {
     if (!authLoading && !brandId) navigate("/login-brand");
   }, [brandId, authLoading, navigate]);
@@ -258,6 +284,11 @@ export default function BrandHome() {
 
   return (
     <BrandLayout credits={credits?.total ?? null}>
+      {/* Welcome popup over the home page — fires once, right after signup. */}
+      {signupPopup && (
+        <BrandSignupPopup image={signupPopup} onClose={() => setSignupPopup(null)} />
+      )}
+
       <div className="max-w-6xl mx-auto px-4 pt-6 pb-4">
 
         {/* ── Profile row (always full width) ── */}

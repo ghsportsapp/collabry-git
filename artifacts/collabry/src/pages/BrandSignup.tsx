@@ -6,7 +6,7 @@ import { CustomSelect } from "@/components/ui/CustomSelect";
 import { pixelTrack } from "@/lib/pixel";
 import { trackSignup, identifyUser } from "@/lib/analytics";
 import { useBrandLandingContent } from "@/hooks/useBrandLandingContent";
-import BrandSignupPopup, { parsePopupImage, preloadPopupImage, type PopupImage } from "@/components/BrandSignupPopup";
+import { parsePopupImage, preloadPopupImage, type PopupImage } from "@/components/BrandSignupPopup";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const POPPINS = "'Poppins', sans-serif";
@@ -75,8 +75,9 @@ export default function BrandSignup() {
      cache while the brand is still filling in the form, so the popup paints
      immediately on submit instead of flashing empty. */
   const landing = useBrandLandingContent();
+  // Read to warm the browser cache before navigation, and to decide whether to
+  // arm the one-time home-page popup flag on signup.
   const popupImage: PopupImage | null = parsePopupImage(landing.get("brand.homepage.popup.image"));
-  const [signupPopup, setSignupPopup] = useState<PopupImage | null>(null);
   const [firstDealPct, setFirstDealPct] = useState<number>(0);
   useEffect(() => { preloadPopupImage(popupImage); }, [popupImage?.imageUrl]);
 
@@ -318,10 +319,13 @@ export default function BrandSignup() {
         );
       } catch {}
 
-      /* With an image configured, hold here and show it once; closing it
-         continues to the home page. With none, go straight there. */
-      if (popupImage) setSignupPopup(popupImage);
-      else navigate("/home-brand");
+      /* The welcome popup now shows over the HOME page, not over the signup
+         form. Set a one-time, same-tab flag and navigate; BrandHome reads it
+         once on mount, clears it immediately, then shows the popup — so it fires
+         exactly once and never on a later visit or a refresh. Only arm it when an
+         image is actually configured. */
+      if (popupImage) { try { sessionStorage.setItem("collabry_signup_popup", "1"); } catch {} }
+      navigate("/home-brand");
     } catch { const e = { _form: "Network error. Please try again." }; setErrors(e); scrollToFirstError(e); }
     finally { setSubmitting(false); }
   };
@@ -480,9 +484,6 @@ export default function BrandSignup() {
 
   return (
     <div className="min-h-screen" style={{ background: "#0A0A0F", fontFamily: POPPINS }}>
-      {signupPopup && (
-        <BrandSignupPopup image={signupPopup} onClose={() => navigate("/home-brand")} />
-      )}
       <header className="px-6 py-4 flex items-center justify-between">
         <span className="text-2xl text-[#E14F69]" style={{ fontFamily: "'Macondo Swash Caps', cursive" }}>Collabry</span>
         <Link href="/signup-creator">

@@ -56,7 +56,7 @@ export default function BrandSignupPopup({ image, onClose }: {
       className="fixed inset-0 flex items-center justify-center px-5"
       style={{
         zIndex: 300,
-        background: "rgba(0,0,0,0.7)",
+        background: "rgba(0,0,0,0.85)",
         transition: "opacity 0.3s ease",
         opacity: shown ? 1 : 0,
       }}
@@ -101,8 +101,8 @@ export default function BrandSignupPopup({ image, onClose }: {
             aspectRatio: "1 / 1",
             /* Soft ambient glow in the brand pink. Two stacked shadows — a wide
                faint halo plus a tighter one — read as light spilling off the
-               image rather than as a drop shadow with an edge. */
-            boxShadow: `0 0 70px rgba(225,79,105,0.30), 0 0 28px rgba(225,79,105,0.18)`,
+               image rather than as a drop shadow with an edge. Kept subtle. */
+            boxShadow: `0 0 70px rgba(225,79,105,0.14), 0 0 28px rgba(225,79,105,0.08)`,
             backgroundImage: image.blurData ? `url(${image.blurData})` : undefined,
             backgroundSize: "cover",
             backgroundPosition: "center",
