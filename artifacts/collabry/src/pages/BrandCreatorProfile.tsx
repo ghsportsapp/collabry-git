@@ -3,6 +3,7 @@ import { useLocation, useRoute } from "wouter";
 import { ArrowLeft, ShieldCheck, X, Plus, Minus, Link as LinkIcon, Instagram, Lock, Share2, Check } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
+import { useProfileUnlockCost } from "@/hooks/useProfileUnlockCost";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
 import { FirstDealOfferBanner, FirstDealDiscountPopup, type FirstDealDiscountInfo } from "@/components/FirstDealOffer";
 
@@ -65,7 +66,8 @@ export default function BrandCreatorProfile() {
   const isMatchmaking = entry.origin === "matchmaking";
   const isUnlocked = entry.origin === "unlocked";
 
-  const { credits } = useBrandCredits();
+  const { credits, setTotal: setCreditsTotal, refetch: refetchCredits } = useBrandCredits();
+  const unlockCost = useProfileUnlockCost();
   const [resolved, setResolved] = useState<ResolvedCreator | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [data, setData] = useState<FullProfile | null>(null);
@@ -73,9 +75,6 @@ export default function BrandCreatorProfile() {
   const [unlocking, setUnlocking] = useState(false);
   const [unlockErr, setUnlockErr] = useState<string | null>(null);
   const [noCredits, setNoCredits] = useState(false);
-  // Global profile-unlock cost — read from the SAME config the backend charges on,
-  // so the amount shown always equals the amount cut. Defaults to 1 until loaded.
-  const [unlockCost, setUnlockCost] = useState(1);
   const [copied, setCopied] = useState(false);
   const [showRequest, setShowRequest] = useState(false);
   // Set from the send response's firstDealDiscount; drives the post-send popup.
@@ -144,24 +143,25 @@ export default function BrandCreatorProfile() {
     }).catch(() => setError("Failed to load profile"));
   }, [resolved, apiFetch]);
 
-  useEffect(() => {
-    apiFetch("/api/credits/price")
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { const n = Number(d?.profileUnlockCredits); if (Number.isFinite(n) && n >= 1) setUnlockCost(Math.floor(n)); })
-      .catch(() => {});
-  }, [apiFetch]);
-
   const handleUnlock = async () => {
     if (!resolved || unlocking) return;
     setUnlocking(true); setUnlockErr(null); setNoCredits(false);
     try {
       const r = await apiFetch(`/api/brand/creators/${resolved.id}/unlock`, { method: "POST" });
+      const d = await r.json().catch(() => ({}));
       if (r.ok) {
         profileRef.current = false;
         setResolved(prev => prev ? { ...prev, isUnlocked: true } : prev);
+        // Reflect the charge in the header/credits immediately (no refresh needed).
+        if (typeof d.newBalance === "number") setCreditsTotal(d.newBalance);
+        else refetchCredits();
       } else {
-        const d = await r.json().catch(() => ({}));
-        if (d.error === "ALREADY_UNLOCKED") { profileRef.current = false; setResolved(prev => prev ? { ...prev, isUnlocked: true } : prev); }
+        if (d.error === "ALREADY_UNLOCKED") {
+          profileRef.current = false;
+          setResolved(prev => prev ? { ...prev, isUnlocked: true } : prev);
+          // No charge happened, but re-sync so the balance is authoritative.
+          refetchCredits();
+        }
         else if (d.error === "INSUFFICIENT_CREDITS") setNoCredits(true);
         else setUnlockErr(d.message ?? d.error ?? "Unlock failed");
       }

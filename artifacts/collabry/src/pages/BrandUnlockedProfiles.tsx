@@ -103,7 +103,7 @@ export default function BrandUnlockedProfiles() {
             <Users className="w-10 h-10 mx-auto mb-4 text-white/70" />
             <p className="text-white/80 text-base font-semibold mb-1" style={{ fontFamily: POPPINS }}>No unlocked profiles yet</p>
             <p className="text-white/70 text-sm" style={{ fontFamily: POPPINS }}>
-              Browse creators and spend a credit to unlock their full profile and contact details.
+              Browse creators and spend credits to unlock their full profile and contact details.
             </p>
             <button
               onClick={() => navigate("/home-brand/search")}

@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
+import { useProfileUnlockCost } from "@/hooks/useProfileUnlockCost";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
 import { FirstDealOfferBanner } from "@/components/FirstDealOffer";
 import UnlockCelebration from "@/components/UnlockCelebration";
@@ -98,7 +99,8 @@ function writeSearchCache(c: SearchCache) {
 export default function BrandSearch() {
   const { brandId, apiFetch, loading: authLoading } = useBrandAuth();
   const [, navigate] = useLocation();
-  const { total: credits, setTotal: setCreditsTotal } = useBrandCredits();
+  const { total: credits, setTotal: setCreditsTotal, refetch: refetchCredits } = useBrandCredits();
+  const unlockCost = useProfileUnlockCost();
   // Read once, before first paint, so the restored list is already on screen
   // when the scroll position is reapplied below.
   const [cached] = useState(readSearchCache);
@@ -267,7 +269,14 @@ export default function BrandSearch() {
         }, 2000);
       } else {
         const d = await r.json();
-        setUnlockError(d.message ?? d.error ?? "Unlock failed");
+        if (d.error === "ALREADY_UNLOCKED") {
+          // Already owned — treat as unlocked, no charge; re-sync balance.
+          setCreators(list => list.map(c => c.id === unlockModal.id ? { ...c, isUnlocked: true } : c));
+          refetchCredits();
+          setUnlockModal(null);
+        } else {
+          setUnlockError(d.message ?? d.error ?? "Unlock failed");
+        }
       }
     } catch (e: any) { setUnlockError(e.message ?? "Unlock failed"); }
     finally { setUnlocking(false); }
@@ -505,6 +514,7 @@ export default function BrandSearch() {
                   key={c.id}
                   c={c}
                   credits={credits ?? 0}
+                  unlockCost={unlockCost}
                   imagesEnabled={opts?.creatorImagesEnabled !== false}
                   onUnlock={() => { setUnlockModal(c); setUnlockError(null); }}
                   onView={() => openProfile(c.id)}
@@ -572,7 +582,7 @@ export default function BrandSearch() {
             <div style={{ background: "rgba(240,24,122,0.08)", border: "1px solid rgba(240,24,122,0.18)", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                 <span style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, fontFamily: POPPINS }}>Profile Unlock Cost</span>
-                <span style={{ color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: POPPINS }}>1 Credit</span>
+                <span style={{ color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: POPPINS }}>{unlockCost} Credit{unlockCost === 1 ? "" : "s"}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, fontFamily: POPPINS }}>Your balance</span>
@@ -593,7 +603,7 @@ export default function BrandSearch() {
               >
                 Cancel
               </button>
-              {(credits ?? 0) < 1 ? (
+              {(credits ?? 0) < unlockCost ? (
                 <button
                   onClick={() => navigate("/home-brand/credits")}
                   style={{ flex: 1, padding: "12px 0", borderRadius: 24, border: "none", background: PINK, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: POPPINS }}
@@ -606,7 +616,7 @@ export default function BrandSearch() {
                   disabled={unlocking}
                   style={{ flex: 1, padding: "12px 0", borderRadius: 24, border: "none", background: PINK, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: unlocking ? 0.6 : 1, fontFamily: POPPINS }}
                 >
-                  {unlocking ? "Unlocking…" : "Unlock · 1 Credit"}
+                  {unlocking ? "Unlocking…" : `Unlock · ${unlockCost} Credit${unlockCost === 1 ? "" : "s"}`}
                 </button>
               )}
             </div>
@@ -665,8 +675,8 @@ function MetaRow({ icon: Icon, text }: { icon: React.ElementType; text: string }
 }
 
 // ─── Creator Card ──────────────────────────────────────────────────────────────
-function CreatorCard({ c, imagesEnabled, onUnlock, onView }: {
-  c: CreatorPartial; credits: number; imagesEnabled: boolean;
+function CreatorCard({ c, unlockCost, imagesEnabled, onUnlock, onView }: {
+  c: CreatorPartial; credits: number; unlockCost: number; imagesEnabled: boolean;
   onUnlock: () => void; onView: () => void;
 }) {
   const cats = c.categories ?? [];
@@ -762,7 +772,7 @@ function CreatorCard({ c, imagesEnabled, onUnlock, onView }: {
             style={{ border: "1.5px solid rgba(255,255,255,0.15)", color: "white", fontFamily: POPPINS, background: "transparent" }}
           >
             <Lock className="w-3.5 h-3.5" />
-            Unlock Full Profile — 1 Credit
+            Unlock Full Profile — {unlockCost} Credit{unlockCost === 1 ? "" : "s"}
           </button>
         )}
       </div>

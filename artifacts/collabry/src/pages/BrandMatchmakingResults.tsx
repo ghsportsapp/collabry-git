@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useBrandAuth } from "@/contexts/BrandAuthContext";
 import { useBrandCredits } from "@/hooks/useBrandCredits";
+import { useProfileUnlockCost } from "@/hooks/useProfileUnlockCost";
 import { BrandLayout, POPPINS, PINK } from "@/components/BrandLayout";
 import UnlockCelebration from "@/components/UnlockCelebration";
 import {
@@ -275,8 +276,8 @@ function MetaRow({ icon: Icon, text }: { icon: React.ElementType; text: string }
 }
 
 function MatchCard({
-  c, onUnlock, onView,
-}: { c: ScoredCreator; onUnlock: () => void; onView: () => void }) {
+  c, unlockCost, onUnlock, onView,
+}: { c: ScoredCreator; unlockCost: number; onUnlock: () => void; onView: () => void }) {
   const [showBreakdown, setShowBreakdown] = useState(false);
 
   const female = c.audienceGenderFemale;
@@ -384,7 +385,7 @@ function MatchCard({
             style={{ border: "1.5px solid rgba(255,255,255,0.15)", color: "white", fontFamily: POPPINS, background: "transparent" }}
           >
             <Lock className="w-3.5 h-3.5" />
-            Unlock Full Profile — 1 Credit
+            Unlock Full Profile — {unlockCost} Credit{unlockCost === 1 ? "" : "s"}
           </button>
         )}
       </div>
@@ -445,7 +446,8 @@ export default function BrandMatchmakingResults() {
   const [briefId, setBriefId] = useState<string | null>(null);
   const [briefExpired, setBriefExpired] = useState(false);
   const [slabs, setSlabs] = useState<Slab[]>([]);
-  const { credits, setCredits } = useBrandCredits();
+  const { credits, setCredits, refetch: refetchCredits } = useBrandCredits();
+  const unlockCost = useProfileUnlockCost();
   const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [genderOptions, setGenderOptions] = useState<string[]>([]);
@@ -654,10 +656,22 @@ export default function BrandMatchmakingResults() {
     setUnlocking(true); setUnlockError(null);
     try {
       const r = await apiFetch(`/api/brand/creators/${unlockModal.creatorId}/unlock`, { method: "POST" });
-      if (!r.ok) { const e = await r.json(); setUnlockError(e.message ?? e.error ?? "Failed"); return; }
       const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        if (d.error === "ALREADY_UNLOCKED") {
+          // Already owned — treat as unlocked, no charge; re-sync balance.
+          setPageResults(prev => prev.map(c => c.creatorId === unlockModal.creatorId ? { ...c, isUnlocked: true } : c));
+          refetchCredits();
+          setUnlockModal(null);
+        } else {
+          setUnlockError(d.message ?? d.error ?? "Failed");
+        }
+        return;
+      }
       setPageResults(prev => prev.map(c => c.creatorId === unlockModal.creatorId ? { ...c, isUnlocked: true } : c));
-      setCredits(prev => prev ? { ...prev, total: prev.total - 1 } : prev);
+      // Reflect the actual charged balance from the response (not a hardcoded −1).
+      if (typeof d.newBalance === "number") setCredits(prev => prev ? { ...prev, total: d.newBalance } : prev);
+      else refetchCredits();
       const targetId = unlockModal.creatorId;
       setUnlockModal(null);
       setCelebration(targetId);
@@ -784,6 +798,7 @@ export default function BrandMatchmakingResults() {
                       <MatchCard
                         key={c.creatorId}
                         c={c}
+                        unlockCost={unlockCost}
                         onUnlock={() => setUnlockModal(c)}
                         onView={() => openProfile(c.creatorId)}
                       />
@@ -852,7 +867,7 @@ export default function BrandMatchmakingResults() {
               <div className="rounded-xl p-3 mb-3" style={{ background: "rgba(240,24,122,0.10)", border: "1px solid rgba(240,24,122,0.20)" }}>
                 <div className="flex justify-between mb-1">
                   <span className="text-white/90 text-xs" style={{ fontFamily: POPPINS }}>Profile Unlock Cost</span>
-                  <span className="text-white font-bold text-xs" style={{ fontFamily: POPPINS }}>1 Credit</span>
+                  <span className="text-white font-bold text-xs" style={{ fontFamily: POPPINS }}>{unlockCost} Credit{unlockCost === 1 ? "" : "s"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/90 text-xs" style={{ fontFamily: POPPINS }}>Your balance</span>
@@ -874,7 +889,7 @@ export default function BrandMatchmakingResults() {
                 >
                   Cancel
                 </button>
-                {(credits?.total ?? 0) < 1 ? (
+                {(credits?.total ?? 0) < unlockCost ? (
                   <button
                     onClick={() => navigate("/home-brand/credits")}
                     className="flex-1 py-2.5 rounded-full text-white text-xs font-semibold"
@@ -889,7 +904,7 @@ export default function BrandMatchmakingResults() {
                     className="flex-1 py-2.5 rounded-full text-white text-xs font-semibold disabled:opacity-50"
                     style={{ background: PINK, fontFamily: POPPINS }}
                   >
-                    {unlocking ? "Unlocking..." : "Unlock · 1 Credit"}
+                    {unlocking ? "Unlocking..." : `Unlock · ${unlockCost} Credit${unlockCost === 1 ? "" : "s"}`}
                   </button>
                 )}
               </div>
