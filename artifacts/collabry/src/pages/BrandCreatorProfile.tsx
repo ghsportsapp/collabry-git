@@ -73,6 +73,9 @@ export default function BrandCreatorProfile() {
   const [unlocking, setUnlocking] = useState(false);
   const [unlockErr, setUnlockErr] = useState<string | null>(null);
   const [noCredits, setNoCredits] = useState(false);
+  // Global profile-unlock cost — read from the SAME config the backend charges on,
+  // so the amount shown always equals the amount cut. Defaults to 1 until loaded.
+  const [unlockCost, setUnlockCost] = useState(1);
   const [copied, setCopied] = useState(false);
   const [showRequest, setShowRequest] = useState(false);
   // Set from the send response's firstDealDiscount; drives the post-send popup.
@@ -140,6 +143,13 @@ export default function BrandCreatorProfile() {
       else setError((await r.json().catch(() => ({}))).error ?? "Failed to load profile");
     }).catch(() => setError("Failed to load profile"));
   }, [resolved, apiFetch]);
+
+  useEffect(() => {
+    apiFetch("/api/credits/price")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { const n = Number(d?.profileUnlockCredits); if (Number.isFinite(n) && n >= 1) setUnlockCost(Math.floor(n)); })
+      .catch(() => {});
+  }, [apiFetch]);
 
   const handleUnlock = async () => {
     if (!resolved || unlocking) return;
@@ -243,7 +253,7 @@ export default function BrandCreatorProfile() {
 
             {noCredits ? (
               <>
-                <p className="text-sm mb-3" style={{ color: "#f87171" }}>You have 0 credits. Buy credits to unlock this profile.</p>
+                <p className="text-sm mb-3" style={{ color: "#f87171" }}>This profile costs {unlockCost} credit{unlockCost === 1 ? "" : "s"}. You don't have enough — buy credits to unlock it.</p>
                 <button onClick={() => navigate("/home-brand/credits")} className="w-full py-3 rounded-full text-white text-sm font-semibold" style={{ background: PINK }}>
                   Buy More Credits →
                 </button>
@@ -253,7 +263,7 @@ export default function BrandCreatorProfile() {
                 <button onClick={handleUnlock} disabled={unlocking} className="w-full py-3 rounded-full text-white text-sm font-semibold disabled:opacity-50" style={{ background: PINK }}>
                   {unlocking ? "Unlocking…" : "Unlock Profile"}
                 </button>
-                <p className="text-white/45 text-xs mt-2.5">Costs 1 credit</p>
+                <p className="text-white/45 text-xs mt-2.5">Costs {unlockCost} credit{unlockCost === 1 ? "" : "s"}</p>
                 {unlockErr && <p className="text-xs mt-3" style={{ color: "#f87171" }}>{unlockErr}</p>}
               </>
             )}

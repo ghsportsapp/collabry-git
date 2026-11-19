@@ -6,7 +6,7 @@ import { useAdminAuth } from "@/contexts/AdminAuthContext";
 const POPPINS = "'Poppins', sans-serif";
 const inputClass = "w-full bg-transparent border border-white/20 rounded-lg px-4 py-2.5 text-white text-sm outline-none focus:border-white/50 placeholder:text-white/70 transition-all";
 
-interface CreditConfig { freeCreditsOnSignup: number; creditExpiryDays: number; pricePerCredit: number }
+interface CreditConfig { freeCreditsOnSignup: number; creditExpiryDays: number; pricePerCredit: number; profileUnlockCredits: number }
 interface Brand { id: string; brandName: string; email: string; logoUrl: string | null; creditBalance: number; status: string }
 interface CreditPurchase {
   id: string;
@@ -29,8 +29,8 @@ export default function AdminCreditsManagement() {
   const { adminFetch } = useAdminAuth();
   const [, navigate] = useLocation();
 
-  const [config, setConfig] = useState<CreditConfig>({ freeCreditsOnSignup: 5, creditExpiryDays: 30, pricePerCredit: 99 });
-  const [configDraft, setConfigDraft] = useState<CreditConfig>({ freeCreditsOnSignup: 5, creditExpiryDays: 30, pricePerCredit: 99 });
+  const [config, setConfig] = useState<CreditConfig>({ freeCreditsOnSignup: 5, creditExpiryDays: 30, pricePerCredit: 99, profileUnlockCredits: 1 });
+  const [configDraft, setConfigDraft] = useState<CreditConfig>({ freeCreditsOnSignup: 5, creditExpiryDays: 30, pricePerCredit: 99, profileUnlockCredits: 1 });
   const [savingConfig, setSavingConfig] = useState(false);
 
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -257,6 +257,12 @@ export default function AdminCreditsManagement() {
               <input type="number" min="1" className={inputClass} value={configDraft.creditExpiryDays}
                 onChange={e => setConfigDraft(p => ({ ...p, creditExpiryDays: parseInt(e.target.value) || 30 }))} />
               <p className="text-white/70 text-xs mt-1">Currently: {config.creditExpiryDays} days</p>
+            </div>
+            <div>
+              <label className="block text-white/80 text-xs font-medium mb-1.5">Profile unlock cost (credits)</label>
+              <input type="number" min="1" step="1" className={inputClass} value={configDraft.profileUnlockCredits}
+                onChange={e => setConfigDraft(p => ({ ...p, profileUnlockCredits: parseInt(e.target.value) || 1 }))} />
+              <p className="text-white/70 text-xs mt-1">Currently: {config.profileUnlockCredits} credit{config.profileUnlockCredits === 1 ? "" : "s"} · global, applies to future unlocks only</p>
             </div>
           </div>
           <button onClick={saveConfig} disabled={savingConfig} className="px-5 py-2.5 rounded-full text-white text-sm font-semibold disabled:opacity-50 transition-all" style={{ background: "#E14F69" }}>

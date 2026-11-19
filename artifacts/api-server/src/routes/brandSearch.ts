@@ -602,11 +602,18 @@ router.post("/brand/creators/:id/unlock", requireBrand, async (req: Request, res
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // Configurable global unlock cost. Read inside the transaction so the amount
+    // gated, deducted, and ledgered is the one single value. Defensive: missing or
+    // unparseable config → 1; floored at 1 so it can never be 0/NaN (which would
+    // make unlocks free or always-insufficient).
+    const cfg = await client.query(`SELECT value FROM "PlatformConfig" WHERE key='profile_unlock_credits'`);
+    const rawCost = parseInt(cfg.rows[0]?.value ?? "", 10);
+    const cost = Number.isFinite(rawCost) && rawCost >= 1 ? rawCost : 1;
     // Lock brand row
     const b = await client.query(`SELECT "creditBalance" FROM "Brand" WHERE id=$1 FOR UPDATE`, [brandId]);
     if (b.rows.length === 0) { await client.query("ROLLBACK"); res.status(404).json({ error: "Brand not found" }); return; }
     const bal = b.rows[0].creditBalance as number;
-    if (bal < 1) { await client.query("ROLLBACK"); res.status(400).json({ error: "INSUFFICIENT_CREDITS", message: "You have 0 credits. Buy credits to unlock creator profiles." }); return; }
+    if (bal < cost) { await client.query("ROLLBACK"); res.status(400).json({ error: "INSUFFICIENT_CREDITS", message: `You need ${cost} credit${cost === 1 ? "" : "s"} to unlock this profile. Buy credits to continue.` }); return; }
     // Already unlocked check
     const existing = await client.query(`SELECT id FROM "BrandUnlockRecord" WHERE "brandId"=$1 AND "creatorId"=$2`, [brandId, creatorId]);
     if (existing.rows.length > 0) { await client.query("ROLLBACK"); res.status(400).json({ error: "ALREADY_UNLOCKED" }); return; }
@@ -621,7 +628,7 @@ router.post("/brand/creators/:id/unlock", requireBrand, async (req: Request, res
       return;
     }
     const cr = c.rows[0];
-    const newBal = bal - 1;
+    const newBal = bal - cost;
     await client.query(`UPDATE "Brand" SET "creditBalance"=$1, "updatedAt"=NOW() WHERE id=$2`, [newBal, brandId]);
     await client.query(
       `INSERT INTO "BrandUnlockRecord" (id,"brandId","creatorId","reelSlabMin","reelSlabMax","storySlabMin","storySlabMax","postSlabMin","postSlabMax","followerCountAtUnlock","unlockedAt")
@@ -629,8 +636,8 @@ router.post("/brand/creators/:id/unlock", requireBrand, async (req: Request, res
       [brandId, creatorId, cr.reelPriceMin ?? 0, cr.reelPriceMax ?? 0, cr.storyPriceMin ?? 0, cr.storyPriceMax ?? 0, cr.postPriceMin ?? 0, cr.postPriceMax ?? 0, cr.followerCount ?? 0]
     );
     await client.query(
-      `INSERT INTO "CreditTransaction" (id,"brandId","transactionType",amount,"balanceAfter","createdAt") VALUES (gen_random_uuid(),$1,'UNLOCK_SEARCH',-1,$2,NOW())`,
-      [brandId, newBal]
+      `INSERT INTO "CreditTransaction" (id,"brandId","transactionType",amount,"balanceAfter","createdAt") VALUES (gen_random_uuid(),$1,'UNLOCK_SEARCH',$2,$3,NOW())`,
+      [brandId, -cost, newBal]
     );
     await client.query("COMMIT");
     res.json({ ok: true, newBalance: newBal, instagramHandle: cr.instagramHandle ?? null, fullName: cr.fullName ?? null });

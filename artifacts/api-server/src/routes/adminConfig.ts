@@ -52,20 +52,24 @@ const router: IRouter = Router();
 // ── Credits config ────────────────────────────────────────────────────────────
 router.get("/admin/config/credits", async (_req: Request, res: Response): Promise<void> => {
   const result = await pool.query(
-    `SELECT key, value FROM "PlatformConfig" WHERE key IN ('free_credits_amount','free_credits_expiry_days','credit_price_inr')`
+    `SELECT key, value FROM "PlatformConfig" WHERE key IN ('free_credits_amount','free_credits_expiry_days','credit_price_inr','profile_unlock_credits')`
   );
   const map: Record<string, number> = {};
   result.rows.forEach((r: any) => { map[r.key] = parseFloat(r.value); });
+  // Profile-unlock cost: global, floored at 1 (missing/unparseable → 1).
+  const rawUnlock = map["profile_unlock_credits"];
+  const profileUnlockCredits = Number.isFinite(rawUnlock) ? Math.max(1, Math.floor(rawUnlock)) : 1;
   res.json({
     freeCreditsOnSignup: map["free_credits_amount"] ?? 5,
     creditExpiryDays: map["free_credits_expiry_days"] ?? 30,
     pricePerCredit: map["credit_price_inr"] ?? 99,
+    profileUnlockCredits,
   });
 });
 
 router.patch("/admin/config/credits", async (req: Request, res: Response): Promise<void> => {
   const adminId = (req as any).adminId as string;
-  const { freeCreditsOnSignup, creditExpiryDays, pricePerCredit } = req.body as { freeCreditsOnSignup?: number; creditExpiryDays?: number; pricePerCredit?: number };
+  const { freeCreditsOnSignup, creditExpiryDays, pricePerCredit, profileUnlockCredits } = req.body as { freeCreditsOnSignup?: number; creditExpiryDays?: number; pricePerCredit?: number; profileUnlockCredits?: number };
   const updates: Array<[string, number]> = [];
   if (freeCreditsOnSignup !== undefined) {
     const n = parseInt(String(freeCreditsOnSignup));
@@ -82,6 +86,11 @@ router.patch("/admin/config/credits", async (req: Request, res: Response): Promi
     if (isNaN(n) || n <= 0) { res.status(400).json({ error: "pricePerCredit must be > 0" }); return; }
     updates.push(["credit_price_inr", n]);
   }
+  if (profileUnlockCredits !== undefined) {
+    const n = parseInt(String(profileUnlockCredits), 10);
+    if (isNaN(n) || n < 1) { res.status(400).json({ error: "profileUnlockCredits must be an integer ≥ 1" }); return; }
+    updates.push(["profile_unlock_credits", n]);
+  }
   for (const [key, value] of updates) {
     await pool.query(
       `INSERT INTO "PlatformConfig" (id,key,value,description,"updatedAt") VALUES (gen_random_uuid(),$1,$2,''::text,NOW()) ON CONFLICT (key) DO UPDATE SET value=$2,"updatedAt"=NOW()`,
@@ -90,7 +99,7 @@ router.patch("/admin/config/credits", async (req: Request, res: Response): Promi
   }
   await pool.query(
     `INSERT INTO "AdminActionLog" (id,"adminId",action,"entityType","entityId",details,"createdAt") VALUES (gen_random_uuid(),$1,'UPDATE_CONFIG','PLATFORM_CONFIG','credits',$2::jsonb,NOW())`,
-    [adminId, JSON.stringify({ freeCreditsOnSignup, creditExpiryDays, pricePerCredit })]
+    [adminId, JSON.stringify({ freeCreditsOnSignup, creditExpiryDays, pricePerCredit, profileUnlockCredits })]
   );
   res.json({ ok: true });
 });
@@ -98,14 +107,17 @@ router.patch("/admin/config/credits", async (req: Request, res: Response): Promi
 // Public — current credit price + expiry policy (used by brand buy page & home)
 router.get("/credits/price", async (_req: Request, res: Response): Promise<void> => {
   const r = await pool.query(
-    `SELECT key, value FROM "PlatformConfig" WHERE key IN ('credit_price_inr','free_credits_expiry_days','gst_rate')`
+    `SELECT key, value FROM "PlatformConfig" WHERE key IN ('credit_price_inr','free_credits_expiry_days','gst_rate','profile_unlock_credits')`
   );
   const map: Record<string, string> = {};
   r.rows.forEach((row: any) => { map[row.key] = row.value; });
   const pricePerCredit = map["credit_price_inr"] ? parseFloat(map["credit_price_inr"]) : 99;
   const creditExpiryDays = map["free_credits_expiry_days"] ? parseInt(map["free_credits_expiry_days"]) : 30;
   const gstRate = map["gst_rate"] ? parseFloat(map["gst_rate"]) : 18;
-  res.json({ pricePerCredit, creditExpiryDays, gstRate });
+  // Floored at 1; missing/unparseable → 1 (same rule the unlock endpoint applies).
+  const rawUnlock = parseInt(map["profile_unlock_credits"] ?? "", 10);
+  const profileUnlockCredits = Number.isFinite(rawUnlock) && rawUnlock >= 1 ? rawUnlock : 1;
+  res.json({ pricePerCredit, creditExpiryDays, gstRate, profileUnlockCredits });
 });
 
 // ── Gift credits ──────────────────────────────────────────────────────────────
