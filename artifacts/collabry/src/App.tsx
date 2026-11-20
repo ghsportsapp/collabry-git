@@ -40,6 +40,7 @@ const BrandProfile = lazy(() => import("@/pages/BrandProfile"));
 const BrandSearch = lazy(() => import("@/pages/BrandSearch"));
 const BrandCredits = lazy(() => import("@/pages/BrandCredits"));
 const BrandCreatorProfile = lazy(() => import("@/pages/BrandCreatorProfile"));
+const SuccessStory = lazy(() => import("@/pages/SuccessStory"));
 const BrandMatchmaking = lazy(() => import("@/pages/BrandMatchmaking"));
 const BrandMatchmakingResults = lazy(() => import("@/pages/BrandMatchmakingResults"));
 const AdminMatchmaking = lazy(() => import("@/pages/AdminMatchmaking"));
@@ -178,6 +179,8 @@ function Router() {
 
       <Route path="/brand" component={BrandLandingPage} />
       <Route path="/creator" component={CreatorLandingPage} />
+      {/* Public Success Stories showcase — standalone, no auth. */}
+      <Route path="/success-story" component={SuccessStory} />
       <Route path="/home-brand/notifications" component={BrandNotifications} />
       <Route path="/home-brand/deals" component={BrandDeals as any} />
       <Route path="/home-brand/deals/request/:id" component={BrandDeals as any} />

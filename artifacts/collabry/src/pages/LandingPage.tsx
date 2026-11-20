@@ -64,6 +64,14 @@ function ExploreButtons({ content }: { content: ReturnType<typeof useLandingCont
               {creatorBtn}
             </button>
           </Link>
+          <Link href="/success-story" className="flex-1">
+            <button
+              className="w-full font-medium text-sm lg:text-base py-2.5 lg:py-3 rounded-xl transition-colors cursor-pointer border hover:bg-[#E14F69]/10"
+              style={{ fontFamily: POPPINS, background: "transparent", color: PINK, borderColor: "rgba(225,79,105,0.5)" }}
+            >
+              Our Success Stories →
+            </button>
+          </Link>
         </div>
       </div>
     </section>
