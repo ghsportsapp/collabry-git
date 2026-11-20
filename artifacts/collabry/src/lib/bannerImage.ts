@@ -138,3 +138,48 @@ export async function prepareWideBannerImage(
 
   return { blob, blurData };
 }
+
+/** Any-ratio variant — same WebP + size-target + LQIP pipeline as the square
+ *  banner image, but with NO aspect-ratio gate. Used for Success-Story posters,
+ *  which can be any ratio and are object-cover'd into the 9:16 frame. Longest side
+ *  scaled down to MAX_DIM; compressed toward TARGET_BYTES. */
+export async function prepareImageAnyRatio(
+  file: File
+): Promise<PreparedBanner | { error: string }> {
+  if (!ALLOWED.includes(file.type)) {
+    return { error: "Only JPG, PNG, or WebP images are allowed" };
+  }
+  if (file.size > MAX_BYTES) {
+    const mb = (file.size / (1024 * 1024)).toFixed(1);
+    return { error: `Image is ${mb} MB — maximum is 5 MB` };
+  }
+
+  let img: HTMLImageElement;
+  try {
+    img = await decode(await readDataUrl(file));
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+
+  const { width, height } = img;
+  if (!width || !height) return { error: "Could not read the image" };
+
+  const scale = Math.min(1, MAX_DIM / Math.max(width, height));
+  const w = Math.round(width * scale);
+  const h = Math.round(height * scale);
+  const canvas = draw(img, w, h);
+
+  let quality = QUALITY_START;
+  let blob = await toBlob(canvas, quality);
+  while (blob.size > TARGET_BYTES && quality > QUALITY_FLOOR) {
+    quality -= 0.05;
+    blob = await toBlob(canvas, quality);
+  }
+
+  // LQIP keeps the source aspect so the blur-up doesn't distort.
+  const lw = w >= h ? LQIP_DIM : Math.max(1, Math.round((LQIP_DIM * w) / h));
+  const lh = h >= w ? LQIP_DIM : Math.max(1, Math.round((LQIP_DIM * h) / w));
+  const blurData = draw(img, lw, lh).toDataURL("image/webp", 0.5);
+
+  return { blob, blurData };
+}

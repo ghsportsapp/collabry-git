@@ -98,6 +98,9 @@ const SECTION_PREFIXES: Array<{ prefix: string; sections: string[] }> = [
   { prefix: "/admin/matchmaking", sections: ["matchmaking"] },
   // chatbot
   { prefix: "/admin/chatbot", sections: ["chatbot"] },
+  // success-story (showcase stories + the 4 stats)
+  { prefix: "/admin/success-stories", sections: ["success-story"] },
+  { prefix: "/admin/success-stats", sections: ["success-story"] },
   // about-us / legal / white-glove / advertisement
   { prefix: "/admin/about-us", sections: ["about-us"] },
   { prefix: "/admin/legal", sections: ["legal"] },

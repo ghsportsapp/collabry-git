@@ -18,19 +18,76 @@ export interface PreparedVideo {
   poster: Blob;
 }
 
+/** Shared MP4/H.264 + size validation. Returns an error string, or null if OK.
+ *  `maxBytes` defaults to the banner cap; callers with a different cap (e.g. the
+ *  100 MB Success-Story cap) pass their own. */
+export function validateVideoFile(file: File, maxBytes: number = MAX_BYTES): string | null {
+  if (!ALLOWED_VIDEO.includes(file.type)) return "Only MP4 (H.264) video is allowed";
+  if (file.size > maxBytes) {
+    const mb = (file.size / (1024 * 1024)).toFixed(1);
+    const capMb = Math.round(maxBytes / (1024 * 1024));
+    return `Video is ${mb} MB — maximum is ${capMb} MB`;
+  }
+  return null;
+}
+
+/** Generalized direct-to-bucket video upload with PROGRESS. Asks the given presign
+ *  endpoint (which may be auth-gated — hence the injectable `fetcher`, e.g. an
+ *  admin fetch) for a short-lived PUT, then streams the file STRAIGHT to storage
+ *  via XMLHttpRequest so the caller can render a progress bar. Returns the stored
+ *  public URL. The video never flows through Node. Throws on failure. */
+export async function uploadVideoViaPresign(opts: {
+  file: File;
+  /** API path of the presign endpoint, e.g. "/api/admin/success-stories/video-url". */
+  presignPath: string;
+  /** Fetch used ONLY for the presign request (storage PUT is always a raw XHR).
+   *  Pass an authenticated fetch when the presign endpoint is gated. */
+  fetcher?: (path: string, init?: RequestInit) => Promise<Response>;
+  onProgress?: (pct: number) => void;
+}): Promise<{ videoUrl: string }> {
+  const call = opts.fetcher
+    ? (p: string, init: RequestInit) => opts.fetcher!(p, init)
+    : (p: string, init: RequestInit) => fetch(`${BASE_URL}${p}`, init);
+
+  const presign = await call(opts.presignPath, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ size: opts.file.size, contentType: opts.file.type }),
+  });
+  if (!presign.ok) {
+    const j = (await presign.json().catch(() => ({}))) as { error?: string };
+    throw new Error(j.error || "Could not start the upload");
+  }
+  const { uploadURL, objectPath } = (await presign.json()) as { uploadURL: string; objectPath: string };
+
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", uploadURL);
+    // Must replay the signed x-amz-acl header, and the object must be public.
+    xhr.setRequestHeader("Content-Type", opts.file.type);
+    xhr.setRequestHeader("x-amz-acl", "public-read");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && opts.onProgress) opts.onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error("Video upload failed — please try again"));
+    };
+    xhr.onerror = () => reject(new Error("Video upload failed — please try again"));
+    xhr.send(opts.file);
+  });
+
+  return { videoUrl: objectPath };
+}
+
 /** Validates a picked video and grabs its first frame as a poster. Resolves
  *  with `{ error }` for anything the admin should fix — the caller shows it
  *  inline and never hits the network. */
 export async function prepareBannerVideo(
   file: File
 ): Promise<PreparedVideo | { error: string }> {
-  if (!ALLOWED_VIDEO.includes(file.type)) {
-    return { error: "Only MP4 (H.264) video is allowed" };
-  }
-  if (file.size > MAX_BYTES) {
-    const mb = (file.size / (1024 * 1024)).toFixed(1);
-    return { error: `Video is ${mb} MB — maximum is 50 MB` };
-  }
+  const vErr = validateVideoFile(file, MAX_BYTES);
+  if (vErr) return { error: vErr };
 
   let poster: Blob;
   try {
