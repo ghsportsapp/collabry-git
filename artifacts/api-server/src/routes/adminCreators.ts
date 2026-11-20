@@ -10,6 +10,7 @@ const router: IRouter = Router();
 const EXPORT_COLUMNS = [
   "Name", "Instagram Username", "Followers", "Mobile", "Email",
   "Reel Price", "Story Price", "Post Price", "State", "City", "Languages", "Categories", "Gender",
+  "Date Joined",
 ];
 
 /** Spreadsheets read a leading =, +, - or @ as the start of a formula, and these
@@ -124,7 +125,8 @@ router.get("/admin/creators/export", requireAdminSecret, async (req: Request, re
               WHERE cc."creatorId" = c.id) AS categories,
             /* Nullable free text on Creator — emitted as stored, with an unset
                gender (NULL) falling through csvCell to an empty cell. */
-            c.gender
+            c.gender,
+            c."createdAt"
      FROM "Creator" c
      WHERE c.status = $1
      ORDER BY c."createdAt" DESC`,
@@ -135,8 +137,13 @@ router.get("/admin/creators/export", requireAdminSecret, async (req: Request, re
     EXPORT_COLUMNS.map(csvCell).join(","),
     // Every cell goes through csvCell, so the formula guard and quoting cover
     // the price and state columns too.
-    ...result.rows.map((r: any) =>
-      [
+    ...result.rows.map((r: any) => {
+      // Date Joined as D/M/YYYY in IST — same format as the brands export, since
+      // this export has no other date column to match.
+      const ist = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(r.createdAt));
+      const [y, m, d] = ist.split("-");
+      const dateJoined = `${parseInt(d)}/${parseInt(m)}/${y}`;
+      return [
         r.fullName, r.instagramHandle, r.followerCount, r.phone, r.email,
         priceRange(r.reelPriceMin, r.reelPriceMax),
         priceRange(r.storyPriceMin, r.storyPriceMax),
@@ -148,8 +155,9 @@ router.get("/admin/creators/export", requireAdminSecret, async (req: Request, re
         Array.isArray(r.languages) ? r.languages.join(", ") : (r.languages ?? null),
         r.categories,
         r.gender,
-      ].map(csvCell).join(",")
-    ),
+        dateJoined,
+      ].map(csvCell).join(",");
+    }),
   ];
   // CRLF per RFC 4180, and a BOM so Excel reads the UTF-8 as UTF-8 instead of
   // mojibake on non-ASCII names and handles.
