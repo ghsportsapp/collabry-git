@@ -555,6 +555,8 @@ router.post("/admin/deal-discount/:id", async (req: Request, res: Response): Pro
             title: "🎉 Discount applied to your deal",
             body: `Good news! Collabry applied a ${percent}% discount on your deal. Previous: ₹${inr(prevTotal)} → Now: ₹${inr(newTotal)}. Your creator still receives their full payment — we've reduced our own fee, not theirs. 💛`,
             relatedEntityType: "Deal", relatedEntityId: id,
+            // WhatsApp "Brands_discount" — plain numbers, the template carries the ₹.
+            emailParams: { discount_percent: percent, previous_price: inr(prevTotal), new_price: inr(newTotal) },
           });
           await createPopup({
             userId: brandId, userType: "BRAND", type: "DEAL_DISCOUNT",

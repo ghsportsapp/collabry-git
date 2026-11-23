@@ -69,6 +69,8 @@ export interface WhatsAppCampaign {
   param2?: string | null;
   /** Three-param templates only. Same resolution as param2; null = unconfirmed, never sends. */
   param3?: string | null;
+  /** Four-param templates only. Same resolution as param2; null = unconfirmed, never sends. */
+  param4?: string | null;
 }
 
 type UserType = "BRAND" | "CREATOR";
@@ -137,6 +139,8 @@ const SIMPLE: Record<string, WhatsAppCampaign> = {
   // {{1}} creator, {{2}} brand, {{3}} the creator's payout after commission
   // (Navneet, 2026-10-28). Plain number — the ₹ is in the template. The send
   // site (brandSearch.ts) supplies brand_name and payout.
+  // brands_discount: {{1}} brand, {{2}} discount %, {{3}} previous total, {{4}} new total (both GST-inclusive).
+  DEAL_DISCOUNT: { campaign: "Brands_discount", param2: "discount_percent", param3: "previous_price", param4: "new_price" },
   REQUEST_RECEIVED: { campaign: "4automationcreatordeal", param2: "brand_name", param3: "payout" },
   // {{1}} brand name, {{2}} credits — confirmed by Navneet. The admin
   // credit-adjustment route already supplies `credits` in emailParams.

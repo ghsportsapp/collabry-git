@@ -321,6 +321,10 @@ async function dispatchWhatsApp(n: CreateNotifInput): Promise<void> {
     if (!("param2" in camp)) extraSlots.push(null); // {{3}} without {{2}} is malformed
     extraSlots.push(camp.param3 ?? null);
   }
+  if ("param4" in camp) {
+    while (extraSlots.length < 2) extraSlots.push(null); // {{4}} without {{2}}/{{3}} is malformed
+    extraSlots.push(camp.param4 ?? null);
+  }
   if (extraSlots.length > 0) {
     // Same enrichment the email path does: most deal call sites never pass
     // brand_name/creator_name explicitly, they come from the Deal row. Without
