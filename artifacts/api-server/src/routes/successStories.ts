@@ -47,18 +47,24 @@ function serializeStory(r: any) {
     videoUrl: r.videoUrl ?? null,
     posterUrl: r.posterUrl ?? null,
     details: Array.isArray(r.details) ? r.details : [],
+    caseStudyBrand: r.caseStudyBrand ?? null,
+    caseStudyCreator: r.caseStudyCreator ?? null,
+    caseStudyText: r.caseStudyText ?? null,
     isPublished: !!r.isPublished,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
 }
 
+// Column list shared by every SELECT/RETURNING so all reads carry the same shape.
+const STORY_COLS = `id, position, "videoUrl", "posterUrl", details,
+  "caseStudyBrand", "caseStudyCreator", "caseStudyText", "isPublished", "createdAt", "updatedAt"`;
+
 // ── ADMIN: list every story (published + draft), admin order ──
 router.get("/admin/success-stories", async (_req: Request, res: Response): Promise<void> => {
   try {
     const r = await pool.query(
-      `SELECT id, position, "videoUrl", "posterUrl", details, "isPublished", "createdAt", "updatedAt"
-         FROM "SuccessStory" ORDER BY position ASC, "createdAt" ASC`,
+      `SELECT ${STORY_COLS} FROM "SuccessStory" ORDER BY position ASC, "createdAt" ASC`,
     );
     res.json({ stories: r.rows.map(serializeStory) });
   } catch (e: any) {
@@ -69,16 +75,23 @@ router.get("/admin/success-stories", async (_req: Request, res: Response): Promi
 // ── ADMIN: create a story (appended to the end) ──
 router.post("/admin/success-stories", async (req: Request, res: Response): Promise<void> => {
   try {
-    const body = (req.body ?? {}) as { videoUrl?: string; posterUrl?: string; details?: unknown; isPublished?: boolean };
+    const body = (req.body ?? {}) as {
+      videoUrl?: string; posterUrl?: string; details?: unknown; isPublished?: boolean;
+      caseStudyBrand?: string | null; caseStudyCreator?: string | null; caseStudyText?: string | null;
+    };
     const details = sanitizeDetails(body.details);
     const isPublished = body.isPublished !== false;
+    const csBrand = body.caseStudyBrand != null ? String(body.caseStudyBrand).slice(0, 200) : null;
+    const csCreator = body.caseStudyCreator != null ? String(body.caseStudyCreator).slice(0, 200) : null;
+    const csText = body.caseStudyText != null ? String(body.caseStudyText).slice(0, 5000) : null;
     const posRow = await pool.query(`SELECT COALESCE(MAX(position), -1) + 1 AS next FROM "SuccessStory"`);
     const nextPos = posRow.rows[0]?.next ?? 0;
     const ins = await pool.query(
-      `INSERT INTO "SuccessStory" (id, position, "videoUrl", "posterUrl", details, "isPublished", "createdAt", "updatedAt")
-       VALUES (gen_random_uuid()::text, $1, $2, $3, $4::jsonb, $5, NOW(), NOW())
-       RETURNING id, position, "videoUrl", "posterUrl", details, "isPublished", "createdAt", "updatedAt"`,
-      [nextPos, body.videoUrl ?? null, body.posterUrl ?? null, JSON.stringify(details), isPublished],
+      `INSERT INTO "SuccessStory" (id, position, "videoUrl", "posterUrl", details,
+         "caseStudyBrand", "caseStudyCreator", "caseStudyText", "isPublished", "createdAt", "updatedAt")
+       VALUES (gen_random_uuid()::text, $1, $2, $3, $4::jsonb, $5, $6, $7, $8, NOW(), NOW())
+       RETURNING ${STORY_COLS}`,
+      [nextPos, body.videoUrl ?? null, body.posterUrl ?? null, JSON.stringify(details), csBrand, csCreator, csText, isPublished],
     );
     res.json({ story: serializeStory(ins.rows[0]) });
   } catch (e: any) {
@@ -94,7 +107,10 @@ router.put("/admin/success-stories/:id", async (req: Request, res: Response): Pr
     if (existing.rows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
     const old = existing.rows[0] as { videoUrl: string | null; posterUrl: string | null };
 
-    const body = (req.body ?? {}) as { videoUrl?: string | null; posterUrl?: string | null; details?: unknown; isPublished?: boolean };
+    const body = (req.body ?? {}) as {
+      videoUrl?: string | null; posterUrl?: string | null; details?: unknown; isPublished?: boolean;
+      caseStudyBrand?: string | null; caseStudyCreator?: string | null; caseStudyText?: string | null;
+    };
 
     const sets: string[] = [];
     const vals: unknown[] = [];
@@ -109,6 +125,15 @@ router.put("/admin/success-stories/:id", async (req: Request, res: Response): Pr
     if (body.details !== undefined) {
       vals.push(JSON.stringify(sanitizeDetails(body.details))); sets.push(`details=$${vals.length}::jsonb`);
     }
+    if (body.caseStudyBrand !== undefined) {
+      vals.push(body.caseStudyBrand != null ? String(body.caseStudyBrand).slice(0, 200) : null); sets.push(`"caseStudyBrand"=$${vals.length}`);
+    }
+    if (body.caseStudyCreator !== undefined) {
+      vals.push(body.caseStudyCreator != null ? String(body.caseStudyCreator).slice(0, 200) : null); sets.push(`"caseStudyCreator"=$${vals.length}`);
+    }
+    if (body.caseStudyText !== undefined) {
+      vals.push(body.caseStudyText != null ? String(body.caseStudyText).slice(0, 5000) : null); sets.push(`"caseStudyText"=$${vals.length}`);
+    }
     if (body.isPublished !== undefined) {
       vals.push(!!body.isPublished); sets.push(`"isPublished"=$${vals.length}`);
     }
@@ -117,7 +142,7 @@ router.put("/admin/success-stories/:id", async (req: Request, res: Response): Pr
     vals.push(id);
     const upd = await pool.query(
       `UPDATE "SuccessStory" SET ${sets.join(", ")}, "updatedAt"=NOW() WHERE id=$${vals.length}
-       RETURNING id, position, "videoUrl", "posterUrl", details, "isPublished", "createdAt", "updatedAt"`,
+       RETURNING ${STORY_COLS}`,
       vals,
     );
     res.json({ story: serializeStory(upd.rows[0]) });
@@ -251,8 +276,7 @@ router.patch("/admin/success-stats", async (req: Request, res: Response): Promis
 router.get("/success-stories", async (_req: Request, res: Response): Promise<void> => {
   try {
     const r = await pool.query(
-      `SELECT id, position, "videoUrl", "posterUrl", details, "isPublished", "createdAt", "updatedAt"
-         FROM "SuccessStory" WHERE "isPublished"=true ORDER BY position ASC, "createdAt" ASC`,
+      `SELECT ${STORY_COLS} FROM "SuccessStory" WHERE "isPublished"=true ORDER BY position ASC, "createdAt" ASC`,
     );
     res.json({ stories: r.rows.map(serializeStory) });
   } catch (e: any) {

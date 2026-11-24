@@ -16,6 +16,7 @@ interface Story {
   id: string; position: number;
   videoUrl: string | null; posterUrl: string | null;
   details: Detail[]; isPublished: boolean;
+  caseStudyBrand: string | null; caseStudyCreator: string | null; caseStudyText: string | null;
 }
 interface Stats { brands: string; creators: string; collabs: string; totalViews: string }
 
@@ -86,7 +87,7 @@ export default function AdminSuccessStories() {
     } catch { await load(); showToast("Failed to reorder", false); }
   };
 
-  const patchStory = async (id: string, body: Partial<Pick<Story, "videoUrl" | "posterUrl" | "details" | "isPublished">>) => {
+  const patchStory = async (id: string, body: Partial<Pick<Story, "videoUrl" | "posterUrl" | "details" | "isPublished" | "caseStudyBrand" | "caseStudyCreator" | "caseStudyText">>) => {
     const r = await adminFetch(`/api/admin/success-stories/${id}`, { method: "PUT", body: JSON.stringify(body) });
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error ?? "Save failed"); }
     const d = await r.json();
@@ -173,12 +174,15 @@ function StoryCard({ story, index, total, adminFetch, onPatch, onDelete, onReord
   index: number;
   total: number;
   adminFetch: (path: string, options?: RequestInit) => Promise<Response>;
-  onPatch: (id: string, body: Partial<Pick<Story, "videoUrl" | "posterUrl" | "details" | "isPublished">>) => Promise<void>;
+  onPatch: (id: string, body: Partial<Pick<Story, "videoUrl" | "posterUrl" | "details" | "isPublished" | "caseStudyBrand" | "caseStudyCreator" | "caseStudyText">>) => Promise<void>;
   onDelete: () => void;
   onReorder: (index: number, dir: -1 | 1) => void;
   onError: (msg: string) => void;
 }) {
   const [details, setDetails] = useState<Detail[]>(story.details ?? []);
+  const [csBrand, setCsBrand] = useState(story.caseStudyBrand ?? "");
+  const [csCreator, setCsCreator] = useState(story.caseStudyCreator ?? "");
+  const [csText, setCsText] = useState(story.caseStudyText ?? "");
   const [savingDetails, setSavingDetails] = useState(false);
   const [videoPct, setVideoPct] = useState<number | null>(null);
   const [posterBusy, setPosterBusy] = useState(false);
@@ -217,7 +221,14 @@ function StoryCard({ story, index, total, adminFetch, onPatch, onDelete, onReord
 
   const saveDetails = async () => {
     setSavingDetails(true);
-    try { await onPatch(story.id, { details }); } catch (e: any) { onError(e?.message ?? "Save failed"); }
+    try {
+      await onPatch(story.id, {
+        details,
+        caseStudyBrand: csBrand.trim() || null,
+        caseStudyCreator: csCreator.trim() || null,
+        caseStudyText: csText.trim() || null,
+      });
+    } catch (e: any) { onError(e?.message ?? "Save failed"); }
     finally { setSavingDetails(false); }
   };
 
@@ -299,6 +310,16 @@ function StoryCard({ story, index, total, adminFetch, onPatch, onDelete, onReord
         <button onClick={() => setDetails(prev => [...prev, { label: "", answer: "" }])} className="mt-2 flex items-center gap-1 text-xs hover:opacity-80" style={{ color: PINK }}>
           <Plus className="w-3.5 h-3.5" /> Add row
         </button>
+      </div>
+
+      {/* Case study (shown as a band on the public page; blank fields hide it) */}
+      <div className="mb-3 pt-3 border-t border-white/10">
+        <label className="block text-white/80 text-xs mb-2">Case study (optional)</label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+          <input className={inputClass} placeholder="Brand name" value={csBrand} onChange={e => setCsBrand(e.target.value)} />
+          <input className={inputClass} placeholder="Creator name" value={csCreator} onChange={e => setCsCreator(e.target.value)} />
+        </div>
+        <textarea className={inputClass + " resize-y"} rows={3} placeholder="Case study paragraph — what the collaboration achieved" value={csText} onChange={e => setCsText(e.target.value)} />
       </div>
 
       <button onClick={saveDetails} disabled={savingDetails} className="px-4 py-2 rounded-full text-white text-xs font-semibold disabled:opacity-50" style={{ background: PINK }}>
